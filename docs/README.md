@@ -6,15 +6,18 @@
 
 1. [Ontology Kernel PRD](product/ontology-kernel-prd.md)：产品能力、范围、语义和最终验收。
 2. [G2 生产实现蓝图](product/ontology-kernel-implementation-blueprint.md)：从 PRD 到工程的实现约束。
-3. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
-4. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
-5. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
+3. [G2 蓝图红队审查](reviews/g2-blueprint-red-team.md)：承重假设、验证、Kill Criteria 和 Conditional Go 结论。
+4. [G2-00 Foundation 任务包](delivery/g2-00-foundation-task-pack.md)：当前唯一获准执行的 Gate 清单。
+5. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
+6. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
+7. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
 
 ## 计划目录
 
 ```text
 docs/
 ├── product/                    # PRD、蓝图和正式范围变更
+├── reviews/                    # 红队、可行性和专项评审
 ├── architecture/adr/           # ADR-007 起
 ├── delivery/                   # G2 Backlog、状态、风险和决策日志
 ├── api/                        # OpenAPI 使用与版本兼容说明

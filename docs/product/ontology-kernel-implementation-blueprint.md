@@ -1,16 +1,18 @@
 # Ontology Kernel G2 生产实现蓝图
 
-- 版本：0.1
+- 版本：0.2
 - 日期：2026-08-13
-- 状态：Implementation Blueprint / 待任务拆分
+- 状态：Red-team Reviewed / G2-00 Authorized
 - 上游产品基线：[Ontology Kernel PRD](ontology-kernel-prd.md)
 - 可行性基线：[G1 Feasibility Report](../../spikes/g1/docs/g1-feasibility-report.md)
 - 架构基线：[G1 Architecture Decisions](../../spikes/g1/docs/architecture-decisions.md)
 - G2 准入基线：[G2 Implementation Readiness](../../spikes/g1/docs/g2-implementation-readiness.md)
+- 红队结论：[G2 Blueprint Red-Team](../reviews/g2-blueprint-red-team.md)
+- 当前任务包：[G2-00 Foundation](../delivery/g2-00-foundation-task-pack.md)
 
 ## 0. 蓝图结论
 
-实现路线冻结为：**先冻结完整 P0 的总架构和合同，再在同一正式代码库中完成一条生产纵向切片，随后横向补齐完整 P0。**
+实现路线冻结为：**先冻结完整 P0 的总架构、核心语义和跨模块基础合同，再在同一正式代码库中完成一条生产纵向切片，随后沿拥有 Gate 渐进冻结模块字段合同并横向补齐完整 P0。**
 
 这意味着：
 
@@ -19,6 +21,8 @@
 3. 首切片只减少功能覆盖面，不降低正确性要求；后续通过增加 Adapter、Resource 类型、页面和运维能力完成 P0，不重写核心。
 4. 本蓝图中的“完整产品”特指 PRD 的 **P0 Kernel Alpha**，不是复制 Palantir 全产品，也不包含 P1/P2。
 5. G1 Spike 只复用算法、SQL 结论、Fixtures 和测试向量；不把 Spike 的进程组织、凭据和脚本直接当生产代码。
+
+红队后的放行结论是 **Conditional Go**：现在只允许执行 G2-00 Foundation。G2-00 不包含 DB-01、Resource/Release Store、业务 Endpoint 或页面；其 Gate 未通过前不得用“先写一点业务代码”绕过基础验证。
 
 ### 0.1 对“先闭环还是先做全核心”的最终回答
 
@@ -135,7 +139,7 @@ flowchart LR
 首个实现建立新的生产仓库目录，不在 `ontology-kernel-spikes` 内继续堆代码：
 
 ```text
-ontology-kernel/
+ontos/
 ├── apps/
 │   ├── api/                    # HTTP composition root
 │   ├── worker/                 # durable jobs / materializer / outbox / GC
@@ -429,20 +433,24 @@ PENDING → LEASED → DELIVERING → COMPLETE
 
 ### 7.1 合同先行
 
-`packages/contracts` 在任何业务实现前冻结：
+`packages/contracts` 采用两层渐进冻结，避免把未经实现验证的字段猜测变成兼容负担。
 
-- ID、Release Binding、Correlation 和 Identity Context；
+G2-00 必须先冻结 Foundation Contract：
+
+- ID、Release Binding、Correlation 和 Identity/Delegation 摘要；
 - Property Value Codec；
-- Resource/Revision/Release Manifest；
-- Query AST、Cursor Payload 与复杂度限制；
-- Policy Decision/Predicate/Mask；
-- Function Context/Result；
-- Action Parameters、ReadSet、MutationPlan、Preflight Token、Action Result；
-- Snapshot Manifest、Mapping、Validation Report、Job State；
-- Error Envelope 与稳定错误码；
-- ChangeSet、Outbox Event、Audit Event Schema。
+- Error Envelope、稳定错误分类和 Schema Version/兼容规则；
+- 跨模块 Artifact Digest、幂等与时间编码语义。
 
-所有合同有 `schemaVersion`，有 Golden Fixture、兼容性测试和禁止未知写入字段策略。数据库 JSONB 不能替代公共 Schema。
+模块字段合同由拥有 Gate 冻结：
+
+- G2-01：Resource/Revision/Release/Package Manifest；
+- G2-02：Snapshot、Mapping、Validation Report 和 Job State；
+- G2-03：Query AST、Cursor、Policy Decision/Predicate/Mask；
+- G2-04：Function Context、Action、ReadSet、MutationPlan、Preflight、ChangeSet、Outbox 和 Audit Event；
+- G2-05：OpenAPI、SDK 和 Web 所需的发布合同。
+
+G2-00 可以为后续合同建立 seam fixture、Owner 和语义不变量，但不得提前宣称全部字段稳定。所有合同从首次出现起都有 `schemaVersion`、Golden Fixture、兼容性测试和禁止未知写入字段策略。数据库 JSONB 不能替代公共 Schema。
 
 ### 7.2 Admin API
 
@@ -595,7 +603,7 @@ Package Manifest
 
 ## 10. 实施里程碑与任务顺序
 
-以下日历假设 4–6 人并行；若人力更少，保持依赖顺序并延长时间，不能通过删掉安全、事务或恢复 Gate 来压缩。
+以下日历只是 4–6 人、至少四条有效责任线并行时的情景值，不是当前项目承诺。G2-00 退出前必须记录真实 Owner、容量和第二审查人，再根据实际吞吐重算。若人力更少，保持依赖顺序并延长时间，不能通过删掉安全、事务或恢复 Gate 来压缩。
 
 ### 10.1 第 1–6 周：架构集成 Gate
 
@@ -619,7 +627,7 @@ Package Manifest
 | G2-08 Security | OIDC 校验、Scope 分离、上传安全、Injection/CSRF/SSRF/枚举专项 | 无已知高危旁路；Policy fail-closed 用例通过 |
 | G2-09 Internal Alpha | 可用性、浏览器、Runbook、发布演练、用户走查 | 首切片“生产最低含义”全部满足 |
 
-因此，合理承诺是：**6 周获得架构集成证据，8–10 周获得可供受控内部试用的生产纵向切片**。这比把第 6 周的技术闭环包装为成品更可行。
+因此，在上述团队前提成立时，合理情景是：**6 周获得架构集成证据，8–10 周获得可供受控内部试用的生产纵向切片**。实际团队并行度未确认前，不对外承诺该日期。第 6 周的技术闭环也不能包装为成品。
 
 ### 10.3 首切片之后：完整 P0
 
@@ -727,6 +735,7 @@ Package Manifest
 
 ### 13.2 尚未被 G1 证明，必须由首切片证明
 
+- Runtime Activation 在多 Release、数据刷新、Rollback 和 GC 下的一致性与容量上界；
 - 真实 OIDC、HTTP、连接池、取消和限流组合；
 - 持久化 Job 的崩溃恢复、租约和孤儿 Staging GC；
 - 完整 Action Transaction、Preflight Token、幂等和锁顺序；
@@ -736,12 +745,15 @@ Package Manifest
 - PITR、对象存储版本和 Outbox 重投后的恢复正确性；
 - 实际用户是否能直接使用生成式页面。
 
-这些未知项已经进入 G2-02 至 G2-09 Gate，没有被隐藏到最后。
+其中 Activation 状态模型、基础合同冻结粒度、数据库角色、生产边界等价环境和 Handler Host seam 必须前移到 G2-00；其余未知项进入 G2-01 至 G2-09，没有被隐藏到最后。
 
 ### 13.3 主要风险与控制
 
 | 风险 | 早期指标 | 处理 |
 |---|---|---|
+| Foundation 吸收业务内核 | G2-00 出现 DB-01、业务 Store/Endpoint | 移回拥有 Gate；G2-00 只冻结跨模块基础语义 |
+| 合同过早冻结 | 未实现模块频繁破坏 Schema 或加入占位字段 | 采用 Foundation/Module 两层渐进冻结 |
+| Release/Generation 保留无界 | 每个不兼容 Release 独立物化且无法给出容量上限 | ADR-007/008 先冻结服务上限、复用与退休规则 |
 | Materialization Job 复杂度失控 | 不能从阶段恢复、Staging 泄露 | 暂停新格式，只保留 CSV，先过恢复 Gate |
 | 索引数量/写放大过高 | Index Plan 超预算、Action 延迟上升 | 限制声明字段，不自动索引所有 Property |
 | Handler 运行模型不稳定 | Timeout 不能终止、读取集合漂移 | 保留 standard 路径做诊断，但首切片与 P0 均判 Gate 未通过，不把降级结果称为生产闭环 |
@@ -767,10 +779,11 @@ Package Manifest
 
 ## 14. 编码前的冻结清单
 
-只有以下条目全部完成才开始业务功能编码：
+只有以下条目全部完成才开始 G2-01 业务功能编码：
 
-- [ ] 正式仓库名、各责任 Owner 和实际并行度确定；
-- [ ] 本蓝图评审通过，P0/P1/P2 范围无歧义；
+- [x] 正式仓库确定为 `wyd-git/ontos`；
+- [ ] 各责任 Owner、第二审查人和实际并行度确定；
+- [x] 本蓝图完成红队审查，P0/P1/P2 范围保持不变；
 - [ ] ADR-007：Runtime Activation、Release Serving Head 与 90 天支持窗；
 - [ ] ADR-008：共享 Generation 表与索引计划；
 - [ ] ADR-009：Timestamp/Integer/Decimal/Primary Key 公共编码；
@@ -787,13 +800,15 @@ Package Manifest
 
 ## 15. 蓝图之后的第一批可执行任务
 
-蓝图通过后，不立刻写页面。第一批任务严格按以下顺序进入开发：
+蓝图通过后，不立刻写页面或 Metadata Store。第一批工作以 [G2-00 Foundation 任务包](../delivery/g2-00-foundation-task-pack.md) 为唯一执行清单：
 
-1. 建立 `ontology-kernel` 正式仓库骨架、CI、代码依赖规则和本地生产等价环境；
-2. 编写 ADR-007 至 ADR-012，并将本蓝图中的已决选择转成可测试约束；
-3. 建立 `contracts`，冻结 ID、值 Codec、Error、Query AST、Release、Snapshot、Action 和 Event Schema；
-4. 实现 DB-00/DB-01 Migration 与数据库角色；
-5. 迁移 G1 Fixtures 和测试向量，禁止复制 Spike 的凭据/进程脚本；
-6. 通过 G2-00 后才开始 Resource/Release Store。
+1. 在 `ontos` 建立实际使用的工具链骨架、依赖规则和本地生产边界等价环境；
+2. 编写 ADR-007 至 ADR-012，并用状态模型、容量模型或 seam proof 验证；
+3. 建立渐进式 `contracts`，只冻结 Foundation Contract，登记模块合同的 Owner 和最晚 Gate；
+4. 只实现 DB-00 Migration、逻辑 Schema 与数据库角色；DB-01 明确属于 G2-01；
+5. 把 Handler Host 的凭据隔离、版本化 RPC、硬超时和 Read Set 边界作为 seam proof 前移验证；
+6. 迁移 G1 Fixtures 和测试向量，禁止生产包导入 Spike 的凭据、进程脚本或运行代码；
+7. 用 clean-room bootstrap、强制 CI 和 Evidence Manifest 判定 G2-00 PASS/FAIL；
+8. 只有 PASS 后才创建 G2-01 Resource/Release Store 任务包。
 
 第一批任务的最终产物不是“有几个接口能跑”，而是一个可以安全承载后续所有 P0 模块、能够从空环境重复构建的正式工程底座。
