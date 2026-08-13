@@ -784,7 +784,7 @@ Package Manifest
 - [x] 正式仓库确定为 `wyd-git/ontos`；
 - [ ] 各责任 Owner、第二审查人和实际并行度确定；
 - [x] 本蓝图完成红队审查，P0/P1/P2 范围保持不变；
-- [ ] ADR-007：Runtime Activation、Release Serving Head 与 90 天支持窗；
+- [x] ADR-007：Runtime Activation、Release Serving Head 与 90 天支持窗；
 - [ ] ADR-008：共享 Generation 表与索引计划；
 - [ ] ADR-009：Timestamp/Integer/Decimal/Primary Key 公共编码；
 - [ ] ADR-010：PostgreSQL Job/Lease 与 Outbox；
