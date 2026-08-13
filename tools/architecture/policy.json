@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "packageNamePrefix": "@ontos/",
+  "workspaceRoots": ["apps", "packages"],
+  "layers": ["app", "application", "domain", "contracts", "adapter", "testkit", "tooling"],
+  "allowedLayersByRoot": {
+    "apps": ["app"],
+    "packages": ["application", "domain", "contracts", "adapter", "testkit", "tooling"]
+  },
+  "allowedWorkspaceDependencies": {
+    "app": ["application", "domain", "contracts", "adapter"],
+    "application": ["application", "domain", "contracts"],
+    "domain": ["domain", "contracts"],
+    "contracts": [],
+    "adapter": ["application", "domain", "contracts"],
+    "testkit": ["application", "domain", "contracts", "adapter", "testkit"],
+    "tooling": ["application", "domain", "contracts", "adapter", "testkit", "tooling"]
+  },
+  "requireRootExportLayers": ["application", "domain", "contracts", "adapter"],
+  "allowedExternalRuntimeDependencies": {
+    "app": ["*"],
+    "contracts": [],
+    "domain": [],
+    "application": [],
+    "adapter": ["*"],
+    "testkit": ["*"],
+    "tooling": ["*"]
+  },
+  "allowedExternalImports": {
+    "app": ["*"],
+    "contracts": [],
+    "domain": [],
+    "application": [],
+    "adapter": ["*"],
+    "testkit": ["*"],
+    "tooling": ["*"]
+  },
+  "forbidDeepWorkspaceImports": true
+}

@@ -1,0 +1,15 @@
+.git/
+node_modules/
+coverage/
+dist/
+generated/
+package-lock.json
+
+# Frozen G1 evidence and long-form product documents keep their reviewed bytes.
+spikes/
+docs/product/
+
+# Pre-existing reviewed Markdown remains byte-stable until a dedicated formatting change.
+README.md
+docs/delivery/g2-00-foundation-task-pack.md
+docs/reviews/g2-blueprint-red-team.md

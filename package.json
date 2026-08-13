@@ -1,0 +1,37 @@
+{
+  "name": "@ontos/root",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Ontology Kernel production monorepo",
+  "type": "module",
+  "engines": {
+    "node": "24.18.0",
+    "npm": "11.16.0"
+  },
+  "packageManager": "npm@11.16.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "preinstall": "node tools/toolchain/check-versions.mjs",
+    "bootstrap": "npm ci",
+    "check:toolchain": "node tools/toolchain/check-versions.mjs",
+    "check:architecture": "node tools/architecture/check-workspace.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run test:unit",
+    "test:unit": "node --test tools/toolchain/check-versions.test.mjs tools/architecture/check-workspace.test.ts",
+    "verify": "npm run check:toolchain && npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run check:architecture"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.13.3",
+    "eslint": "10.8.1",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.67.0"
+  }
+}

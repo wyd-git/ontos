@@ -8,9 +8,10 @@
 2. [G2 生产实现蓝图](product/ontology-kernel-implementation-blueprint.md)：从 PRD 到工程的实现约束。
 3. [G2 蓝图红队审查](reviews/g2-blueprint-red-team.md)：承重假设、验证、Kill Criteria 和 Conditional Go 结论。
 4. [G2-00 Foundation 任务包](delivery/g2-00-foundation-task-pack.md)：当前唯一获准执行的 Gate 清单。
-5. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
-6. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
-7. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
+5. [G2 工具链基线](architecture/toolchain-baseline.md)与 [Monorepo 依赖边界](architecture/dependency-boundaries.md)：G2-00-01 的已接受工程约束。
+6. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
+7. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
+8. `evidence/`：可复现的 Gate 报告；当前记录为 [G2-00-01 验收记录](evidence/g2-00-01-toolchain-boundaries.md)，证据不等于新的产品需求。
 
 ## 计划目录
 
