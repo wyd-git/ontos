@@ -1,0 +1,334 @@
+{
+  "schemaVersion": 1,
+  "positive": [
+    {
+      "id": "uuid-uppercase",
+      "kind": "uuid",
+      "input": "550E8400-E29B-41D4-A716-446655440000",
+      "expected": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    {
+      "id": "boolean-true",
+      "kind": "boolean",
+      "input": true,
+      "expected": true
+    },
+    {
+      "id": "integer-minimum",
+      "kind": "integer",
+      "input": "-9223372036854775808",
+      "expected": "-9223372036854775808"
+    },
+    {
+      "id": "integer-maximum",
+      "kind": "integer",
+      "input": "9223372036854775807",
+      "expected": "9223372036854775807"
+    },
+    {
+      "id": "integer-negative-zero",
+      "kind": "integer",
+      "input": "-0",
+      "expected": "0"
+    },
+    {
+      "id": "decimal-maximum",
+      "kind": "decimal",
+      "precision": 38,
+      "scale": 18,
+      "input": "99999999999999999999.999999999999999999",
+      "expected": "99999999999999999999.999999999999999999"
+    },
+    {
+      "id": "decimal-fixed-scale",
+      "kind": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "input": "1.2",
+      "expected": "1.20"
+    },
+    {
+      "id": "decimal-negative-zero",
+      "kind": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "input": "-0",
+      "expected": "0.00"
+    },
+    {
+      "id": "date-gregorian-leap",
+      "kind": "date",
+      "input": "2000-02-29",
+      "expected": "2000-02-29"
+    },
+    {
+      "id": "timestamp-offset",
+      "kind": "timestamp",
+      "input": "2026-08-13T16:01:02.123456+08:00",
+      "expected": "2026-08-13T08:01:02.123456Z"
+    },
+    {
+      "id": "timestamp-midnight-rollover",
+      "kind": "timestamp",
+      "input": "2026-01-01T00:30:00+01:00",
+      "expected": "2025-12-31T23:30:00.000000Z"
+    },
+    {
+      "id": "timestamp-zero-fraction",
+      "kind": "timestamp",
+      "input": "2026-08-13T08:01:02Z",
+      "expected": "2026-08-13T08:01:02.000000Z"
+    },
+    {
+      "id": "enum-stable-code",
+      "kind": "enum",
+      "values": ["NEW", "ACTIVE", "CLOSED"],
+      "input": "ACTIVE",
+      "expected": "ACTIVE"
+    },
+    {
+      "id": "string-unicode-preserved",
+      "kind": "string",
+      "input": "客户-É-甲",
+      "expected": "客户-É-甲"
+    },
+    {
+      "id": "string-array-order-preserved",
+      "kind": "string[]",
+      "input": ["north", "华东", "north"],
+      "expected": ["north", "华东", "north"]
+    },
+    {
+      "id": "restricted-json-canonical",
+      "kind": "json",
+      "input": { "z": [true, null], "a": 1.25 },
+      "expected": "{\"a\":1.25,\"z\":[true,null]}"
+    }
+  ],
+  "invalid": [
+    {
+      "id": "integer-number-rejected",
+      "kind": "integer",
+      "input": 9007199254740992,
+      "expectedError": "VALUE_TYPE_MISMATCH"
+    },
+    {
+      "id": "integer-leading-zero",
+      "kind": "integer",
+      "input": "01",
+      "expectedError": "INTEGER_FORMAT_INVALID"
+    },
+    {
+      "id": "integer-overflow",
+      "kind": "integer",
+      "input": "9223372036854775808",
+      "expectedError": "INTEGER_VALUE_OUT_OF_RANGE"
+    },
+    {
+      "id": "decimal-number-rejected",
+      "kind": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "input": 1.2,
+      "expectedError": "VALUE_TYPE_MISMATCH"
+    },
+    {
+      "id": "decimal-scale-overflow",
+      "kind": "decimal",
+      "precision": 5,
+      "scale": 2,
+      "input": "1.234",
+      "expectedError": "DECIMAL_VALUE_OUT_OF_RANGE"
+    },
+    {
+      "id": "date-rollover",
+      "kind": "date",
+      "input": "2026-02-29",
+      "expectedError": "DATE_INVALID"
+    },
+    {
+      "id": "timestamp-missing-zone",
+      "kind": "timestamp",
+      "input": "2026-08-13T08:01:02",
+      "expectedError": "TIMESTAMP_INVALID"
+    },
+    {
+      "id": "timestamp-ambiguous-zone",
+      "kind": "timestamp",
+      "input": "2026-08-13T08:01:02-00:00",
+      "expectedError": "TIMESTAMP_INVALID"
+    },
+    {
+      "id": "timestamp-lossy-fraction",
+      "kind": "timestamp",
+      "input": "2026-08-13T08:01:02.1234567Z",
+      "expectedError": "TIMESTAMP_INVALID"
+    },
+    {
+      "id": "enum-unknown-code",
+      "kind": "enum",
+      "values": ["NEW", "ACTIVE"],
+      "input": "CLOSED",
+      "expectedError": "ENUM_VALUE_INVALID"
+    },
+    {
+      "id": "string-byte-limit",
+      "kind": "string",
+      "maximumBytes": 3,
+      "input": "中文",
+      "expectedError": "STRING_TOO_LARGE"
+    },
+    {
+      "id": "string-array-limit",
+      "kind": "string[]",
+      "maximumItems": 1,
+      "input": ["a", "b"],
+      "expectedError": "STRING_ARRAY_TOO_LARGE"
+    },
+    {
+      "id": "json-unsafe-integer",
+      "kind": "json",
+      "input": 9007199254740992,
+      "expectedError": "JSON_VALUE_INVALID"
+    },
+    {
+      "id": "json-exponent-number",
+      "kind": "json",
+      "input": 1e-7,
+      "expectedError": "JSON_VALUE_INVALID"
+    }
+  ],
+  "primaryKeys": [
+    {
+      "id": "pk-unicode-nfc",
+      "definition": {
+        "components": [{ "type": "string", "caseSensitive": true }]
+      },
+      "inputs": ["Café"],
+      "expected": "pk1|1|s5#Café"
+    },
+    {
+      "id": "pk-case-insensitive-unicode",
+      "definition": {
+        "components": [{ "type": "string", "caseSensitive": false }]
+      },
+      "inputs": ["straße"],
+      "expected": "pk1|1|s7#STRASSE"
+    },
+    {
+      "id": "pk-composite-delimiter-safe",
+      "definition": {
+        "components": [{ "type": "string", "caseSensitive": true }, { "type": "integer" }]
+      },
+      "inputs": ["tenant|north", "-0"],
+      "expected": "pk1|2|s12#tenant|northi1#0"
+    },
+    {
+      "id": "pk-composite-typed-values",
+      "definition": {
+        "components": [{ "type": "decimal", "precision": 5, "scale": 2 }, { "type": "timestamp" }]
+      },
+      "inputs": ["1.2", "2026-08-13T16:01:02+08:00"],
+      "expected": "pk1|2|n4#1.20t27#2026-08-13T08:01:02.000000Z"
+    }
+  ],
+  "collisions": [
+    {
+      "id": "pk-collision-nfc",
+      "definition": {
+        "components": [{ "type": "string", "caseSensitive": true }]
+      },
+      "candidates": [["Café"], ["Café"]]
+    },
+    {
+      "id": "pk-collision-case",
+      "definition": {
+        "components": [{ "type": "string", "caseSensitive": false }]
+      },
+      "candidates": [["straße"], ["STRASSE"]]
+    },
+    {
+      "id": "pk-collision-decimal",
+      "definition": {
+        "components": [{ "type": "decimal", "precision": 5, "scale": 2 }]
+      },
+      "candidates": [["1.2"], ["1.20"]]
+    },
+    {
+      "id": "pk-collision-timestamp",
+      "definition": {
+        "components": [{ "type": "timestamp" }]
+      },
+      "candidates": [["2026-08-13T08:01:02Z"], ["2026-08-13T16:01:02+08:00"]]
+    }
+  ],
+  "orderGroups": [
+    {
+      "id": "order-uuid",
+      "kind": "uuid",
+      "inputs": [
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "00000000-0000-0000-0000-000000000001",
+        "00000000-0000-0000-0000-000000000000"
+      ],
+      "expectedCanonicalOrder": [
+        "00000000-0000-0000-0000-000000000000",
+        "00000000-0000-0000-0000-000000000001",
+        "ffffffff-ffff-ffff-ffff-ffffffffffff"
+      ]
+    },
+    {
+      "id": "order-boolean",
+      "kind": "boolean",
+      "inputs": [true, false],
+      "expectedCanonicalOrder": ["false", "true"]
+    },
+    {
+      "id": "order-integer",
+      "kind": "integer",
+      "inputs": ["10", "-2", "0", "9223372036854775807", "-9223372036854775808"],
+      "expectedCanonicalOrder": ["-9223372036854775808", "-2", "0", "10", "9223372036854775807"]
+    },
+    {
+      "id": "order-decimal",
+      "kind": "decimal",
+      "precision": 6,
+      "scale": 2,
+      "inputs": ["10", "-2.5", "0", "9.99"],
+      "expectedCanonicalOrder": ["-2.50", "0.00", "9.99", "10.00"]
+    },
+    {
+      "id": "order-date",
+      "kind": "date",
+      "inputs": ["2026-08-13", "2000-02-29", "2026-01-01"],
+      "expectedCanonicalOrder": ["2000-02-29", "2026-01-01", "2026-08-13"]
+    },
+    {
+      "id": "order-timestamp",
+      "kind": "timestamp",
+      "inputs": [
+        "2026-08-13T16:01:02+08:00",
+        "2026-08-13T08:01:01.999999Z",
+        "2026-08-13T09:01:02Z"
+      ],
+      "expectedCanonicalOrder": [
+        "2026-08-13T08:01:01.999999Z",
+        "2026-08-13T08:01:02.000000Z",
+        "2026-08-13T09:01:02.000000Z"
+      ]
+    },
+    {
+      "id": "order-enum",
+      "kind": "enum",
+      "values": ["LOW", "MEDIUM", "HIGH"],
+      "inputs": ["HIGH", "LOW", "MEDIUM"],
+      "expectedCanonicalOrder": ["LOW", "MEDIUM", "HIGH"]
+    },
+    {
+      "id": "order-string-c-collation",
+      "kind": "string",
+      "inputs": ["中", "é", "a", "Z"],
+      "expectedCanonicalOrder": ["Z", "a", "é", "中"]
+    }
+  ]
+}
