@@ -12,9 +12,11 @@
 6. [本地生产边界架构](architecture/local-production-boundaries.md)与 [运行手册](operations/local-production-boundary-environment.md)：G2-00-02 的协议、信任和生命周期边界。
 7. [ADR-007 Runtime Activation](architecture/adr/007-runtime-activation-serving-head.md)、[专项红队](reviews/adr-007-runtime-activation-red-team.md)与 [G2-00-03 Evidence](evidence/g2-00-03-runtime-activation-serving-head.md)：Release/Generation 一致绑定、支持窗、容量和 GC 引用语义。
 8. [ADR-008 Shared Projection](architecture/adr/008-shared-projection-index-capacity.md)、[专项红队](reviews/adr-008-shared-projection-red-team.md)与 [G2-00-04 Evidence](evidence/g2-00-04-shared-projection-index-capacity.md)：共享表键、Index Plan、Generation 容量、审批与 GC 上界。
-9. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
-10. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
-11. `evidence/`：可复现的 Gate 报告；当前记录包括 G2-00-01～04，证据不等于新的产品需求。
+9. [ADR-009 Public Value Codec](architecture/adr/009-public-value-codec.md)、[专项红队](reviews/adr-009-public-value-codec-red-team.md)与 [G2-00-05 Evidence](evidence/g2-00-05-public-value-codec.md)：公共值、Primary Key、排序、Golden Vector 与 PostgreSQL 交叉验证。
+10. [ADR-010 Job/Lease 与 Outbox](architecture/adr/010-postgresql-job-lease-outbox.md)、[专项红队](reviews/adr-010-postgresql-job-lease-outbox-red-team.md)与 [G2-00-06 Evidence](evidence/g2-00-06-postgresql-job-lease-outbox.md)：持久 Job 恢复、数据库租约、至少一次投递和同对象顺序。
+11. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
+12. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
+13. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
 
 ## 计划目录
 
