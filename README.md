@@ -5,7 +5,8 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 当前状态：
 
 - G1 技术可行性验证：**PASS**；
-- G2 生产实现蓝图：**已完成，待红队冻结**；
+- G2 生产实现蓝图：**红队审查完成，Conditional Go**；
+- G2-00 Foundation：**任务包已完成，尚未开始实现**；
 - 正式产品实现：**尚未开始**；
 - 下一 Gate：**G2-00 Foundation**。
 
@@ -15,6 +16,8 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 |---|---|
 | [产品需求文档](docs/product/ontology-kernel-prd.md) | P0/P1/P2 范围、产品语义和 AC-01～AC-10 |
 | [生产实现蓝图](docs/product/ontology-kernel-implementation-blueprint.md) | 工程结构、模块、数据、事务、状态机和 Gate |
+| [蓝图红队审查](docs/reviews/g2-blueprint-red-team.md) | 承重假设、最低成本验证、停止条件和放行结论 |
+| [G2-00 任务包](docs/delivery/g2-00-foundation-task-pack.md) | Foundation 的依赖、WWA 工作项和可执行退出条件 |
 | [G1 可行性报告](spikes/g1/docs/g1-feasibility-report.md) | 已验证结论、性能和限制 |
 | [G1 架构决策](spikes/g1/docs/architecture-decisions.md) | G2 不可违反的存储、查询、Policy 和 Package 决策 |
 | [G2 实现准入](spikes/g1/docs/g2-implementation-readiness.md) | 第一条生产纵向切片及退出条件 |
@@ -26,13 +29,15 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 ```text
 ontos/
 ├── docs/                       # 产品、架构、交付和运行文档
-│   └── product/                # PRD 与生产实现蓝图
+│   ├── product/                # PRD 与生产实现蓝图
+│   ├── reviews/                # 红队与专项评审
+│   └── delivery/               # Gate 任务包与交付状态
 ├── spikes/
 │   └── g1/                     # G1 可复现代码、测试和精简证据
-├── apps/                       # G2-00 后建立：API/Worker/Handler Host/Web/CLI
-├── packages/                   # G2-00 后建立：Kernel 模块与公共合同
-├── migrations/                 # G2-00 后建立：前向数据库迁移
-└── deploy/                     # G2-00 后建立：本地与单区域部署
+├── apps/                       # G2-00 起按真实任务建立：API/Worker/Handler Host/Web/CLI
+├── packages/                   # G2-00 起按真实任务建立：Kernel 模块与公共合同
+├── migrations/                 # G2-00 从 DB-00 开始：前向数据库迁移
+└── deploy/                     # G2-00 从本地依赖环境开始，后续补单区域部署
 ```
 
 现在不存在的正式工程目录不会为了“看起来完整”而提前放空文件；它们在对应任务进入开发并具备 Owner、合同和验收时创建。
