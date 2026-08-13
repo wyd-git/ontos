@@ -6,7 +6,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 
 - G1 技术可行性验证：**PASS**；
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
-- G2-00 Foundation：**G2-00-01/02 已合并；G2-00-03 已实现并完成本地验收，待 PR 审查**；
+- G2-00 Foundation：**G2-00-01～05 已合并；G2-00-06 已实现并完成本地验收，待 PR 审查**；
 - 正式产品实现：**尚未开始**；
 - 下一 Gate：**G2-00 Foundation**。
 
@@ -19,6 +19,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [蓝图红队审查](docs/reviews/g2-blueprint-red-team.md) | 承重假设、最低成本验证、停止条件和放行结论 |
 | [G2-00 任务包](docs/delivery/g2-00-foundation-task-pack.md) | Foundation 的依赖、WWA 工作项和可执行退出条件 |
 | [ADR-007 Runtime Activation](docs/architecture/adr/007-runtime-activation-serving-head.md) | Release/Generation 一致绑定、90 天支持、容量与 GC 语义 |
+| [ADR-010 Job/Lease 与 Outbox](docs/architecture/adr/010-postgresql-job-lease-outbox.md) | 持久 Job 恢复、租约 fencing、至少一次投递与同对象顺序 |
 | [G1 可行性报告](spikes/g1/docs/g1-feasibility-report.md) | 已验证结论、性能和限制 |
 | [G1 架构决策](spikes/g1/docs/architecture-decisions.md) | G2 不可违反的存储、查询、Policy 和 Package 决策 |
 | [G2 实现准入](spikes/g1/docs/g2-implementation-readiness.md) | 第一条生产纵向切片及退出条件 |
