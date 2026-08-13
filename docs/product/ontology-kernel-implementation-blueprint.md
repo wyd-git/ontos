@@ -786,7 +786,7 @@ Package Manifest
 - [x] 本蓝图完成红队审查，P0/P1/P2 范围保持不变；
 - [x] ADR-007：Runtime Activation、Release Serving Head 与 90 天支持窗；
 - [x] ADR-008：共享 Generation 表与索引计划；
-- [ ] ADR-009：Timestamp/Integer/Decimal/Primary Key 公共编码；
+- [x] ADR-009：Timestamp/Integer/Decimal/Primary Key 公共编码；
 - [ ] ADR-010：PostgreSQL Job/Lease 与 Outbox；
 - [ ] ADR-011：Trusted TypeScript Artifact + 独立 Handler Host 信任声明；
 - [ ] ADR-012：Policy Epoch、5 秒 TTL 和 fail-closed；
