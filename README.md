@@ -6,7 +6,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 
 - G1 技术可行性验证：**PASS**；
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
-- G2-00 Foundation：**G2-00-01 已合并；G2-00-02 已实现并完成本地验收**；
+- G2-00 Foundation：**G2-00-01/02 已合并；G2-00-03 已实现并完成本地验收，待 PR 审查**；
 - 正式产品实现：**尚未开始**；
 - 下一 Gate：**G2-00 Foundation**。
 
@@ -18,6 +18,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [生产实现蓝图](docs/product/ontology-kernel-implementation-blueprint.md) | 工程结构、模块、数据、事务、状态机和 Gate |
 | [蓝图红队审查](docs/reviews/g2-blueprint-red-team.md) | 承重假设、最低成本验证、停止条件和放行结论 |
 | [G2-00 任务包](docs/delivery/g2-00-foundation-task-pack.md) | Foundation 的依赖、WWA 工作项和可执行退出条件 |
+| [ADR-007 Runtime Activation](docs/architecture/adr/007-runtime-activation-serving-head.md) | Release/Generation 一致绑定、90 天支持、容量与 GC 语义 |
 | [G1 可行性报告](spikes/g1/docs/g1-feasibility-report.md) | 已验证结论、性能和限制 |
 | [G1 架构决策](spikes/g1/docs/architecture-decisions.md) | G2 不可违反的存储、查询、Policy 和 Package 决策 |
 | [G2 实现准入](spikes/g1/docs/g2-implementation-readiness.md) | 第一条生产纵向切片及退出条件 |
@@ -84,6 +85,14 @@ npm run env:down
 ```
 
 `env:restart` 保留项目卷，`env:reset` 只清空固定 Compose 项目 `ontos-g2-local` 的卷。完整端口、边界和恢复说明见 [本地生产边界等价环境运行手册](docs/operations/local-production-boundary-environment.md)。该环境只等价验证协议与权限边界，不代表生产容量、高可用或安全配置。
+
+Runtime Activation 的无数据库状态合同可单独复现：
+
+```bash
+npm run test:activation
+```
+
+它覆盖发布、数据刷新、回滚、退休、容量、在途引用和 GC；不是业务 Release Store 或产品 API。
 
 ## 安全与生成物
 
