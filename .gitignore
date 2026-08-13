@@ -1,0 +1,44 @@
+# Operating system and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+
+# JavaScript / TypeScript
+node_modules/
+.pnpm-store/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Python and local tooling
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# Runtime and generated state
+generated/
+tmp/
+*.log
+*.pid
+
+# Local infrastructure state
+.data/
+.docker/
+
+# Evidence may contain host/environment details. Commit reviewed summaries only.
+spikes/g1/evidence/raw/

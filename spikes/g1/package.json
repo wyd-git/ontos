@@ -1,0 +1,28 @@
+{
+  "name": "ontology-kernel-spikes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "gate:tests": "node scripts/run-test-gate.js",
+    "evidence:fingerprint": "node scripts/content-fingerprint.js",
+    "evidence:environment": "node scripts/capture-environment.js",
+    "evidence:query-corpus": "node scripts/capture-query-corpus.js",
+    "packages:validate": "node src/packages/validate-packages.js",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose down",
+    "db:init": "sh scripts/db-init.sh",
+    "spike:a": "node src/bench/run-query-benchmark.js",
+    "spike:a:sustained": "node src/bench/run-sustained-load.js",
+    "spike:a:index-cost": "node src/bench/run-index-cost.js",
+    "spike:b": "node src/overlay/run-integration.js",
+    "spike:b:scale": "node src/overlay/run-scale.js",
+    "spike:b:cutover": "node src/overlay/run-cutover-benchmark.js",
+    "spike:c": "node src/policy/run-integration.js",
+    "spike:d": "node src/packages/run-integration.js"
+  }
+}
