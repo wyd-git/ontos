@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ontology_spike
+      POSTGRES_PASSWORD: ontology_spike
+      POSTGRES_DB: ontology_spike
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ontology_spike -d ontology_spike"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - ontology_spike_pgdata:/var/lib/postgresql/data
+
+volumes:
+  ontology_spike_pgdata:
+
