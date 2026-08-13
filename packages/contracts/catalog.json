@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "foundationContracts": [
+    {
+      "name": "SchemaVersion",
+      "owner": "Contracts / Tech Lead",
+      "status": "frozen",
+      "schemaDefinition": "SchemaVersion",
+      "direction": "scalar",
+      "compatibility": "exact-v1"
+    },
+    {
+      "name": "OntosId",
+      "owner": "Contracts / Tech Lead",
+      "status": "frozen",
+      "schemaDefinition": "OntosId",
+      "direction": "scalar",
+      "compatibility": "opaque-reader"
+    },
+    {
+      "name": "CorrelationId",
+      "owner": "Contracts / Observability",
+      "status": "frozen",
+      "schemaDefinition": "CorrelationId",
+      "direction": "scalar",
+      "compatibility": "opaque-reader"
+    },
+    {
+      "name": "ArtifactDigest",
+      "owner": "Contracts / Tech Lead",
+      "status": "frozen",
+      "schemaDefinition": "ArtifactDigest",
+      "direction": "scalar",
+      "compatibility": "exact-sha256"
+    },
+    {
+      "name": "IdempotencyKey",
+      "owner": "Contracts / Tech Lead",
+      "status": "frozen",
+      "schemaDefinition": "IdempotencyKey",
+      "direction": "scalar",
+      "compatibility": "opaque-reader"
+    },
+    {
+      "name": "CanonicalInstant",
+      "owner": "Contracts / Tech Lead",
+      "status": "frozen",
+      "schemaDefinition": "CanonicalInstant",
+      "direction": "scalar",
+      "compatibility": "exact-microsecond-utc"
+    },
+    {
+      "name": "CorrelationContext",
+      "owner": "Contracts / Tech Lead",
+      "status": "frozen",
+      "schemaDefinition": "CorrelationContext",
+      "direction": "write",
+      "unknownFields": "reject",
+      "compatibility": "server-first-optional-addition"
+    },
+    {
+      "name": "IdentityDelegationSummary",
+      "owner": "Identity / Policy",
+      "status": "frozen",
+      "schemaDefinition": "IdentityDelegationSummary",
+      "direction": "write",
+      "unknownFields": "reject",
+      "compatibility": "server-first-optional-addition"
+    },
+    {
+      "name": "ReleaseBinding",
+      "owner": "Metadata / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "ReleaseBinding",
+      "direction": "write",
+      "unknownFields": "reject",
+      "compatibility": "server-first-optional-addition"
+    },
+    {
+      "name": "ErrorEnvelope",
+      "owner": "Contracts / API",
+      "status": "frozen",
+      "schemaDefinition": "ErrorEnvelope",
+      "direction": "read",
+      "producerUnknownFields": "reject",
+      "consumerUnknownFields": "ignore",
+      "compatibility": "optional-response-addition"
+    },
+    {
+      "name": "PropertyValueCodec",
+      "owner": "Contracts / Data",
+      "status": "frozen",
+      "externalContract": "@ontos/value-codec",
+      "contractVersion": "pk1",
+      "goldenFixture": "tools/value-codec/golden-vectors.json",
+      "compatibility": "adr-009-golden"
+    }
+  ],
+  "deferredModuleContracts": [
+    {
+      "family": "ResourceRevisionReleasePackage",
+      "owner": "Metadata",
+      "latestFreezeGate": "G2-01",
+      "fieldsFrozen": false,
+      "semanticInvariants": [
+        "Published revisions are immutable",
+        "Publish is atomic and failures do not create a partial Release",
+        "Rollback creates a new Release instead of mutating history"
+      ]
+    },
+    {
+      "family": "SnapshotMappingValidationJob",
+      "owner": "Materialization",
+      "latestFreezeGate": "G2-02",
+      "fieldsFrozen": false,
+      "semanticInvariants": [
+        "A failed Snapshot never replaces the active Generation",
+        "Base facts and Overlay writes remain distinct",
+        "Resume uses durable checkpoints and fencing"
+      ]
+    },
+    {
+      "family": "QueryPolicyCursor",
+      "owner": "Query / Identity Policy",
+      "latestFreezeGate": "G2-03",
+      "fieldsFrozen": false,
+      "semanticInvariants": [
+        "Every query is bound to one resolved Release and Activation",
+        "Policy is enforced in the query plan and response projection",
+        "Cursor is opaque and bound to query and policy context"
+      ]
+    },
+    {
+      "family": "FunctionActionPreflightChangeSet",
+      "owner": "Action / Function Runtime",
+      "latestFreezeGate": "G2-04",
+      "fieldsFrozen": false,
+      "semanticInvariants": [
+        "Preflight is read-only and Apply revalidates authority and versions",
+        "Business facts ChangeSet and Outbox commit atomically",
+        "Handler output is a plan and cannot commit facts directly"
+      ]
+    },
+    {
+      "family": "EventOutboxAudit",
+      "owner": "Action / Platform",
+      "latestFreezeGate": "G2-04",
+      "fieldsFrozen": false,
+      "semanticInvariants": [
+        "Outbox delivery is at-least-once with stable event identity",
+        "Consumer deduplication is observable",
+        "Audit records are append-only and redact sensitive values"
+      ]
+    }
+  ]
+}

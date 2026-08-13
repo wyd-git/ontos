@@ -1,0 +1,12 @@
+{
+  "name": "@ontos/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "contracts"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

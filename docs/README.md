@@ -16,9 +16,10 @@
 10. [ADR-010 Job/Lease 与 Outbox](architecture/adr/010-postgresql-job-lease-outbox.md)、[专项红队](reviews/adr-010-postgresql-job-lease-outbox-red-team.md)与 [G2-00-06 Evidence](evidence/g2-00-06-postgresql-job-lease-outbox.md)：持久 Job 恢复、数据库租约、至少一次投递和同对象顺序。
 11. [ADR-011 Trusted Handler Host](architecture/adr/011-trusted-handler-host-boundary.md)、[专项红队](reviews/adr-011-trusted-handler-host-red-team.md)与 [G2-00-07 Evidence](evidence/g2-00-07-trusted-handler-host.md)：登记 Artifact、私有 RPC、受限 Context、硬超时、进程恢复与 trusted deployment 声明。
 12. [ADR-012 Policy Epoch](architecture/adr/012-policy-epoch-cache-fail-closed.md)、[专项红队](reviews/adr-012-policy-epoch-red-team.md)与 [G2-00-08 Evidence](evidence/g2-00-08-policy-epoch-cache.md)：同事务 Epoch、双进程有界缓存、通知加速、版本绑定与 fail-closed。
-13. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
-14. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
-15. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
+13. [Foundation Contract 与兼容性治理](architecture/foundation-contract-governance.md)、[专项红队](reviews/g2-00-09-foundation-contract-red-team.md)与 [G2-00-09 Evidence](evidence/g2-00-09-foundation-contracts.md)：公共 ID、版本、身份、Release、错误、兼容性规则和渐进冻结边界。
+14. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
+15. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
+16. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
 
 ## 计划目录
 
