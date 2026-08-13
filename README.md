@@ -6,7 +6,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 
 - G1 技术可行性验证：**PASS**；
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
-- G2-00 Foundation：**任务包已完成，尚未开始实现**；
+- G2-00 Foundation：**G2-00-01 已合并；G2-00-02 已实现并完成本地验收**；
 - 正式产品实现：**尚未开始**；
 - 下一 Gate：**G2-00 Foundation**。
 
@@ -72,6 +72,18 @@ sh scripts/run-g1-gates.sh
 ```
 
 前置条件和完整命令见 [G1 README](spikes/g1/README.md)。100k Objects / 1m Links 的完整持续负载会消耗较长时间，不应作为每次普通提交的快速检查。
+
+## G2 本地依赖环境
+
+PostgreSQL、S3、外部测试 OIDC Provider 和 OpenTelemetry Collector 可通过同一入口启动并探活：
+
+```bash
+npm run env:up
+npm run env:smoke
+npm run env:down
+```
+
+`env:restart` 保留项目卷，`env:reset` 只清空固定 Compose 项目 `ontos-g2-local` 的卷。完整端口、边界和恢复说明见 [本地生产边界等价环境运行手册](docs/operations/local-production-boundary-environment.md)。该环境只等价验证协议与权限边界，不代表生产容量、高可用或安全配置。
 
 ## 安全与生成物
 

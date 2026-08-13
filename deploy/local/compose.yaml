@@ -1,0 +1,106 @@
+name: ontos-g2-local
+
+services:
+  config-guard:
+    image: node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d
+    working_dir: /workspace
+    command: ["node", "tools/local-env/config.ts", "--guard"]
+    environment:
+      ONTOS_ENVIRONMENT: "${ONTOS_ENVIRONMENT:?ONTOS_ENVIRONMENT is required}"
+      ONTOS_POSTGRES_DB: "${ONTOS_POSTGRES_DB:?ONTOS_POSTGRES_DB is required}"
+      ONTOS_POSTGRES_SUPERUSER: "${ONTOS_POSTGRES_SUPERUSER:?ONTOS_POSTGRES_SUPERUSER is required}"
+      ONTOS_POSTGRES_SUPERUSER_PASSWORD: "${ONTOS_POSTGRES_SUPERUSER_PASSWORD:?ONTOS_POSTGRES_SUPERUSER_PASSWORD is required}"
+      ONTOS_DB_RUNTIME_USER: "${ONTOS_DB_RUNTIME_USER:?ONTOS_DB_RUNTIME_USER is required}"
+      ONTOS_DB_RUNTIME_PASSWORD: "${ONTOS_DB_RUNTIME_PASSWORD:?ONTOS_DB_RUNTIME_PASSWORD is required}"
+      ONTOS_OIDC_REALM: "${ONTOS_OIDC_REALM:?ONTOS_OIDC_REALM is required}"
+      ONTOS_OIDC_CLIENT_ID: "${ONTOS_OIDC_CLIENT_ID:?ONTOS_OIDC_CLIENT_ID is required}"
+      ONTOS_OIDC_CLIENT_SECRET: "${ONTOS_OIDC_CLIENT_SECRET:?ONTOS_OIDC_CLIENT_SECRET is required}"
+      ONTOS_OIDC_ISSUER: "${ONTOS_OIDC_ISSUER:?ONTOS_OIDC_ISSUER is required}"
+      ONTOS_OIDC_ADMIN_USERNAME: "${ONTOS_OIDC_ADMIN_USERNAME:?ONTOS_OIDC_ADMIN_USERNAME is required}"
+      ONTOS_OIDC_ADMIN_PASSWORD: "${ONTOS_OIDC_ADMIN_PASSWORD:?ONTOS_OIDC_ADMIN_PASSWORD is required}"
+      ONTOS_S3_ACCESS_KEY_ID: "${ONTOS_S3_ACCESS_KEY_ID:?ONTOS_S3_ACCESS_KEY_ID is required}"
+      ONTOS_S3_SECRET_ACCESS_KEY: "${ONTOS_S3_SECRET_ACCESS_KEY:?ONTOS_S3_SECRET_ACCESS_KEY is required}"
+      ONTOS_S3_BUCKET: "${ONTOS_S3_BUCKET:?ONTOS_S3_BUCKET is required}"
+    volumes:
+      - ../../tools/local-env/config.ts:/workspace/tools/local-env/config.ts:ro
+    read_only: true
+    restart: "no"
+
+  postgres:
+    image: postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8
+    depends_on:
+      config-guard:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: "${ONTOS_POSTGRES_DB}"
+      POSTGRES_USER: "${ONTOS_POSTGRES_SUPERUSER}"
+      POSTGRES_PASSWORD: "${ONTOS_POSTGRES_SUPERUSER_PASSWORD}"
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init/001-smoke-role.sql:/docker-entrypoint-initdb.d/001-smoke-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  s3:
+    image: chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d
+    depends_on:
+      config-guard:
+        condition: service_completed_successfully
+    command: ["mini", "-dir=/data"]
+    environment:
+      AWS_ACCESS_KEY_ID: "${ONTOS_S3_ACCESS_KEY_ID}"
+      AWS_SECRET_ACCESS_KEY: "${ONTOS_S3_SECRET_ACCESS_KEY}"
+      S3_BUCKET: "${ONTOS_S3_BUCKET}"
+    ports:
+      - "127.0.0.1:18333:8333"
+    volumes:
+      - seaweed-data:/data
+    restart: unless-stopped
+
+  oidc:
+    image: quay.io/keycloak/keycloak:26.7.1@sha256:f1f1f01e472c8a78df40d8f2a49a925274eda4d3d80d5f6edbb5c880ee3c01c6
+    depends_on:
+      config-guard:
+        condition: service_completed_successfully
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "${ONTOS_OIDC_ADMIN_USERNAME}"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "${ONTOS_OIDC_ADMIN_PASSWORD}"
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME: "http://127.0.0.1:18080"
+      KC_HOSTNAME_STRICT: "true"
+      ONTOS_OIDC_CLIENT_SECRET: "${ONTOS_OIDC_CLIENT_SECRET}"
+    ports:
+      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:19090:9000"
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+      - ./keycloak/realm.json:/opt/keycloak/data/import/realm.json:ro
+    restart: unless-stopped
+
+  telemetry:
+    image: otel/opentelemetry-collector-contrib:0.158.0@sha256:c5918f78992ee73b0d6f0e599423ac5ec52dd5d9726733114d6eca53d5a32ed5
+    depends_on:
+      config-guard:
+        condition: service_completed_successfully
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    ports:
+      - "127.0.0.1:14318:4318"
+      - "127.0.0.1:13133:13133"
+      - "127.0.0.1:18888:8888"
+    volumes:
+      - ./otel/collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    read_only: true
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  seaweed-data:
+  keycloak-data:

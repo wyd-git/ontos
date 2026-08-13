@@ -1,0 +1,34 @@
+{
+  "realm": "ontos-local",
+  "enabled": true,
+  "displayName": "Ontos local test identity provider",
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "clients": [
+    {
+      "clientId": "ontos-smoke",
+      "name": "Ontos local smoke client",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${ONTOS_OIDC_CLIENT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "ontos-smoke-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "ontos-smoke",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}
