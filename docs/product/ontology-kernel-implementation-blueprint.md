@@ -788,7 +788,7 @@ Package Manifest
 - [x] ADR-008：共享 Generation 表与索引计划；
 - [x] ADR-009：Timestamp/Integer/Decimal/Primary Key 公共编码；
 - [x] ADR-010：PostgreSQL Job/Lease 与 Outbox；
-- [ ] ADR-011：Trusted TypeScript Artifact + 独立 Handler Host 信任声明；
+- [x] ADR-011：Trusted TypeScript Artifact + 独立 Handler Host 信任声明；
 - [ ] ADR-012：Policy Epoch、5 秒 TTL 和 fail-closed；
 - [ ] OpenAPI/JSON Schema 合同骨架和错误码冻结；
 - [ ] 数据库迁移、角色和本地生产等价环境跑通；
