@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "catalog": "ontos-core-api-errors",
+  "errors": [
+    {
+      "code": "INVALID_QUERY_AST",
+      "httpStatus": 400,
+      "category": "validation",
+      "retryable": false,
+      "meaning": "Query syntax or types are invalid.",
+      "clientAction": "Correct the query."
+    },
+    {
+      "code": "PROPERTY_NOT_QUERYABLE",
+      "httpStatus": 400,
+      "category": "validation",
+      "retryable": false,
+      "meaning": "The Property does not declare the requested query capability.",
+      "clientAction": "Use an allowed Property."
+    },
+    {
+      "code": "ACTION_PARAMETER_INVALID",
+      "httpStatus": 400,
+      "category": "validation",
+      "retryable": false,
+      "meaning": "Action parameters do not match their Schema.",
+      "clientAction": "Correct the input."
+    },
+    {
+      "code": "AUTHENTICATION_REQUIRED",
+      "httpStatus": 401,
+      "category": "authentication",
+      "retryable": false,
+      "meaning": "No valid Identity is present.",
+      "clientAction": "Authenticate again."
+    },
+    {
+      "code": "RESOURCE_FORBIDDEN",
+      "httpStatus": 403,
+      "category": "authorization",
+      "retryable": false,
+      "meaning": "The Identity lacks permission for the Resource.",
+      "clientAction": "Request authorization."
+    },
+    {
+      "code": "OBJECT_NOT_ACCESSIBLE",
+      "httpStatus": 404,
+      "category": "not_found",
+      "retryable": false,
+      "meaning": "The Object does not exist or is not visible; the public response does not distinguish which.",
+      "clientAction": "Treat the Object as unavailable."
+    },
+    {
+      "code": "OBJECT_VERSION_CONFLICT",
+      "httpStatus": 409,
+      "category": "conflict",
+      "retryable": false,
+      "meaning": "Optimistic concurrency validation failed.",
+      "clientAction": "Read again and repeat Preflight."
+    },
+    {
+      "code": "PREFLIGHT_STALE",
+      "httpStatus": 409,
+      "category": "conflict",
+      "retryable": false,
+      "meaning": "The confirmed scope changed after Preflight.",
+      "clientAction": "Confirm the new Preflight result."
+    },
+    {
+      "code": "IDEMPOTENCY_KEY_REUSED",
+      "httpStatus": 409,
+      "category": "conflict",
+      "retryable": false,
+      "meaning": "The same Idempotency Key was used for a different request.",
+      "clientAction": "Use a new key for the different request."
+    },
+    {
+      "code": "CURSOR_CONTEXT_CHANGED",
+      "httpStatus": 409,
+      "category": "conflict",
+      "retryable": false,
+      "meaning": "Release, Policy, or Query context no longer matches the Cursor.",
+      "clientAction": "Restart from the first page."
+    },
+    {
+      "code": "ONTOLOGY_COMPATIBILITY_ERROR",
+      "httpStatus": 409,
+      "category": "conflict",
+      "retryable": false,
+      "meaning": "A breaking definition change has no valid migration.",
+      "clientAction": "Correct the Release."
+    },
+    {
+      "code": "SUBMISSION_CRITERIA_FAILED",
+      "httpStatus": 422,
+      "category": "validation",
+      "retryable": false,
+      "meaning": "Business submission criteria are not satisfied.",
+      "clientAction": "Display the failed Criteria."
+    },
+    {
+      "code": "MATERIALIZATION_VALIDATION_FAILED",
+      "httpStatus": 422,
+      "category": "validation",
+      "retryable": false,
+      "meaning": "Snapshot quality validation failed.",
+      "clientAction": "Correct the input data."
+    },
+    {
+      "code": "RATE_LIMITED",
+      "httpStatus": 429,
+      "category": "rate_limit",
+      "retryable": true,
+      "meaning": "A configured quota was exceeded.",
+      "clientAction": "Retry according to Retry-After."
+    },
+    {
+      "code": "SNAPSHOT_CUTOVER_IN_PROGRESS",
+      "httpStatus": 503,
+      "category": "unavailable",
+      "retryable": true,
+      "meaning": "A Snapshot is in its short atomic cutover window.",
+      "clientAction": "Retry later with the same Idempotency Key."
+    },
+    {
+      "code": "DEPENDENCY_UNAVAILABLE",
+      "httpStatus": 503,
+      "category": "dependency",
+      "retryable": true,
+      "meaning": "A required dependency is unavailable.",
+      "clientAction": "Retry with bounded backoff when the operation permits it."
+    }
+  ]
+}

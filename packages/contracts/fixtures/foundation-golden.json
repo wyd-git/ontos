@@ -1,0 +1,298 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "schema-version-valid",
+      "contract": "SchemaVersion",
+      "classification": "valid",
+      "value": 1
+    },
+    {
+      "name": "schema-version-boundary",
+      "contract": "SchemaVersion",
+      "classification": "boundary",
+      "value": 1
+    },
+    {
+      "name": "schema-version-rejected",
+      "contract": "SchemaVersion",
+      "classification": "rejected",
+      "value": 2,
+      "expectedErrorCode": "CONTRACT_SCHEMA_VERSION_UNSUPPORTED"
+    },
+    {
+      "name": "ontos-id-valid",
+      "contract": "OntosId",
+      "classification": "valid",
+      "value": "018f47a2-755b-7cc3-98c8-4d2fb871c100"
+    },
+    {
+      "name": "ontos-id-boundary",
+      "contract": "OntosId",
+      "classification": "boundary",
+      "value": "ffffffff-ffff-ffff-ffff-ffffffffffff"
+    },
+    {
+      "name": "ontos-id-rejected",
+      "contract": "OntosId",
+      "classification": "rejected",
+      "value": "018F47A2-755B-7CC3-98C8-4D2FB871C100",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID"
+    },
+    {
+      "name": "correlation-id-valid",
+      "contract": "CorrelationId",
+      "classification": "valid",
+      "value": "corr_550e8400-e29b-41d4-a716-446655440000"
+    },
+    {
+      "name": "correlation-id-boundary",
+      "contract": "CorrelationId",
+      "classification": "boundary",
+      "value": "corr_a123456789012345"
+    },
+    {
+      "name": "correlation-id-rejected",
+      "contract": "CorrelationId",
+      "classification": "rejected",
+      "value": "cor_550e8400-e29b-41d4-a716-446655440000",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID"
+    },
+    {
+      "name": "artifact-digest-valid",
+      "contract": "ArtifactDigest",
+      "classification": "valid",
+      "value": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "artifact-digest-boundary",
+      "contract": "ArtifactDigest",
+      "classification": "boundary",
+      "value": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    {
+      "name": "artifact-digest-rejected",
+      "contract": "ArtifactDigest",
+      "classification": "rejected",
+      "value": "sha256:ABCDEF",
+      "expectedErrorCode": "CONTRACT_VALUE_OUT_OF_RANGE"
+    },
+    {
+      "name": "idempotency-key-valid",
+      "contract": "IdempotencyKey",
+      "classification": "valid",
+      "value": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    {
+      "name": "idempotency-key-boundary",
+      "contract": "IdempotencyKey",
+      "classification": "boundary",
+      "value": "a123456789012345"
+    },
+    {
+      "name": "idempotency-key-rejected",
+      "contract": "IdempotencyKey",
+      "classification": "rejected",
+      "value": "short",
+      "expectedErrorCode": "CONTRACT_VALUE_OUT_OF_RANGE"
+    },
+    {
+      "name": "canonical-instant-valid",
+      "contract": "CanonicalInstant",
+      "classification": "valid",
+      "value": "2026-08-13T10:05:00.123456Z"
+    },
+    {
+      "name": "canonical-instant-boundary",
+      "contract": "CanonicalInstant",
+      "classification": "boundary",
+      "value": "0001-01-01T00:00:00.000000Z"
+    },
+    {
+      "name": "canonical-instant-rejected",
+      "contract": "CanonicalInstant",
+      "classification": "rejected",
+      "value": "2026-02-30T00:00:00.000000Z",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID"
+    },
+    {
+      "name": "correlation-context-valid",
+      "contract": "CorrelationContext",
+      "classification": "valid",
+      "value": {
+        "schemaVersion": 1,
+        "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000"
+      }
+    },
+    {
+      "name": "correlation-context-boundary",
+      "contract": "CorrelationContext",
+      "classification": "boundary",
+      "value": {
+        "schemaVersion": 1,
+        "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000",
+        "parentCorrelationId": "corr_550e8400-e29b-41d4-a716-446655440001"
+      }
+    },
+    {
+      "name": "correlation-context-rejected",
+      "contract": "CorrelationContext",
+      "classification": "rejected",
+      "value": {
+        "schemaVersion": 1,
+        "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000",
+        "clientIdentity": "must-not-cross"
+      },
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD"
+    },
+    {
+      "name": "identity-delegation-valid",
+      "contract": "IdentityDelegationSummary",
+      "classification": "valid",
+      "value": {
+        "schemaVersion": 1,
+        "actor": {
+          "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+          "identityType": "human"
+        },
+        "delegationChain": [],
+        "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "authenticatedAt": "2026-08-13T10:05:00.123456Z",
+        "authorizationMode": "intersection"
+      }
+    },
+    {
+      "name": "identity-delegation-boundary",
+      "contract": "IdentityDelegationSummary",
+      "classification": "boundary",
+      "value": {
+        "schemaVersion": 1,
+        "actor": {
+          "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+          "identityType": "service"
+        },
+        "delegationChain": [
+          {
+            "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+            "identityType": "human"
+          }
+        ],
+        "claimsFingerprint": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "authenticatedAt": "9999-12-31T23:59:59.999999Z",
+        "authorizationMode": "intersection"
+      }
+    },
+    {
+      "name": "identity-delegation-rejected",
+      "contract": "IdentityDelegationSummary",
+      "classification": "rejected",
+      "value": {
+        "schemaVersion": 1,
+        "actor": {
+          "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+          "identityType": "human",
+          "rawToken": "must-not-cross"
+        },
+        "delegationChain": [],
+        "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "authenticatedAt": "2026-08-13T10:05:00.123456Z",
+        "authorizationMode": "intersection"
+      },
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD"
+    },
+    {
+      "name": "release-binding-valid",
+      "contract": "ReleaseBinding",
+      "classification": "valid",
+      "value": {
+        "schemaVersion": 1,
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "releaseRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+        "activationId": "018f47a2-755b-7cc3-98c8-4d2fb871c103",
+        "manifestDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    },
+    {
+      "name": "release-binding-boundary",
+      "contract": "ReleaseBinding",
+      "classification": "boundary",
+      "value": {
+        "schemaVersion": 1,
+        "projectId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "releaseId": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+        "releaseRevisionId": "ffffffff-ffff-ffff-ffff-fffffffffffd",
+        "activationId": "ffffffff-ffff-ffff-ffff-fffffffffffc",
+        "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    {
+      "name": "release-binding-rejected",
+      "contract": "ReleaseBinding",
+      "classification": "rejected",
+      "value": {
+        "schemaVersion": 1,
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "releaseRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+        "activationId": "018f47a2-755b-7cc3-98c8-4d2fb871c103",
+        "manifestDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "databaseColumn": "release_fk"
+      },
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD"
+    },
+    {
+      "name": "error-envelope-valid",
+      "contract": "ErrorEnvelope",
+      "classification": "valid",
+      "value": {
+        "schemaVersion": 1,
+        "error": {
+          "code": "OBJECT_VERSION_CONFLICT",
+          "message": "Object version changed.",
+          "category": "conflict",
+          "retryable": false,
+          "details": {},
+          "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000"
+        }
+      }
+    },
+    {
+      "name": "error-envelope-boundary",
+      "contract": "ErrorEnvelope",
+      "classification": "boundary",
+      "value": {
+        "schemaVersion": 1,
+        "error": {
+          "code": "RATE_LIMITED",
+          "message": "Retry later.",
+          "category": "rate_limit",
+          "retryable": true,
+          "details": {
+            "retryAfterSeconds": 1,
+            "limits": ["request"]
+          },
+          "correlationId": "corr_a123456789012345"
+        }
+      }
+    },
+    {
+      "name": "error-envelope-rejected",
+      "contract": "ErrorEnvelope",
+      "classification": "rejected",
+      "value": {
+        "schemaVersion": 1,
+        "error": {
+          "code": "OBJECT_VERSION_CONFLICT",
+          "message": "Object version changed.",
+          "category": "conflict",
+          "retryable": false,
+          "details": {},
+          "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000",
+          "stack": "must-not-cross"
+        }
+      },
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD"
+    }
+  ]
+}

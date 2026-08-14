@@ -790,7 +790,7 @@ Package Manifest
 - [x] ADR-010：PostgreSQL Job/Lease 与 Outbox；
 - [x] ADR-011：Trusted TypeScript Artifact + 独立 Handler Host 信任声明；
 - [x] ADR-012：Policy Epoch、5 秒 TTL 和 fail-closed；
-- [ ] OpenAPI/JSON Schema 合同骨架和错误码冻结；
+- [x] Foundation JSON Schema 合同骨架和错误码冻结；OpenAPI 发布合同按 G2-05 冻结；
 - [ ] 数据库迁移、角色和本地生产等价环境跑通；
 - [ ] 两 Package Fixture、固定数据生成器和 G1 向量移入 `testkit`；
 - [ ] CI 能运行 Contract、真实 PostgreSQL Integration 和依赖边界检查；

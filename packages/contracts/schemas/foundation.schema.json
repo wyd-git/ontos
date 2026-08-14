@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ontos.dev/schemas/foundation/v1",
+  "title": "Ontos Foundation Contract v1",
+  "$defs": {
+    "SchemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "OntosId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "CorrelationId": {
+      "type": "string",
+      "minLength": 21,
+      "maxLength": 128,
+      "pattern": "^corr_[A-Za-z0-9][A-Za-z0-9._~-]{15,122}$"
+    },
+    "ArtifactDigest": {
+      "type": "string",
+      "minLength": 71,
+      "maxLength": 71,
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "IdempotencyKey": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._~-]{15,127}$"
+    },
+    "CanonicalInstant": {
+      "type": "string",
+      "minLength": 27,
+      "maxLength": 27,
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{6}Z$",
+      "format": "ontos-canonical-instant"
+    },
+    "PrincipalSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["principalId", "identityType"],
+      "properties": {
+        "principalId": { "$ref": "#/$defs/OntosId" },
+        "identityType": { "type": "string", "enum": ["human", "service"] }
+      }
+    },
+    "CorrelationContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "correlationId"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "correlationId": { "$ref": "#/$defs/CorrelationId" },
+        "parentCorrelationId": { "$ref": "#/$defs/CorrelationId" }
+      }
+    },
+    "IdentityDelegationSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "actor",
+        "delegationChain",
+        "claimsFingerprint",
+        "authenticatedAt",
+        "authorizationMode"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "actor": { "$ref": "#/$defs/PrincipalSummary" },
+        "delegationChain": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/PrincipalSummary" }
+        },
+        "claimsFingerprint": { "$ref": "#/$defs/ArtifactDigest" },
+        "authenticatedAt": { "$ref": "#/$defs/CanonicalInstant" },
+        "authorizationMode": { "type": "string", "const": "intersection" }
+      }
+    },
+    "ReleaseBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "projectId",
+        "releaseId",
+        "releaseRevisionId",
+        "activationId",
+        "manifestDigest"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "releaseId": { "$ref": "#/$defs/OntosId" },
+        "releaseRevisionId": { "$ref": "#/$defs/OntosId" },
+        "activationId": { "$ref": "#/$defs/OntosId" },
+        "manifestDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      }
+    },
+    "ErrorDetails": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ErrorRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "category", "retryable", "details", "correlationId"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "authentication",
+            "authorization",
+            "conflict",
+            "dependency",
+            "internal",
+            "not_found",
+            "rate_limit",
+            "unavailable",
+            "validation"
+          ]
+        },
+        "retryable": { "type": "boolean" },
+        "details": { "$ref": "#/$defs/ErrorDetails" },
+        "correlationId": { "$ref": "#/$defs/CorrelationId" }
+      }
+    },
+    "ErrorEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "error"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "error": { "$ref": "#/$defs/ErrorRecord" }
+      }
+    }
+  }
+}
