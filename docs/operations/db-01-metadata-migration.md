@@ -2,7 +2,7 @@
 
 - 状态：Active for G2-01-03
 - 适用版本：PostgreSQL 16
-- Migration：`0001_foundation.sql` → `0002_metadata_control_plane.sql`
+- Migration：`0001_foundation.sql` → `0002_metadata_control_plane.sql` → `0003_resource_revision_guards.sql`
 - Owner：Database / Platform
 
 ## 1. 这次迁移会产生什么
@@ -38,7 +38,7 @@ FROM ontos_migration.schema_migrations
 ORDER BY version;
 ```
 
-预期有且仅有连续的 `0001 foundation` 和 `0002 metadata_control_plane`；重复执行不应新增账本行。Runtime 账号不应能运行这条账本查询。
+预期有且仅有连续的 `0001 foundation`、`0002 metadata_control_plane` 和 `0003 resource_revision_guards`；重复执行不应新增账本行。Runtime 账号不应能运行这条账本查询。
 
 仓库级验证命令：
 
@@ -53,7 +53,7 @@ npm run test:database
 
 - Preflight 失败：数据库不应出现新 Role、Schema 或账本；修正版本、扩展或部署身份后重试。
 - `0002` 未提交前失败：整个 Migration 回滚，不应留下部分表、Trigger 或 `0002` 账本行；修正同一未提交文件后重试。
-- `0002` 已提交后发现语义缺陷：不改 Hash，不做自动 Down Migration；新增 `0003_*` 或更高版本向前修复。
+- 已提交 Migration 发现语义缺陷：不改 Hash，不做自动 Down Migration；新增更高版本向前修复。`0003` 就是对 Revision 父链与 Published Dependency 插入窗口的向前加固。
 - 账本 Hash、名称或顺序与仓库不一致：Runner 以 `DB_MIGRATION_HISTORY_DIVERGED` 停止；先确认目标库和仓库版本，不要跳过检查。
 
 ## 5. 权限故障判断

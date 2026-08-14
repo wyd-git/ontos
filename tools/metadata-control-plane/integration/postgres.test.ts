@@ -7,11 +7,16 @@ import { promisify } from "node:util";
 import {
   MetadataApplicationError,
   MetadataApplicationService,
+  ResourceLifecycleApplicationService,
   RoleMatrixManagementAuthorizer,
   parseVerifiedFoundationIdentity,
   type VerifiedFoundationIdentity,
 } from "@ontos/metadata-application";
-import { MANAGEMENT_PERMISSIONS, type ManagementRole } from "@ontos/metadata-domain";
+import {
+  MANAGEMENT_PERMISSIONS,
+  prepareDirectResourceContent,
+  type ManagementRole,
+} from "@ontos/metadata-domain";
 import { PostgresMetadataControlPlane } from "@ontos/metadata-postgres";
 import pg from "pg";
 
@@ -25,7 +30,7 @@ const adminPassword = "local-only-g20104-admin-secret";
 const runtimePassword = "local-only-g20104-runtime-secret";
 
 void test(
-  "G2-01-04 PostgreSQL Project, Principal, Role Binding and Epoch transactions",
+  "G2-01-04/05 PostgreSQL management and Resource Revision transactions",
   { timeout: 120_000 },
   async () => {
     const containerName = `ontos-g20104-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -74,6 +79,11 @@ void test(
         principals: store,
         projects: store,
         roleBindings: store,
+        authorizer,
+      });
+      const resourceApplication = new ResourceLifecycleApplicationService({
+        principals: store,
+        resources: store,
         authorizer,
       });
 
@@ -242,6 +252,288 @@ void test(
           permission: "metadata.read",
         }),
         false,
+      );
+
+      const baseContent = objectTypeContent("Initial lifecycle content.");
+      await assert.rejects(
+        resourceApplication.createResource(ownerIdentity, {
+          resourceId: randomUUID(),
+          projectId: creation.project.projectId,
+          namespace: "commerce.lifecycle",
+          apiName: "LifecycleOrder",
+          family: "object_type",
+          content: baseContent,
+        }),
+        isApplicationError("INVALID_INPUT"),
+      );
+      await assert.rejects(
+        resourceApplication.createResource(identities.viewer, {
+          projectId: creation.project.projectId,
+          namespace: "commerce.lifecycle",
+          apiName: "ViewerCannotCreate",
+          family: "object_type",
+          content: baseContent,
+        }),
+        isApplicationError("FORBIDDEN"),
+      );
+
+      const lifecycle = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.lifecycle",
+        apiName: "LifecycleOrder",
+        family: "object_type",
+        content: baseContent,
+      });
+      assert.equal(lifecycle.initialDraft.revisionNumber, 1n);
+      assert.equal(lifecycle.initialDraft.etag, 1n);
+      assert.equal(lifecycle.initialDraft.parentRevisionId, null);
+      assert.equal(lifecycle.initialDraft.createdByPrincipalId, ownerPrincipal.principalId);
+
+      const digestTwin = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.lifecycle",
+        apiName: "DigestTwin",
+        family: "object_type",
+        content: reverseObjectKeys(baseContent),
+      });
+      assert.equal(digestTwin.initialDraft.contentDigest, lifecycle.initialDraft.contentDigest);
+
+      const rolledBackResourceId = randomUUID();
+      const collidingRevisionStore = new PostgresMetadataControlPlane(
+        pool,
+        sequenceUuidFactory([rolledBackResourceId, lifecycle.initialDraft.revisionId]),
+      );
+      await assert.rejects(
+        collidingRevisionStore.createResourceWithInitialDraft({
+          projectId: creation.project.projectId,
+          namespace: "commerce.lifecycle",
+          apiName: "AtomicRollback",
+          family: "object_type",
+          authorPrincipalId: ownerPrincipal.principalId,
+          content: prepareDirectResourceContent("object_type", baseContent),
+        }),
+        isApplicationError("ALREADY_EXISTS"),
+      );
+      assert.equal(await rowCount(pool, "meta.resources", "resource_id", rolledBackResourceId), 0);
+
+      const patchAttempts = await Promise.allSettled(
+        Array.from({ length: 100 }, (_, index) =>
+          store.patchDraftRevision({
+            revisionId: lifecycle.initialDraft.revisionId,
+            expectedEtag: 1n,
+            content: prepareDirectResourceContent(
+              "object_type",
+              objectTypeContent(`Concurrent writer ${String(index)}.`),
+            ),
+          }),
+        ),
+      );
+      const successfulPatches = patchAttempts.filter(
+        (
+          result,
+        ): result is PromiseFulfilledResult<Awaited<ReturnType<typeof store.patchDraftRevision>>> =>
+          result.status === "fulfilled",
+      );
+      const rejectedPatches = patchAttempts.filter(
+        (result): result is PromiseRejectedResult => result.status === "rejected",
+      );
+      assert.equal(successfulPatches.length, 1);
+      assert.equal(rejectedPatches.length, 99);
+      assert.ok(
+        rejectedPatches.every(
+          ({ reason }: PromiseRejectedResult) =>
+            reason instanceof MetadataApplicationError && reason.code === "CONCURRENT_MODIFICATION",
+        ),
+      );
+      const patched = await store.getRevision(lifecycle.initialDraft.revisionId);
+      assert.equal(patched.etag, 2n);
+      assert.equal(patched.contentDigest, successfulPatches[0]?.value.contentDigest);
+
+      const noOpPatch = await store.patchDraftRevision({
+        revisionId: patched.revisionId,
+        expectedEtag: patched.etag,
+        content: prepareDirectResourceContent("object_type", patched.content),
+      });
+      assert.equal(noOpPatch.etag, patched.etag);
+      assert.equal(noOpPatch.contentDigest, patched.contentDigest);
+
+      const validated = await store.transitionRevisionState({
+        revisionId: patched.revisionId,
+        targetState: "validated",
+      });
+      const concurrentChildren = await Promise.all(
+        Array.from({ length: 100 }, (_, index) =>
+          store.createChildDraft({
+            sourceRevisionId: validated.revisionId,
+            authorPrincipalId: ownerPrincipal.principalId,
+            content: prepareDirectResourceContent(
+              "object_type",
+              objectTypeContent(`Concurrent child ${String(index)}.`),
+            ),
+          }),
+        ),
+      );
+      assert.equal(new Set(concurrentChildren.map(({ revisionId }) => revisionId)).size, 100);
+      assert.equal(
+        new Set(concurrentChildren.map(({ revisionNumber }) => revisionNumber)).size,
+        100,
+      );
+      assert.ok(
+        concurrentChildren.every(
+          ({ parentRevisionId, state, etag }) =>
+            parentRevisionId === validated.revisionId && state === "draft" && etag === 1n,
+        ),
+      );
+
+      const listedRevisions = [];
+      let revisionCursor = null;
+      do {
+        const page = await resourceApplication.listRevisions(ownerIdentity, {
+          resourceId: lifecycle.resource.resourceId,
+          limit: 17,
+          ...(revisionCursor === null ? {} : { after: revisionCursor }),
+        });
+        listedRevisions.push(...page.items);
+        revisionCursor = page.nextCursor;
+      } while (revisionCursor !== null);
+      assert.equal(listedRevisions.length, 101);
+      assert.deepEqual(
+        listedRevisions.map(({ revisionNumber }) => revisionNumber),
+        Array.from({ length: 101 }, (_, index) => BigInt(index + 1)),
+      );
+      assert.equal(new Set(listedRevisions.map(({ revisionId }) => revisionId)).size, 101);
+      assert.equal(listedRevisions[0]?.parentRevisionId, null);
+      assert.ok(
+        listedRevisions
+          .slice(1)
+          .every(({ parentRevisionId }) => parentRevisionId === validated.revisionId),
+      );
+
+      const published = await store.transitionRevisionState({
+        revisionId: validated.revisionId,
+        targetState: "published",
+      });
+      await assert.rejects(
+        resourceApplication.patchDraftRevision(ownerIdentity, {
+          revisionId: published.revisionId,
+          expectedEtag: published.etag,
+          content: objectTypeContent("Published mutation must fail."),
+        }),
+        isApplicationError("INVALID_STATE"),
+      );
+      await assert.rejects(
+        pool.query(
+          `UPDATE meta.resource_revisions
+           SET parent_revision_id = $2
+           WHERE revision_id = $1`,
+          [published.revisionId, concurrentChildren[0]?.revisionId],
+        ),
+        isPostgresError("42501"),
+      );
+      await assert.rejects(
+        pool.query(
+          `UPDATE meta.resource_revisions
+           SET created_by_principal_id = $2
+           WHERE revision_id = $1`,
+          [published.revisionId, principals.editor.principalId],
+        ),
+        isPostgresError("42501"),
+      );
+
+      const publishedChild = await resourceApplication.createChildDraft(ownerIdentity, {
+        sourceRevisionId: published.revisionId,
+        content: objectTypeContent("Child of Published Revision."),
+      });
+      assert.equal(publishedChild.parentRevisionId, published.revisionId);
+      const publishedAfterEdit = await store.getRevision(published.revisionId);
+      assert.deepEqual(publishedAfterEdit, published);
+
+      const deprecatedRevision = await resourceApplication.deprecateRevision(ownerIdentity, {
+        revisionId: published.revisionId,
+      });
+      const deprecatedChild = await resourceApplication.createChildDraft(ownerIdentity, {
+        sourceRevisionId: deprecatedRevision.revisionId,
+        content: objectTypeContent("Child of Deprecated Revision."),
+      });
+      assert.equal(deprecatedChild.parentRevisionId, deprecatedRevision.revisionId);
+      await resourceApplication.archiveRevision(ownerIdentity, {
+        revisionId: deprecatedRevision.revisionId,
+      });
+      await assert.rejects(
+        resourceApplication.createChildDraft(ownerIdentity, {
+          sourceRevisionId: deprecatedRevision.revisionId,
+          content: objectTypeContent("Archived parent must fail."),
+        }),
+        isApplicationError("INVALID_STATE"),
+      );
+
+      const orderedResources = [];
+      let resourceCursor = null;
+      do {
+        const page = await resourceApplication.listResources(ownerIdentity, {
+          projectId: creation.project.projectId,
+          limit: 1,
+          ...(resourceCursor === null ? {} : { after: resourceCursor }),
+        });
+        orderedResources.push(...page.items);
+        resourceCursor = page.nextCursor;
+      } while (resourceCursor !== null);
+      const resourceKeys = orderedResources.map(
+        ({ namespace, apiName, resourceId: listedResourceId }) =>
+          `${namespace}\u0000${apiName}\u0000${listedResourceId}`,
+      );
+      assert.deepEqual(resourceKeys, [...resourceKeys].sort());
+      assert.equal(
+        new Set(orderedResources.map(({ resourceId: listedResourceId }) => listedResourceId)).size,
+        orderedResources.length,
+      );
+
+      await resourceApplication.deprecateResource(ownerIdentity, {
+        resourceId: lifecycle.resource.resourceId,
+      });
+      const archivedResource = await resourceApplication.archiveResource(ownerIdentity, {
+        resourceId: lifecycle.resource.resourceId,
+      });
+      assert.equal(archivedResource.state, "archived");
+      await assert.rejects(
+        store.patchDraftRevision({
+          revisionId: publishedChild.revisionId,
+          expectedEtag: publishedChild.etag,
+          content: prepareDirectResourceContent(
+            "object_type",
+            objectTypeContent("Archived Resource must be read-only."),
+          ),
+        }),
+        isApplicationError("INVALID_STATE"),
+      );
+      await assert.rejects(
+        store.transitionRevisionState({
+          revisionId: deprecatedChild.revisionId,
+          targetState: "validated",
+        }),
+        isApplicationError("INVALID_STATE"),
+      );
+      await assert.rejects(
+        pool.query(
+          `UPDATE meta.resource_revisions
+           SET content = '{"tampered":true}'::jsonb,
+               content_digest = $2,
+               etag = etag + 1,
+               changed_at = clock_timestamp()
+           WHERE revision_id = $1`,
+          [publishedChild.revisionId, `sha256:${"f".repeat(64)}`],
+        ),
+        isPostgresError("55000"),
+      );
+      await assert.rejects(
+        resourceApplication.createResource(ownerIdentity, {
+          projectId: creation.project.projectId,
+          namespace: lifecycle.resource.namespace,
+          apiName: lifecycle.resource.apiName,
+          family: lifecycle.resource.family,
+          content: baseContent,
+        }),
+        isApplicationError("ALREADY_EXISTS"),
       );
 
       const noOp = await application.replaceRoleBinding(ownerIdentity, {
@@ -442,8 +734,48 @@ async function rowCount(
   return Number(result.rows[0]?.count ?? "0");
 }
 
+function objectTypeContent(description: string) {
+  return {
+    schemaVersion: 1,
+    apiName: "Order",
+    displayName: "Order",
+    description,
+    primaryKeyPropertyApiName: "orderId",
+    titlePropertyApiName: "orderId",
+    defaultSearchPropertyApiNames: [],
+    defaultSort: [{ propertyApiName: "orderId", direction: "asc" }],
+    defaultClassification: "internal",
+    properties: [
+      {
+        schemaVersion: 1,
+        apiName: "orderId",
+        displayName: "Order ID",
+        description: "Stable source identifier.",
+        valueType: "string",
+        caseSensitive: true,
+        nullable: false,
+        writeMode: "source_only",
+        unique: true,
+        filterable: true,
+        sortable: true,
+        searchable: false,
+        classification: "internal",
+      },
+    ],
+  };
+}
+
+function reverseObjectKeys(value: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).reverse());
+}
+
 function isApplicationError(code: MetadataApplicationError["code"]): (error: unknown) => boolean {
   return (error: unknown) => error instanceof MetadataApplicationError && error.code === code;
+}
+
+function isPostgresError(code: string): (error: unknown) => boolean {
+  return (error: unknown) =>
+    typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
 async function withClient<T>(
