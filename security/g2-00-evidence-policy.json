@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-00",
+  "scope": {
+    "allowedWorkspacePackages": ["packages/contracts", "packages/testkit", "packages/value-codec"],
+    "allowedMigrationFiles": ["migrations/db-00/0001_foundation.sql"],
+    "allowedCreatedTables": ["ontos_migration.schema_migrations"],
+    "forbiddenTrackedPrefixes": ["apps/"],
+    "forbiddenUiExtensions": [".html", ".jsx", ".tsx", ".vue", ".svelte"],
+    "ignoredPrefixes": ["spikes/g1/"]
+  },
+  "requiredDecisions": [
+    {
+      "id": "ADR-007",
+      "path": "docs/architecture/adr/007-runtime-activation-serving-head.md",
+      "acceptedStatus": "Accepted for G2-00-03",
+      "evidence": "docs/evidence/g2-00-03-runtime-activation-serving-head.md"
+    },
+    {
+      "id": "ADR-008",
+      "path": "docs/architecture/adr/008-shared-projection-index-capacity.md",
+      "acceptedStatus": "Accepted for G2-00-04",
+      "evidence": "docs/evidence/g2-00-04-shared-projection-index-capacity.md"
+    },
+    {
+      "id": "ADR-009",
+      "path": "docs/architecture/adr/009-public-value-codec.md",
+      "acceptedStatus": "Accepted for G2-00-05",
+      "evidence": "docs/evidence/g2-00-05-public-value-codec.md"
+    },
+    {
+      "id": "ADR-010",
+      "path": "docs/architecture/adr/010-postgresql-job-lease-outbox.md",
+      "acceptedStatus": "Accepted for G2-00-06",
+      "evidence": "docs/evidence/g2-00-06-postgresql-job-lease-outbox.md"
+    },
+    {
+      "id": "ADR-011",
+      "path": "docs/architecture/adr/011-trusted-handler-host-boundary.md",
+      "acceptedStatus": "Accepted for G2-00-07",
+      "evidence": "docs/evidence/g2-00-07-trusted-handler-host.md"
+    },
+    {
+      "id": "ADR-012",
+      "path": "docs/architecture/adr/012-policy-epoch-cache-fail-closed.md",
+      "acceptedStatus": "Accepted for G2-00-08",
+      "evidence": "docs/evidence/g2-00-08-policy-epoch-cache.md"
+    }
+  ],
+  "requiredEvidence": [
+    "docs/evidence/g2-00-01-toolchain-boundaries.md",
+    "docs/evidence/g2-00-02-local-production-boundaries.md",
+    "docs/evidence/g2-00-03-runtime-activation-serving-head.md",
+    "docs/evidence/g2-00-04-shared-projection-index-capacity.md",
+    "docs/evidence/g2-00-05-public-value-codec.md",
+    "docs/evidence/g2-00-06-postgresql-job-lease-outbox.md",
+    "docs/evidence/g2-00-07-trusted-handler-host.md",
+    "docs/evidence/g2-00-08-policy-epoch-cache.md",
+    "docs/evidence/g2-00-09-foundation-contracts.md",
+    "docs/evidence/g2-00-10-db-migration-roles.md",
+    "docs/evidence/g2-00-11-testkit-fixtures.md",
+    "docs/evidence/g2-00-12-ci-supply-chain-gate.md",
+    "docs/evidence/g2-00-13-foundation-integration-gate.md"
+  ],
+  "delivery": {
+    "accountableOwner": "wyd-git",
+    "implementationSupport": "Codex under repository-owner approval",
+    "effectiveParallelLanes": 1,
+    "responsibilities": [
+      {
+        "area": "Product scope, architecture and repository approval",
+        "accountable": "wyd-git",
+        "execution": "Repository Owner with Codex support"
+      },
+      {
+        "area": "Backend, Runtime, Data and Policy",
+        "accountable": "wyd-git",
+        "execution": "One sequential Codex-supported lane"
+      },
+      {
+        "area": "Platform, Quality, Security and Recovery",
+        "accountable": "wyd-git",
+        "execution": "One sequential Codex-supported lane"
+      },
+      {
+        "area": "Web, SDK and portability",
+        "accountable": "wyd-git",
+        "execution": "One sequential Codex-supported lane"
+      }
+    ],
+    "independentReview": {
+      "reviewerRole": "G2-00-13 independent clean-room reviewer",
+      "method": "Separate clean checkout, intended-vs-implemented audit and adversarial red-team pass",
+      "accountableApprover": "wyd-git"
+    },
+    "calendar": {
+      "withdrawnScenario": "G2-01 through G2-05 in six weeks with four to six people and four parallel lanes",
+      "planningRangeEngineeringWeeks": {
+        "minimum": 14,
+        "maximum": 22
+      },
+      "gates": [
+        { "id": "G2-01", "minimumWeeks": 2, "maximumWeeks": 4 },
+        { "id": "G2-02", "minimumWeeks": 4, "maximumWeeks": 6 },
+        { "id": "G2-03", "minimumWeeks": 3, "maximumWeeks": 4 },
+        { "id": "G2-04", "minimumWeeks": 3, "maximumWeeks": 4 },
+        { "id": "G2-05", "minimumWeeks": 2, "maximumWeeks": 4 }
+      ],
+      "rule": "One effective lane; no overlapping Gate implementation and no date commitment before each prior Gate passes"
+    }
+  },
+  "residualRisks": [
+    {
+      "id": "RISK-G2-00-01",
+      "risk": "The npm advisory service can reduce merge availability because vulnerability metadata fails closed.",
+      "owner": "Platform / Quality (accountable: wyd-git)",
+      "nextGate": "Continuous"
+    },
+    {
+      "id": "RISK-G2-00-02",
+      "risk": "Handler process seam tests do not prove Linux container egress, cgroup, seccomp or AppArmor enforcement.",
+      "owner": "Backend / Security (accountable: wyd-git)",
+      "nextGate": "G2-05 and G2-08"
+    },
+    {
+      "id": "RISK-G2-00-03",
+      "risk": "Capacity bounds still require DB-02 production-shape measurement before materialization cutover.",
+      "owner": "Runtime / Database (accountable: wyd-git)",
+      "nextGate": "G2-02"
+    },
+    {
+      "id": "RISK-G2-00-04",
+      "risk": "Backup, restore and production alerting are not Foundation claims.",
+      "owner": "Platform / Quality (accountable: wyd-git)",
+      "nextGate": "G2-06 and G2-07"
+    },
+    {
+      "id": "RISK-G2-00-05",
+      "risk": "One effective delivery lane invalidates the original six-week parallel scenario.",
+      "owner": "Repository Owner (wyd-git)",
+      "nextGate": "Re-estimate at every G2-01 through G2-05 entry"
+    }
+  ]
+}

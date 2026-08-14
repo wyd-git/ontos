@@ -5,6 +5,8 @@ import { arch, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { writeFoundationEvidenceManifest } from "./foundation-evidence.ts";
+
 interface GateDefinition {
   readonly name: string;
   readonly command: string;
@@ -39,6 +41,11 @@ const gates: readonly GateDefinition[] = [
   { name: "architecture-dependency", command: "npm", arguments: ["run", "check:architecture"] },
   { name: "testkit-provenance", command: "npm", arguments: ["run", "check:testkit-provenance"] },
   { name: "secret-private-key", command: "npm", arguments: ["run", "check:secrets"] },
+  {
+    name: "foundation-scope-evidence",
+    command: "npm",
+    arguments: ["run", "check:foundation"],
+  },
   { name: "license-sbom-vulnerability", command: "npm", arguments: ["run", "check:supply-chain"] },
   { name: "postgres-integration", command: "npm", arguments: ["run", "test:database"] },
   {
@@ -123,7 +130,13 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
   const fixtureCatalog: unknown = JSON.parse(
     await readFile(join(repositoryRoot, "packages/testkit/fixtures/provenance.json"), "utf8"),
   );
-  const report = {
+  const report: Readonly<Record<string, unknown>> & {
+    readonly status: string;
+    readonly commit: string;
+    readonly durationMs: number;
+    readonly steps: readonly GateResult[];
+    readonly failedGate: string | null;
+  } = {
     schemaVersion: 1,
     status: failure === null ? "PASS" : "FAIL",
     commit,
@@ -146,8 +159,13 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
     artifactCounts,
     failedGate: stepResults.find(({ status }) => status === "FAIL")?.name ?? null,
   };
-  const summary = renderSummary(report);
-  await writeFile(join(outputDirectory, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+  await writeFoundationEvidenceManifest(outputDirectory, report);
+  const finalReport = { ...report, artifacts: await describeArtifacts(outputDirectory) };
+  const summary = renderSummary(finalReport);
+  await writeFile(
+    join(outputDirectory, "report.json"),
+    `${JSON.stringify(finalReport, null, 2)}\n`,
+  );
   await writeFile(join(outputDirectory, "summary.md"), summary);
   const githubSummary = process.env.GITHUB_STEP_SUMMARY;
   if (githubSummary !== undefined) await appendFile(githubSummary, summary);

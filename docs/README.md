@@ -22,9 +22,11 @@
 16. [G2-00-11 专项红队](reviews/g2-00-11-testkit-red-team.md)与 [Evidence](evidence/g2-00-11-testkit-fixtures.md)：正式 Testkit、确定性 100k/1m Generator、六组资产 Provenance 与 G1 依赖禁线。
 17. [强制 CI 与供应链 Gate](architecture/ci-foundation-gate.md)：G2-00-12 的唯一执行路径、报告合同、Secret/License/SBOM/Vulnerability 策略和分支保护。
 18. [G2-00-12 专项红队](reviews/g2-00-12-ci-gate-red-team.md)与 [Evidence](evidence/g2-00-12-ci-supply-chain-gate.md)：统一本地/远端执行、故意失败协议、供应链 Fail-Closed、机器报告和不可绕过合并条件。
-19. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
-20. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
-21. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
+19. [G2 Owner 与容量矩阵](delivery/g2-owner-capacity-matrix.md)：实际 Accountable Owner、单通道并行度、第二视角和 G2-01～05 的顺序日历。
+20. [G2-00-13 专项红队](reviews/g2-00-13-foundation-red-team.md)与 [Foundation 总 Evidence](evidence/g2-00-13-foundation-integration-gate.md)：clean checkout、总 Manifest、Intended-vs-Implemented、范围与 teardown 证据。
+21. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
+22. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
+23. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
 
 ## 计划目录
 

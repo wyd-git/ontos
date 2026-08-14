@@ -13,9 +13,10 @@ GitHub Actions 不重新拼装命令，只在固定 Node/npm 环境执行 `npm r
 2. Format、Lint、Typecheck；
 3. Unit、Contract Golden/Diff、Architecture Dependency、Testkit Provenance；
 4. Secret/Private Key Scan；
-5. License Manifest、CycloneDX SBOM、Vulnerability Policy；
-6. 固定 PostgreSQL 16 镜像的 DB-00 Integration；
-7. PG/OIDC/S3/OTEL 本地生产边界环境 `up → smoke → down`。
+5. G2-00 Foundation Scope、ADR/Evidence 与 Owner/容量策略；
+6. License Manifest、CycloneDX SBOM、Vulnerability Policy；
+7. 固定 PostgreSQL 16 镜像的 DB-00 Integration；
+8. PG/OIDC/S3/OTEL 本地生产边界环境 `up → smoke → down`。
 
 编排器 Fail Fast，但任何已启动的环境必须在 `finally` 清理，并且无论成功或失败都写报告。`generated/` 不提交 Git，由 CI 作为 Artifact 上传。
 
@@ -32,6 +33,10 @@ GitHub Actions 不重新拼装命令，只在固定 Node/npm 环境执行 `npm r
 - 失败 Gate 和未执行 Gate，不能用缺失字段伪装成 PASS。
 
 同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。原始供应链机器输出保存在同一目录。
+
+G2-00-13 在同一入口追加 `foundation-scope-evidence`，由 `security/g2-00-evidence-policy.json` 冻结当前允许的 Workspace、DB-00 Migration/表、ADR-007～012、G2-00-01～13 Evidence、Owner/容量和未关闭风险。出现 App、非 DB-00 Migration、额外表、非 Spike UI 文件或未提交的必需 Evidence 时 Gate 失败。
+
+运行结束还生成 `foundation-evidence-manifest.json`，记录 Commit、Clean/Dirty、环境、命令、每个 Gate 结果、Artifact/Fixture Digest、Scope、Owner 和风险。只有全部 Gate/Acceptance PASS 且 `dirty=false` 才标记 `CLEAN_ROOM_PASS`；普通开发工作树不会被包装成 clean-room 证据。
 
 ## 3. Secret 与私钥策略
 

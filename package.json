@@ -22,6 +22,7 @@
     "check:testkit-provenance": "node tools/testkit/provenance.ts",
     "check:secrets": "node tools/ci/secret-scan.ts",
     "check:supply-chain": "node tools/ci/supply-chain.ts",
+    "check:foundation": "node tools/ci/foundation-evidence.ts check",
     "github-protection:verify": "node tools/ci/github-protection.ts verify",
     "github-protection:apply": "node tools/ci/github-protection.ts apply",
     "format": "prettier --write .",
