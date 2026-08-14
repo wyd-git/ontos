@@ -1,0 +1,782 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "project-valid",
+      "contract": "Project",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "apiName": "supplyChain",
+        "displayName": "Supply Chain",
+        "state": "active",
+        "createdAt": "2026-08-14T01:00:00.000000Z"
+      }
+    },
+    {
+      "name": "project-boundary-archived",
+      "contract": "Project",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "projectId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "apiName": "P",
+        "displayName": "P",
+        "state": "archived",
+        "createdAt": "0001-01-01T00:00:00.000000Z"
+      }
+    },
+    {
+      "name": "project-rejected-api-name",
+      "contract": "Project",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "apiName": "bad-name",
+        "displayName": "Supply Chain",
+        "state": "active",
+        "createdAt": "2026-08-14T01:00:00.000000Z"
+      }
+    },
+    {
+      "name": "resource-envelope-valid",
+      "contract": "ResourceEnvelope",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "namespace": "supply.core",
+        "apiName": "Shipment",
+        "family": "object_type",
+        "state": "active"
+      }
+    },
+    {
+      "name": "resource-envelope-boundary",
+      "contract": "ResourceEnvelope",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "namespace": "a",
+        "apiName": "L",
+        "family": "link_type",
+        "state": "archived"
+      }
+    },
+    {
+      "name": "resource-envelope-rejected-family",
+      "contract": "ResourceEnvelope",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "namespace": "supply.core",
+        "apiName": "Shipment",
+        "family": "unknown_type",
+        "state": "active"
+      }
+    },
+    {
+      "name": "property-definition-valid",
+      "contract": "PropertyDefinition",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "shipmentId",
+        "displayName": "Shipment ID",
+        "description": "Stable source identifier.",
+        "valueType": "string",
+        "caseSensitive": true,
+        "nullable": false,
+        "writeMode": "source_only",
+        "unique": true,
+        "filterable": true,
+        "sortable": true,
+        "searchable": true,
+        "classification": "internal"
+      }
+    },
+    {
+      "name": "property-definition-boundary-decimal",
+      "contract": "PropertyDefinition",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "cost",
+        "displayName": "Cost",
+        "description": "",
+        "valueType": "decimal",
+        "nullable": true,
+        "writeMode": "overlay_override",
+        "unique": false,
+        "filterable": true,
+        "sortable": true,
+        "searchable": false,
+        "decimalPrecision": 38,
+        "decimalScale": 18
+      }
+    },
+    {
+      "name": "property-definition-rejected-enum-code",
+      "contract": "PropertyDefinition",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "status",
+        "displayName": "Status",
+        "description": "Status code.",
+        "valueType": "enum",
+        "nullable": false,
+        "writeMode": "overlay_only",
+        "unique": false,
+        "filterable": true,
+        "sortable": true,
+        "searchable": false,
+        "classification": "internal",
+        "enumValues": ["invalid-lowercase"]
+      }
+    },
+    {
+      "name": "object-type-valid",
+      "contract": "ObjectTypeDefinition",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "Shipment",
+        "displayName": "Shipment",
+        "description": "A tracked shipment.",
+        "primaryKeyPropertyApiName": "shipmentId",
+        "titlePropertyApiName": "name",
+        "defaultSearchPropertyApiNames": ["name"],
+        "defaultSort": [{ "propertyApiName": "name", "direction": "asc" }],
+        "defaultClassification": "internal",
+        "properties": [
+          {
+            "schemaVersion": 1,
+            "apiName": "shipmentId",
+            "displayName": "Shipment ID",
+            "description": "Stable identifier.",
+            "valueType": "string",
+            "caseSensitive": true,
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": true,
+            "filterable": true,
+            "sortable": true,
+            "searchable": false,
+            "classification": "internal"
+          },
+          {
+            "schemaVersion": 1,
+            "apiName": "name",
+            "displayName": "Name",
+            "description": "Display name.",
+            "valueType": "string",
+            "caseSensitive": false,
+            "nullable": false,
+            "writeMode": "overlay_override",
+            "unique": false,
+            "filterable": true,
+            "sortable": true,
+            "searchable": true,
+            "classification": "public"
+          }
+        ]
+      }
+    },
+    {
+      "name": "object-type-boundary-empty-query-defaults",
+      "contract": "ObjectTypeDefinition",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "Depot",
+        "displayName": "Depot",
+        "description": "",
+        "primaryKeyPropertyApiName": "id",
+        "titlePropertyApiName": "id",
+        "defaultSearchPropertyApiNames": [],
+        "defaultSort": [],
+        "defaultClassification": "restricted",
+        "properties": [
+          {
+            "schemaVersion": 1,
+            "apiName": "id",
+            "displayName": "ID",
+            "description": "",
+            "valueType": "integer",
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": true,
+            "filterable": true,
+            "sortable": true,
+            "searchable": false,
+            "classification": "restricted"
+          }
+        ]
+      }
+    },
+    {
+      "name": "object-type-rejected-primary-key-reference",
+      "contract": "ObjectTypeDefinition",
+      "classification": "rejected",
+      "schemaDisposition": "accept",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "Depot",
+        "displayName": "Depot",
+        "description": "Depot.",
+        "primaryKeyPropertyApiName": "missing",
+        "titlePropertyApiName": "id",
+        "defaultSearchPropertyApiNames": [],
+        "defaultSort": [],
+        "defaultClassification": "internal",
+        "properties": [
+          {
+            "schemaVersion": 1,
+            "apiName": "id",
+            "displayName": "ID",
+            "description": "ID.",
+            "valueType": "string",
+            "caseSensitive": true,
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": true,
+            "filterable": true,
+            "sortable": true,
+            "searchable": false,
+            "classification": "internal"
+          }
+        ]
+      }
+    },
+    {
+      "name": "link-type-valid",
+      "contract": "LinkTypeDefinition",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "ShipmentToDepot",
+        "displayName": "Shipment to Depot",
+        "description": "Shipment destination.",
+        "source": {
+          "objectTypeRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c110",
+          "apiName": "shipment",
+          "displayName": "Shipment"
+        },
+        "target": {
+          "objectTypeRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c111",
+          "apiName": "depot",
+          "displayName": "Depot"
+        },
+        "cardinality": "many_to_one",
+        "sourceKind": "base",
+        "deletionBehavior": "restrict",
+        "actionCreateAllowed": false,
+        "actionDeleteAllowed": false
+      }
+    },
+    {
+      "name": "link-type-boundary",
+      "contract": "LinkTypeDefinition",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "Related",
+        "displayName": "Related",
+        "description": "",
+        "source": {
+          "objectTypeRevisionId": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+          "apiName": "source",
+          "displayName": "Source"
+        },
+        "target": {
+          "objectTypeRevisionId": "ffffffff-ffff-ffff-ffff-fffffffffffd",
+          "apiName": "target",
+          "displayName": "Target"
+        },
+        "cardinality": "many_to_many",
+        "sourceKind": "mixed",
+        "deletionBehavior": "retain_history",
+        "actionCreateAllowed": true,
+        "actionDeleteAllowed": true
+      }
+    },
+    {
+      "name": "link-type-rejected-cardinality",
+      "contract": "LinkTypeDefinition",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "apiName": "Related",
+        "displayName": "Related",
+        "description": "Related.",
+        "source": {
+          "objectTypeRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c110",
+          "apiName": "source",
+          "displayName": "Source"
+        },
+        "target": {
+          "objectTypeRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c111",
+          "apiName": "target",
+          "displayName": "Target"
+        },
+        "cardinality": "zero_to_many",
+        "sourceKind": "base",
+        "deletionBehavior": "restrict",
+        "actionCreateAllowed": false,
+        "actionDeleteAllowed": false
+      }
+    },
+    {
+      "name": "resource-revision-valid",
+      "contract": "ResourceRevision",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "revisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "family": "object_type",
+        "state": "draft",
+        "etag": 1,
+        "contentDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "createdByPrincipalId": "018f47a2-755b-7cc3-98c8-4d2fb871c130",
+        "createdAt": "2026-08-14T01:00:00.000000Z"
+      }
+    },
+    {
+      "name": "resource-revision-boundary-parent",
+      "contract": "ResourceRevision",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "revisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c121",
+        "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "parentRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "family": "link_type",
+        "state": "archived",
+        "etag": 9007199254740991,
+        "contentDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "createdByPrincipalId": "018f47a2-755b-7cc3-98c8-4d2fb871c130",
+        "createdAt": "9999-12-31T23:59:59.999999Z"
+      }
+    },
+    {
+      "name": "resource-revision-rejected-etag",
+      "contract": "ResourceRevision",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_VALUE_OUT_OF_RANGE",
+      "value": {
+        "schemaVersion": 1,
+        "revisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "family": "object_type",
+        "state": "draft",
+        "etag": 0,
+        "contentDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "createdByPrincipalId": "018f47a2-755b-7cc3-98c8-4d2fb871c130",
+        "createdAt": "2026-08-14T01:00:00.000000Z"
+      }
+    },
+    {
+      "name": "resource-dependency-valid",
+      "contract": "ResourceDependency",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "dependencyId": "018f47a2-755b-7cc3-98c8-4d2fb871c140",
+        "sourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "targetRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c121",
+        "dependencyType": "link_target",
+        "sourcePath": "/target/objectTypeRevisionId"
+      }
+    },
+    {
+      "name": "resource-dependency-boundary-escaped-pointer",
+      "contract": "ResourceDependency",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "dependencyId": "018f47a2-755b-7cc3-98c8-4d2fb871c141",
+        "sourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "targetRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c121",
+        "dependencyType": "property_reference",
+        "sourcePath": "/properties/a~1b~0c"
+      }
+    },
+    {
+      "name": "resource-dependency-rejected-pointer",
+      "contract": "ResourceDependency",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "dependencyId": "018f47a2-755b-7cc3-98c8-4d2fb871c140",
+        "sourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "targetRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c121",
+        "dependencyType": "link_source",
+        "sourcePath": "source/objectTypeRevisionId"
+      }
+    },
+    {
+      "name": "validation-report-valid",
+      "contract": "ValidationReport",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "reportId": "018f47a2-755b-7cc3-98c8-4d2fb871c150",
+        "subjectId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "subjectDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "validatorVersion": "metadata-1",
+        "valid": true,
+        "issues": []
+      }
+    },
+    {
+      "name": "validation-report-boundary-error",
+      "contract": "ValidationReport",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "reportId": "018f47a2-755b-7cc3-98c8-4d2fb871c151",
+        "subjectId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "subjectDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "validatorVersion": "v1",
+        "valid": false,
+        "issues": [
+          {
+            "code": "DEPENDENCY_MISSING",
+            "severity": "error",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+            "path": "/target/objectTypeRevisionId",
+            "message": "Target is missing.",
+            "remediation": "Publish the target revision first."
+          }
+        ]
+      }
+    },
+    {
+      "name": "validation-report-rejected-contradiction",
+      "contract": "ValidationReport",
+      "classification": "rejected",
+      "schemaDisposition": "accept",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "reportId": "018f47a2-755b-7cc3-98c8-4d2fb871c151",
+        "subjectId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+        "subjectDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "validatorVersion": "v1",
+        "valid": true,
+        "issues": [
+          {
+            "code": "DEPENDENCY_MISSING",
+            "severity": "error",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+            "path": "/target/objectTypeRevisionId",
+            "message": "Target is missing.",
+            "remediation": "Publish the target revision first."
+          }
+        ]
+      }
+    },
+    {
+      "name": "compatibility-report-valid",
+      "contract": "CompatibilityReport",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "reportId": "018f47a2-755b-7cc3-98c8-4d2fb871c160",
+        "baselineDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "candidateDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "outcome": "compatible",
+        "findings": []
+      }
+    },
+    {
+      "name": "compatibility-report-boundary-forbidden",
+      "contract": "CompatibilityReport",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "reportId": "018f47a2-755b-7cc3-98c8-4d2fb871c161",
+        "baselineDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "candidateDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "outcome": "forbidden",
+        "findings": [
+          {
+            "kind": "forbidden",
+            "code": "PRIMARY_KEY_CHANGED",
+            "path": "/primaryKeyPropertyApiName",
+            "message": "Primary Key changed.",
+            "requiredNextStep": "Create a new Object Type."
+          }
+        ]
+      }
+    },
+    {
+      "name": "compatibility-report-rejected-outcome",
+      "contract": "CompatibilityReport",
+      "classification": "rejected",
+      "schemaDisposition": "accept",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "reportId": "018f47a2-755b-7cc3-98c8-4d2fb871c161",
+        "baselineDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "candidateDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "outcome": "compatible",
+        "findings": [
+          {
+            "kind": "breaking",
+            "code": "PROPERTY_REMOVED",
+            "path": "/properties/name",
+            "message": "Property removed.",
+            "requiredNextStep": "Create a migration plan."
+          }
+        ]
+      }
+    },
+    {
+      "name": "release-manifest-valid",
+      "contract": "ReleaseManifest",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c170",
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "releaseNumber": 1,
+        "pins": [
+          {
+            "order": 0,
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+            "revisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+            "family": "object_type",
+            "contentDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "manifestDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "createdAt": "2026-08-14T01:00:00.000000Z"
+      }
+    },
+    {
+      "name": "release-manifest-boundary-number",
+      "contract": "ReleaseManifest",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c171",
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "releaseNumber": 9007199254740991,
+        "pins": [
+          {
+            "order": 0,
+            "resourceId": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+            "revisionId": "ffffffff-ffff-ffff-ffff-fffffffffffd",
+            "family": "link_type",
+            "contentDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          }
+        ],
+        "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "createdAt": "9999-12-31T23:59:59.999999Z"
+      }
+    },
+    {
+      "name": "release-manifest-rejected-pin-order",
+      "contract": "ReleaseManifest",
+      "classification": "rejected",
+      "schemaDisposition": "accept",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c170",
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "releaseNumber": 1,
+        "pins": [
+          {
+            "order": 1,
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+            "revisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+            "family": "object_type",
+            "contentDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "manifestDigest": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+        "createdAt": "2026-08-14T01:00:00.000000Z"
+      }
+    },
+    {
+      "name": "package-manifest-valid",
+      "contract": "PackageManifest",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "packageApiName": "SupplyStarter",
+        "version": "1.0.0",
+        "namespace": "supply.starter",
+        "kernelContractVersion": "metadata-1",
+        "resourceEntries": [
+          {
+            "namespace": "supply.core",
+            "apiName": "Shipment",
+            "family": "object_type",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+            "revisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+            "contentDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "artifactDigests": [
+          "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        ],
+        "installInputs": [
+          {
+            "apiName": "environment",
+            "displayName": "Environment",
+            "description": "Deployment environment label.",
+            "required": true
+          }
+        ],
+        "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    {
+      "name": "package-manifest-boundary-empty-inputs",
+      "contract": "PackageManifest",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "packageApiName": "P",
+        "version": "0.0.0",
+        "namespace": "p",
+        "kernelContractVersion": "1",
+        "resourceEntries": [
+          {
+            "namespace": "p",
+            "apiName": "L",
+            "family": "link_type",
+            "resourceId": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+            "revisionId": "ffffffff-ffff-ffff-ffff-fffffffffffd",
+            "contentDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          }
+        ],
+        "artifactDigests": [],
+        "installInputs": [],
+        "manifestDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      }
+    },
+    {
+      "name": "package-manifest-rejected-version",
+      "contract": "PackageManifest",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "packageApiName": "SupplyStarter",
+        "version": "1.0",
+        "namespace": "supply.starter",
+        "kernelContractVersion": "metadata-1",
+        "resourceEntries": [
+          {
+            "namespace": "supply.core",
+            "apiName": "Shipment",
+            "family": "object_type",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+            "revisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c120",
+            "contentDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ],
+        "artifactDigests": [],
+        "installInputs": [],
+        "manifestDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    {
+      "name": "management-role-binding-valid",
+      "contract": "ManagementRoleBinding",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "bindingId": "018f47a2-755b-7cc3-98c8-4d2fb871c180",
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c130",
+        "scope": "project",
+        "role": "owner",
+        "state": "active"
+      }
+    },
+    {
+      "name": "management-role-binding-boundary-resource",
+      "contract": "ManagementRoleBinding",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "bindingId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        "projectId": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+        "principalId": "ffffffff-ffff-ffff-ffff-fffffffffffd",
+        "scope": "resource",
+        "resourceId": "ffffffff-ffff-ffff-ffff-fffffffffffc",
+        "role": "auditor",
+        "state": "revoked"
+      }
+    },
+    {
+      "name": "management-role-binding-rejected-scope",
+      "contract": "ManagementRoleBinding",
+      "classification": "rejected",
+      "schemaDisposition": "accept",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "bindingId": "018f47a2-755b-7cc3-98c8-4d2fb871c180",
+        "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+        "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c130",
+        "scope": "project",
+        "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "role": "editor",
+        "state": "active"
+      }
+    }
+  ]
+}

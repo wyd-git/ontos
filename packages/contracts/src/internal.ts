@@ -83,6 +83,38 @@ export function requireBoolean(value: unknown, path: string): boolean {
   return value;
 }
 
+export function requireSafeInteger(
+  value: unknown,
+  path: string,
+  options: Readonly<{ minimum?: number; maximum?: number }> = {},
+): number {
+  if (!Number.isSafeInteger(value)) {
+    failContract("CONTRACT_TYPE_INVALID", "Expected a safe integer.", path);
+  }
+  const minimum = options.minimum ?? Number.MIN_SAFE_INTEGER;
+  const maximum = options.maximum ?? Number.MAX_SAFE_INTEGER;
+  if ((value as number) < minimum || (value as number) > maximum) {
+    failContract("CONTRACT_VALUE_OUT_OF_RANGE", "Integer is outside its contract.", path);
+  }
+  return value as number;
+}
+
+export function requireArray(
+  value: unknown,
+  path: string,
+  options: Readonly<{ minimumItems?: number; maximumItems?: number }> = {},
+): readonly unknown[] {
+  if (!Array.isArray(value)) {
+    failContract("CONTRACT_TYPE_INVALID", "Expected an array.", path);
+  }
+  const minimumItems = options.minimumItems ?? 0;
+  const maximumItems = options.maximumItems ?? Number.MAX_SAFE_INTEGER;
+  if (value.length < minimumItems || value.length > maximumItems) {
+    failContract("CONTRACT_VALUE_OUT_OF_RANGE", "Array length is outside its contract.", path);
+  }
+  return value as unknown[];
+}
+
 export function requireLiteral<T extends string>(value: unknown, expected: T, path: string): T {
   if (value !== expected) {
     failContract("CONTRACT_FORMAT_INVALID", `Expected ${expected}.`, path);

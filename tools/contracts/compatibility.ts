@@ -83,8 +83,10 @@ function compareSchema(
   compareEnum(baseline.enum, candidate.enum, path, findings);
   compareMinimum(baseline, candidate, "minLength", path, findings);
   compareMinimum(baseline, candidate, "minItems", path, findings);
+  compareMinimum(baseline, candidate, "minimum", path, findings);
   compareMaximum(baseline, candidate, "maxLength", path, findings);
   compareMaximum(baseline, candidate, "maxItems", path, findings);
+  compareMaximum(baseline, candidate, "maximum", path, findings);
   compareBooleanTightening(baseline, candidate, "uniqueItems", path, findings);
   compareAdditionalProperties(baseline, candidate, path, findings);
 
@@ -219,7 +221,7 @@ function compareEnum(
 function compareMinimum(
   baseline: Readonly<Record<string, unknown>>,
   candidate: Readonly<Record<string, unknown>>,
-  keyword: "minItems" | "minLength",
+  keyword: "minItems" | "minLength" | "minimum",
   path: string,
   findings: CompatibilityFinding[],
 ): void {
@@ -238,7 +240,7 @@ function compareMinimum(
 function compareMaximum(
   baseline: Readonly<Record<string, unknown>>,
   candidate: Readonly<Record<string, unknown>>,
-  keyword: "maxItems" | "maxLength",
+  keyword: "maxItems" | "maxLength" | "maximum",
   path: string,
   findings: CompatibilityFinding[],
 ): void {
