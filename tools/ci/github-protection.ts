@@ -38,7 +38,6 @@ export function protectionRequest(policy: ProtectionPolicy): Readonly<Record<str
       require_code_owner_reviews: false,
       required_approving_review_count: policy.requiredApprovingReviewCount,
       require_last_push_approval: false,
-      bypass_pull_request_allowances: { users: [], teams: [], apps: [] },
     },
     restrictions: null,
     required_linear_history: false,

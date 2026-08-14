@@ -1,6 +1,6 @@
 # G2-00-12 强制 CI 与供应链 Gate 验收记录
 
-- 结论：**LOCAL PASS / REMOTE PASS / PROTECTION BLOCKED**
+- 结论：**PASS（LOCAL / REMOTE / PROTECTION）**
 - 执行日期：2026-08-14
 - 分支：`agent/g2-00-12-ci-gates`
 - 起始 Commit：`8204f6e0eb8abf5681e82f7d11fcd7a7bf98809f`
@@ -11,14 +11,14 @@
 
 ## 1. 验收映射
 
-| WWA 声明                                 | 实现证据                                            | 本地执行证据                                                      | 结果    |
-| ---------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------- | ------- |
-| 全部必跑项                               | 单一 `tools/ci/run.ts`，15 个顺序 Gate              | 15/15 PASS，32.472 秒                                             | PASS    |
-| Secret、License Manifest、SBOM、漏洞策略 | 两个 Scanner/Generator 与三个机器 Policy            | 252 个跟踪文本文件、135 个外部包、138 个 SBOM Component、0 漏洞   | PASS    |
-| 四类故意失败 Fixture                     | Contract、Architecture、Role、Secret Negative Tests | 200 Unit 全绿；真实 Role Escalation 输出 `blocked`                | PASS    |
-| 本地/CI 同脚本                           | `npm run verify` 是本地和 Workflow 唯一入口         | Workflow 不维护第二套 Gate 命令                                   | PASS    |
-| 机器报告和摘要                           | `report.json`、`summary.md`、六个子 Artifact        | Commit/Dirty、版本、PostgreSQL、Fixture/Lock Hash、逐步耗时均存在 | PASS    |
-| 分支保护与紧急绕过审计                   | Strict Required Check 与无常驻 Bypass 设计          | Protection 和 Ruleset API 均因当前私有仓库套餐返回 HTTP 403       | BLOCKED |
+| WWA 声明                                 | 实现证据                                            | 本地执行证据                                                          | 结果 |
+| ---------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------- | ---- |
+| 全部必跑项                               | 单一 `tools/ci/run.ts`，15 个顺序 Gate              | 15/15 PASS，32.472 秒                                                 | PASS |
+| Secret、License Manifest、SBOM、漏洞策略 | 两个 Scanner/Generator 与三个机器 Policy            | 252 个跟踪文本文件、135 个外部包、138 个 SBOM Component、0 漏洞       | PASS |
+| 四类故意失败 Fixture                     | Contract、Architecture、Role、Secret Negative Tests | 200 Unit 全绿；真实 Role Escalation 输出 `blocked`                    | PASS |
+| 本地/CI 同脚本                           | `npm run verify` 是本地和 Workflow 唯一入口         | Workflow 不维护第二套 Gate 命令                                       | PASS |
+| 机器报告和摘要                           | `report.json`、`summary.md`、六个子 Artifact        | Commit/Dirty、版本、PostgreSQL、Fixture/Lock Hash、逐步耗时均存在     | PASS |
+| 分支保护与紧急绕过审计                   | Strict Required Check 与无常驻 Bypass 设计          | Protection API 写入并独立回读：Strict/Admin/No Bypass/No Force/Delete | PASS |
 
 ## 2. 本地完整 Gate
 
@@ -88,16 +88,16 @@ CycloneDX 文档包含随机 Serial/Timestamp，因此只把每次运行摘要�
 - Main 最终要求 Strict `Foundation Gate`，禁止 Force Push/Delete，Admin Enforced，无常驻 Bypass Actor；
 - 紧急绕过必须同时存在 GitHub Security Log 与仓库 Incident Record，随后恢复保护并补跑 Gate。
 
-## 7. 分支保护外部阻塞
+## 7. 分支保护验收
 
-2026-08-14 先后以 GitHub API 读取 Main Branch Protection 和 Repository Ruleset，两者均返回 HTTP 403：`Upgrade to GitHub Pro or make this repository public to enable this feature.`。GitHub 官方功能说明同样标明：GitHub Free 只对公开仓库提供 Protected Branch/Ruleset；私有仓库需 GitHub Pro、Team 或 Enterprise Cloud。
+2026-08-14 首次验证时，私有仓库的 Main Branch Protection 和 Repository Ruleset API 均返回 HTTP 403。Repository Owner 随后明确把仓库调整为 Public，GitHub API 回读确认 `visibility=PUBLIC`，因此 GitHub Free 的 Protected Branch 能力可用。
 
-因此 PR #14 保持 Draft 且不合并，G2-00-12 不标记完成，G2-00-13 不启动。推荐由 Repository Owner 升级 GitHub Pro 以保持仓库私有；若要转公开，必须作为独立的信息公开决策批准，不在本 Gate 中自动执行。
+`security/main-branch-protection.json` 冻结唯一目标，`npm run github-protection:apply` 使用 GitHub API 应用，`npm run github-protection:verify` 再次独立读取复查。个人账号仓库不接受组织专属的 `bypass_pull_request_allowances` 请求字段，即使数组为空也返回 HTTP 422；Apply 请求因此省略该字段，Verifier 仍检查响应中不存在任何 User、Team 或 App Bypass。4 个单元测试覆盖正常配置、非 Strict、Admin 未保护、常驻 Bypass、Force/Delete 和 Check 名漂移。
 
-为避免套餐开通后手工配错，`security/main-branch-protection.json` 已冻结唯一目标，`npm run github-protection:apply` 使用 GitHub API 应用，`npm run github-protection:verify` 独立复查。4 个单元测试覆盖正常配置、非 Strict、Admin 未保护、常驻 Bypass、Force/Delete 和 Check 名漂移。
+最终 API 复查结果为：Main 必须通过 PR，Required Check 精确为 Strict `Foundation Gate`，Admin Enforced，无常驻 Bypass Actor，禁止 Force Push 和 Delete。G2-00-12 的不可绕过合并条件已满足。
 
 ## 8. Red-Team 与剩余条件
 
 [专项审查](../reviews/g2-00-12-ci-gate-red-team.md)已经关闭本地/CI 命令分叉、漏洞静默忽略、Secret 回显、假数据库和失败清理五类高风险假设，并补齐总报告 Artifact 计数。
 
-远端 `Foundation Gate` 与 Artifact 已通过。升级为最终 **PASS** 现只剩 Main Protection 套餐阻塞；配置后必须经 API 复查。G2-00-13 的 clean-room 复验仍是独立后续 Gate，本记录不宣称整个 G2-00 完成。
+远端 `Foundation Gate`、Artifact 与 Main Protection API 复查均已通过，G2-00-12 结论升级为最终 **PASS**。G2-00-13 的 clean-room 复验仍是独立后续 Gate，本记录不宣称整个 G2-00 完成。

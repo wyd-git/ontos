@@ -1,6 +1,6 @@
 # Red-Team：G2-00-12 强制 CI 与供应链 Gate
 
-结论：**No-Go（仅被 GitHub 私有仓库套餐阻塞）**。本地唯一入口和远端 `ubuntu-24.04` 已真实执行全部 15 个 Gate，Contract、越层依赖、角色越权和 Secret 四类故意失败输入均能被检测，远端 Artifact 已下载复验。但当前 GitHub Free 私有仓库无法启用 Branch Protection 或 Repository Ruleset，因此还不能满足“不可绕过合并”验收。
+结论：**Go（G2-00-12）**。本地唯一入口和远端 `ubuntu-24.04` 已真实执行全部 15 个 Gate，Contract、越层依赖、角色越权和 Secret 四类故意失败输入均能被检测，远端 Artifact 已下载复验。Repository Owner 已明确把仓库调整为 Public，Main Branch Protection 已通过 GitHub API 应用并独立回读，因此“不可绕过合并”验收成立。
 
 ## Top Kill-Assumptions（按优先级）
 
@@ -39,23 +39,23 @@
 - **Kill criterion：** 任一未执行 Gate 没有 `SKIPPED`，输出目录没有每次清空，或 Environment Failure 不触发 `finally` Teardown。
 - **处理：** 每次先清空 `generated/ci-report`；所有 Gate 固定产生 PASS/FAIL/SKIPPED；Environment 一经触达即保证 Down；报告输出做 Credential/Token Redaction。**CLOSED**。
 
-### 6. GitHub 检查不能被普通合并绕过（外部阻塞，98）
+### 6. GitHub 检查不能被普通合并绕过（已关闭，98）
 
 - **Claim：** Main 要求最新的 `Foundation Gate`，禁止 Force Push/Delete，管理员同样受保护。
 - **Fails if：** Check 名不稳定、Protection 未启用、管理员可直接 Push，或常驻 Bypass Actor 存在。
 - **Kill criterion：** GitHub API 查询的 Main Protection 与冻结策略不一致，或未通过 Check 仍能合并。
-- **处理：** Workflow Check 已固定命名，远端 15/15 PASS 且 Artifact 已复验。但 `GET branches/main/protection` 和 `GET repos/.../rulesets` 均返回 HTTP 403：当前私有仓库需升级 GitHub Pro（或转公开）才能启用。**BLOCKED — Owner: Repository Owner**。
+- **处理：** Workflow Check 已固定命名，远端 15/15 PASS 且 Artifact 已复验。Repository Owner 明确把仓库调整为 Public 后，Protection API 已写入并独立回读为 Strict `Foundation Gate`、Admin Enforced、无 Bypass、禁止 Force Push/Delete。个人仓库请求省略组织专属 Bypass 字段，响应校验仍会拒绝任何实际 Bypass。**CLOSED**。
 
 ## Intended vs. Implemented
 
-| 文档化意图                                                                         | 实现与执行证据                                                                                 | 结论    |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------- |
-| Lockfile、Format、Lint、Type、Unit、Contract、Architecture、PostgreSQL、Smoke 必跑 | `tools/ci/run.ts` 的 15 个 Gate；完整本地报告 15/15 PASS                                       | PASS    |
-| Secret、License、SBOM、漏洞分级且不静默忽略                                        | `tools/ci/secret-scan.ts`、`supply-chain.ts`、三个 `security/*-policy.json`                    | PASS    |
-| 四类故意失败 Fixture                                                               | Contract Breaking Tests、Architecture Negative Workspace、真实 Role Grant、Secret 重组 Fixture | PASS    |
-| 本地与 CI 同脚本                                                                   | `package.json#verify` 与 Workflow 唯一命令均为同一入口                                         | PASS    |
-| 报告含 Commit、版本、DB、Fixture Hash、耗时与 Artifact                             | `generated/ci-report/report.json`；审查发现并补齐 Artifact 顶层计数                            | PASS    |
-| Required Check、紧急绕过可审计                                                     | Check 已远端 PASS；Protection/Ruleset 被当前 GitHub Free 私有仓库套餐拒绝                      | BLOCKED |
+| 文档化意图                                                                         | 实现与执行证据                                                                                 | 结论 |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---- |
+| Lockfile、Format、Lint、Type、Unit、Contract、Architecture、PostgreSQL、Smoke 必跑 | `tools/ci/run.ts` 的 15 个 Gate；完整本地报告 15/15 PASS                                       | PASS |
+| Secret、License、SBOM、漏洞分级且不静默忽略                                        | `tools/ci/secret-scan.ts`、`supply-chain.ts`、三个 `security/*-policy.json`                    | PASS |
+| 四类故意失败 Fixture                                                               | Contract Breaking Tests、Architecture Negative Workspace、真实 Role Grant、Secret 重组 Fixture | PASS |
+| 本地与 CI 同脚本                                                                   | `package.json#verify` 与 Workflow 唯一命令均为同一入口                                         | PASS |
+| 报告含 Commit、版本、DB、Fixture Hash、耗时与 Artifact                             | `generated/ci-report/report.json`；审查发现并补齐 Artifact 顶层计数                            | PASS |
+| Required Check、紧急绕过可审计                                                     | Check 已远端 PASS；Protection API 回读严格匹配冻结策略                                         | PASS |
 
 首轮 Intended-vs-Implemented 审查实际发现：总报告只有 Artifact Hash/Bytes，计数只藏在子报告。现已加入 `artifactCounts`，把 Secret 扫描文件/Finding、License Package、SBOM Component/Dependency 和 Vulnerability Finding 统一提升到总报告。
 
@@ -66,8 +66,6 @@
 - 本地 Scanner 按设计只扫描 Git 跟踪文件；未跟踪草稿不是发布候选，提交后的 PR CI 会扫描它。提交前仍需先 Stage 再执行一次 Secret Gate。
 - G2-00-13 仍需在 clean checkout 证明没有个人缓存、已有 Docker Volume 或工作树状态依赖。
 
-## 最终 Go 条件
+## 最终 Go 结论
 
-1. 保持仓库私有的推荐路径：Repository Owner 升级 GitHub Pro；或由 Owner 明确批准转为公开仓库；
-2. Main Protection 通过 GitHub API 复查为 Strict Required Check、禁止 Force/Delete、Admin Enforced、无常驻 Bypass；
-3. Evidence 把 Protection 状态从 BLOCKED 更新为 PASS，随后才能合并 PR #14 并启动 G2-00-13。
+Repository Owner 的公开决策、Main Protection API 复查和 Evidence 更新均已完成。PR #14 的最新 Head 仍必须通过受保护的 `Foundation Gate` 后才能合并；该条件由 GitHub 强制执行。满足后进入 G2-00-13，不能把本结论扩大为整个 G2-00 已完成。
