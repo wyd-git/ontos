@@ -238,7 +238,7 @@ async function checkFoundation(repositoryRoot: string): Promise<void> {
   );
   if (violations.length > 0) throw new Error(violations.join(" "));
   process.stdout.write(
-    `foundation acceptance: PASS (${String(snapshot.workspacePackages.length)} packages, ${String(snapshot.migrationFiles.length)} DB-00 migration, ${String(policy.requiredDecisions.length)} accepted ADRs, ${String(policy.requiredEvidence.length)} evidence records, no business app/UI)\n`,
+    `foundation acceptance: PASS (${String(snapshot.workspacePackages.length)} packages, ${String(snapshot.migrationFiles.length)} tracked DB migrations, ${String(policy.requiredDecisions.length)} accepted ADRs, ${String(policy.requiredEvidence.length)} evidence records, no business app/UI)\n`,
   );
 }
 
