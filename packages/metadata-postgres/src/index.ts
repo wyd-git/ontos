@@ -3,8 +3,12 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   canonicalizeContractForDigest,
   parseArtifactDigest,
+  parseCompatibilityReport,
   parseOntosId,
   parseValidationReport,
+  type CompatibilityFindingContract,
+  type CompatibilityReportContract,
+  type LinkTypeDefinition,
   type ResourceFamily,
   type ValidationIssueContract,
   type ValidationReportContract,
@@ -34,11 +38,14 @@ import type {
 } from "@ontos/metadata-application";
 import {
   METADATA_VALIDATOR_VERSION,
+  METADATA_COMPATIBILITY_VERSION,
   MetadataDomainError,
   analyzeDependencyGraph,
   assertChildDraftSourceState,
   assertResourceRevisionStateTransition,
   assertResourceStateTransition,
+  buildCompatibilityReport,
+  compareResourceCompatibility,
   extractResourceDependencies,
   prepareDirectResourceContent,
   sortValidationIssues,
@@ -1071,6 +1078,104 @@ export class PostgresMetadataControlPlane
     }
   }
 
+  async compareRevisionCompatibility(input: {
+    readonly baselineRevisionId: string;
+    readonly candidateRevisionId: string;
+  }): Promise<CompatibilityReportContract> {
+    try {
+      const identifiers = [...new Set([input.baselineRevisionId, input.candidateRevisionId])];
+      const result = await this.#pool.query<RevisionRow>(
+        `SELECT revision_id, resource_id, parent_revision_id, revision_number::text,
+                family, state, etag::text, content_digest, content,
+                created_by_principal_id, created_at
+         FROM meta.resource_revisions
+         WHERE revision_id = ANY($1::uuid[])
+         ORDER BY revision_id`,
+        [identifiers],
+      );
+      if (result.rowCount !== identifiers.length) {
+        throw new MetadataApplicationError(
+          "NOT_FOUND",
+          "One or more Resource Revisions do not exist in the authorized Resource.",
+        );
+      }
+      const byId = new Map(result.rows.map((row) => [row.revision_id, revisionRecord(row)]));
+      const baseline = requireRow(
+        byId.get(input.baselineRevisionId),
+        "Baseline Resource Revision does not exist.",
+        "NOT_FOUND",
+      );
+      const candidate = requireRow(
+        byId.get(input.candidateRevisionId),
+        "Candidate Resource Revision does not exist.",
+        "NOT_FOUND",
+      );
+      if (baseline.resourceId !== candidate.resourceId) {
+        throw new MetadataApplicationError(
+          "INVALID_INPUT",
+          "Compatibility comparison requires two Revisions of the same Resource.",
+        );
+      }
+      let endpointRevisionIdentities:
+        readonly { readonly revisionId: string; readonly resourceId: string }[] | undefined;
+      if (baseline.family === "link_type" && candidate.family === "link_type") {
+        const baselineLink = baseline.content as LinkTypeDefinition;
+        const candidateLink = candidate.content as LinkTypeDefinition;
+        const endpointIds = [
+          baselineLink.source.objectTypeRevisionId,
+          baselineLink.target.objectTypeRevisionId,
+          candidateLink.source.objectTypeRevisionId,
+          candidateLink.target.objectTypeRevisionId,
+        ];
+        const endpointResult = await this.#pool.query<{
+          readonly revision_id: string;
+          readonly resource_id: string;
+        }>(
+          `SELECT endpoint_revision.revision_id, endpoint_revision.resource_id
+           FROM meta.resource_revisions AS endpoint_revision
+           JOIN meta.resources AS endpoint_resource
+             ON endpoint_resource.resource_id = endpoint_revision.resource_id
+           JOIN meta.resources AS source_resource
+             ON source_resource.resource_id = $2
+            AND source_resource.project_id = endpoint_resource.project_id
+           WHERE endpoint_revision.revision_id = ANY($1::uuid[])
+           ORDER BY endpoint_revision.revision_id`,
+          [[...new Set(endpointIds)], baseline.resourceId],
+        );
+        endpointRevisionIdentities = endpointResult.rows.map(
+          ({ revision_id: revisionId, resource_id: endpointResourceId }) => ({
+            revisionId,
+            resourceId: endpointResourceId,
+          }),
+        );
+      }
+      const compared = compareResourceCompatibility({
+        baselineFamily: baseline.family,
+        baselineContent: baseline.content,
+        candidateFamily: candidate.family,
+        candidateContent: candidate.content,
+        ...(endpointRevisionIdentities === undefined ? {} : { endpointRevisionIdentities }),
+      });
+      const reportId = deterministicCompatibilityReportId({
+        baselineRevisionId: baseline.revisionId,
+        candidateRevisionId: candidate.revisionId,
+        baselineDigest: baseline.contentDigest,
+        candidateDigest: candidate.contentDigest,
+        findings: compared.findings,
+      });
+      return parseCompatibilityReport(
+        buildCompatibilityReport({
+          reportId,
+          baselineDigest: baseline.contentDigest,
+          candidateDigest: candidate.contentDigest,
+          evaluation: compared,
+        }),
+      );
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
   async transitionResourceState(input: {
     readonly resourceId: string;
     readonly targetState: ResourceState;
@@ -1568,6 +1673,33 @@ function verifiedPreparedContent(
 
 function digestCanonicalContent(canonicalContent: string): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(canonicalContent, "utf8").digest("hex")}`;
+}
+
+function deterministicCompatibilityReportId(input: {
+  readonly baselineRevisionId: string;
+  readonly candidateRevisionId: string;
+  readonly baselineDigest: string;
+  readonly candidateDigest: string;
+  readonly findings: readonly CompatibilityFindingContract[];
+}) {
+  const hexadecimal = createHash("sha256")
+    .update(
+      canonicalizeContractForDigest({
+        version: METADATA_COMPATIBILITY_VERSION,
+        baselineRevisionId: input.baselineRevisionId,
+        candidateRevisionId: input.candidateRevisionId,
+        baselineDigest: input.baselineDigest,
+        candidateDigest: input.candidateDigest,
+        findings: input.findings,
+      }),
+      "utf8",
+    )
+    .digest("hex");
+  const uuid = `${hexadecimal.slice(0, 8)}-${hexadecimal.slice(8, 12)}-5${hexadecimal.slice(
+    13,
+    16,
+  )}-a${hexadecimal.slice(17, 20)}-${hexadecimal.slice(20, 32)}`;
+  return parseOntosId(uuid, "$compatibilityReport.reportId");
 }
 
 function timestamp(value: Date | string): string {

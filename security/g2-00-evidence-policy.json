@@ -104,7 +104,8 @@
     "docs/evidence/g2-01-03-db-01-migration.md",
     "docs/evidence/g2-01-04-project-rbac-epoch.md",
     "docs/evidence/g2-01-05-resource-revision-lifecycle.md",
-    "docs/evidence/g2-01-06-definition-validation-dependency-graph.md"
+    "docs/evidence/g2-01-06-definition-validation-dependency-graph.md",
+    "docs/evidence/g2-01-07-compatibility-engine.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

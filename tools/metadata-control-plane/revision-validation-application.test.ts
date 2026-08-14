@@ -144,6 +144,7 @@ function resourceRepository(
     createChildDraft: unused,
     validateDraftRevision: unused,
     getRevisionValidationReport: unused,
+    compareRevisionCompatibility: unused,
     transitionResourceState: unused,
     transitionRevisionState: unused,
     ...overrides,

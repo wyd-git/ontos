@@ -13,6 +13,26 @@ import {
   type ValidationIssueContract,
 } from "@ontos/contracts";
 
+export {
+  METADATA_COMPATIBILITY_VERSION,
+  buildCompatibilityReport,
+  comparePackageCompatibility,
+  comparePinnedCompatibility,
+  compareReleaseCompatibility,
+  compareResourceCompatibility,
+  summarizeCompatibilityFindings,
+} from "./compatibility.ts";
+export type {
+  CompatibilityEvaluation,
+  EndpointRevisionIdentity,
+  PackageCompatibilityInput,
+  PackageCompatibilityPin,
+  PinnedCompatibilityDependency,
+  PinnedCompatibilityInput,
+  PinnedCompatibilityRevision,
+  ResourceCompatibilityInput,
+} from "./compatibility.ts";
+
 export type ManagementRole = ManagementRoleValue;
 
 export const MANAGEMENT_PERMISSIONS = Object.freeze([

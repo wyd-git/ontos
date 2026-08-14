@@ -4,6 +4,7 @@ import {
   parseOntosId,
   type ArtifactDigest,
   type CanonicalInstant,
+  type CompatibilityReportContract,
   type ResourceFamily,
   type ValidationReportContract,
 } from "@ontos/contracts";
@@ -233,6 +234,10 @@ export interface ResourceLifecycleRepository {
     readonly revisionId: string;
     readonly validatorVersion: string;
   }): Promise<ValidationReportContract>;
+  compareRevisionCompatibility(input: {
+    readonly baselineRevisionId: string;
+    readonly candidateRevisionId: string;
+  }): Promise<CompatibilityReportContract>;
   transitionResourceState(input: {
     readonly resourceId: string;
     readonly targetState: ResourceState;
@@ -539,6 +544,24 @@ export class ResourceLifecycleApplicationService {
     });
   }
 
+  async compareRevisionCompatibility(
+    identityInput: VerifiedFoundationIdentity,
+    commandInput: unknown,
+  ): Promise<CompatibilityReportContract> {
+    const identity = parseVerifiedFoundationIdentity(identityInput);
+    const { revisionId, againstRevisionId } = parseCompareRevisionCommand(commandInput);
+    const resolved = await this.#resolveIdentity(identity);
+    const scope = await this.#resources.readRevisionScope(revisionId);
+    await this.#requirePermission(resolved, {
+      ...scope,
+      permission: "metadata.read",
+    });
+    return this.#resources.compareRevisionCompatibility({
+      baselineRevisionId: againstRevisionId,
+      candidateRevisionId: revisionId,
+    });
+  }
+
   async deprecateResource(
     identityInput: VerifiedFoundationIdentity,
     commandInput: unknown,
@@ -729,6 +752,17 @@ function parseResourceIdentifierCommand(value: unknown): { readonly resourceId: 
 function parseRevisionIdentifierCommand(value: unknown): { readonly revisionId: string } {
   const record = strictRecord(value, ["revisionId"]);
   return Object.freeze({ revisionId: ontosIdentifier(record["revisionId"], "revisionId") });
+}
+
+function parseCompareRevisionCommand(value: unknown): {
+  readonly revisionId: string;
+  readonly againstRevisionId: string;
+} {
+  const record = strictRecord(value, ["revisionId", "againstRevisionId"]);
+  return Object.freeze({
+    revisionId: ontosIdentifier(record["revisionId"], "revisionId"),
+    againstRevisionId: ontosIdentifier(record["againstRevisionId"], "againstRevisionId"),
+  });
 }
 
 function parseListResourcesCommand(value: unknown): {
