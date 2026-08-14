@@ -113,7 +113,8 @@
     "docs/evidence/g2-01-08-release-lifecycle.md",
     "docs/evidence/g2-01-09-package-lifecycle.md",
     "docs/evidence/g2-01-10-admin-api.md",
-    "docs/evidence/g2-01-11-ci-testkit-metadata-evidence.md"
+    "docs/evidence/g2-01-11-ci-testkit-metadata-evidence.md",
+    "docs/evidence/g2-01-12-clean-room-metadata-gate.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

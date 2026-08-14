@@ -80,6 +80,7 @@ export function evaluateMetadataEvidenceSnapshot(
 export function metadataEvidenceManifest(
   report: Readonly<Record<string, unknown>>,
   acceptance: Readonly<Record<string, unknown>>,
+  cleanRoom: unknown = null,
 ): Readonly<Record<string, unknown>> {
   const steps = Array.isArray(report.steps) ? report.steps : [];
   const requiredGates = stringArrayProperty(acceptance, "requiredGates");
@@ -90,8 +91,12 @@ export function metadataEvidenceManifest(
   );
   const reportPassed = report.status === "PASS";
   const acceptancePassed = acceptance.status === "PASS";
+  const cleanRoomRequired = requiredGates.includes("metadata-clean-room");
+  const cleanRoomPassed =
+    !cleanRoomRequired || (isRecord(cleanRoom) && cleanRoom.status === "PASS");
   const cleanCheckout = report.dirty === false;
-  const status = reportPassed && acceptancePassed && gatesPassed ? "PASS" : "FAIL";
+  const status =
+    reportPassed && acceptancePassed && gatesPassed && cleanRoomPassed ? "PASS" : "FAIL";
   const testCount = stepRecords.reduce(
     (sum, step) =>
       sum +
@@ -125,6 +130,7 @@ export function metadataEvidenceManifest(
     protectedFoundationEvidence: acceptance.protectedFoundationEvidence ?? null,
     fixtures: acceptance.fixtures ?? null,
     negativeFixtures: acceptance.negativeFixtures ?? null,
+    cleanRoom: isRecord(cleanRoom) ? cleanRoom : null,
     scope: acceptance.foundationScope ?? null,
     owner: acceptance.owner ?? null,
     unclosedRisks: acceptance.residualRisks ?? [],
@@ -139,7 +145,8 @@ export async function writeMetadataEvidenceManifest(
     await readFile(resolve(outputDirectory, "metadata-acceptance.json"), "utf8"),
     "Metadata acceptance artifact",
   );
-  const manifest = metadataEvidenceManifest(report, acceptance);
+  const cleanRoom = await readOptionalJson(resolve(outputDirectory, "metadata-clean-room.json"));
+  const manifest = metadataEvidenceManifest(report, acceptance, cleanRoom);
   await writeFile(
     resolve(outputDirectory, "metadata-evidence-manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,

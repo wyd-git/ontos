@@ -86,6 +86,37 @@ void test("the manifest requires every named gate and distinguishes clean checko
   assert.equal(missing.qualification, "FAIL");
 });
 
+void test("the manifest fails closed when the required clean-room artifact is absent", () => {
+  const report = {
+    status: "PASS",
+    commit: "c".repeat(40),
+    dirty: false,
+    steps: [
+      {
+        name: "metadata-clean-room",
+        command: "npm run test:metadata-clean-room",
+        status: "PASS",
+        durationMs: 2,
+        testCount: 1,
+      },
+    ],
+  };
+  const acceptance = { status: "PASS", requiredGates: ["metadata-clean-room"] };
+
+  assert.equal(metadataEvidenceManifest(report, acceptance).status, "FAIL");
+  const manifest = metadataEvidenceManifest(report, acceptance, {
+    gate: "G2-01-12",
+    status: "PASS",
+    scenarioStepCount: 24,
+  });
+  assert.equal(manifest.status, "PASS");
+  assert.deepEqual(manifest.cleanRoom, {
+    gate: "G2-01-12",
+    status: "PASS",
+    scenarioStepCount: 24,
+  });
+});
+
 function validSnapshot(): MetadataEvidenceSnapshot {
   return {
     trackedFiles: [evidencePath, historicalPath, fixturePath, vectorPath],
