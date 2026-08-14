@@ -48,8 +48,11 @@ const db01Ids = {
   revision: "00000000-0000-4000-8000-000000000301",
   duplicateRevision: "00000000-0000-4000-8000-000000000302",
   validationReport: "00000000-0000-4000-8000-000000000303",
+  packageReleaseValidationReport: "00000000-0000-4000-8000-000000000305",
   release: "00000000-0000-4000-8000-000000000401",
+  packageRelease: "00000000-0000-4000-8000-000000000402",
   activation: "00000000-0000-4000-8000-000000000501",
+  packageActivation: "00000000-0000-4000-8000-000000000502",
   package: "00000000-0000-4000-8000-000000000601",
   packageRevision: "00000000-0000-4000-8000-000000000701",
   duplicatePackageRevision: "00000000-0000-4000-8000-000000000702",
@@ -66,6 +69,29 @@ const db01Digests = {
   artifact: `sha256:${"5".repeat(64)}`,
   other: `sha256:${"6".repeat(64)}`,
 } as const;
+
+function db01PackageManifest(manifestDigest: string) {
+  return {
+    schemaVersion: 1,
+    packageApiName: "CommerceCore",
+    version: "1.0.0",
+    namespace: "commerce.packages",
+    kernelContractVersion: "metadata-1",
+    resourceEntries: [
+      {
+        namespace: "commerce.core",
+        apiName: "Order",
+        family: "object_type",
+        resourceId: db01Ids.resource,
+        revisionId: db01Ids.revision,
+        contentDigest: db01Digests.revision,
+      },
+    ],
+    artifactDigests: [db01Digests.artifact],
+    installInputs: [],
+    manifestDigest,
+  };
+}
 
 void test(
   "DB-01 upgrades on PostgreSQL 16 and enforces metadata boundaries",
@@ -125,6 +151,7 @@ void test(
             "0003_resource_revision_guards.sql",
             "0004_dependency_validation_guards.sql",
             "0005_release_lifecycle_guards.sql",
+            "0006_package_lifecycle_guards.sql",
           ],
         );
 
@@ -199,7 +226,7 @@ async function assertSecondDatabaseAndConcurrentRunner(
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 5);
+  assert.equal(left.applied.length + right.applied.length, 6);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
 }
 
@@ -591,9 +618,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
   const thirdMigration = resolve(directory, "0003_resource_revision_guards.sql");
   const fourthMigration = resolve(directory, "0004_dependency_validation_guards.sql");
   const fifthMigration = resolve(directory, "0005_release_lifecycle_guards.sql");
-  const failedMigration = resolve(directory, "0006_failed_attempt.sql");
-  const defectMigration = resolve(directory, "0006_forward_repair_probe.sql");
-  const repairMigration = resolve(directory, "0007_forward_repair.sql");
+  const sixthMigration = resolve(directory, "0006_package_lifecycle_guards.sql");
+  const failedMigration = resolve(directory, "0007_failed_attempt.sql");
+  const defectMigration = resolve(directory, "0007_forward_repair_probe.sql");
+  const repairMigration = resolve(directory, "0008_forward_repair.sql");
 
   try {
     await copyFile(resolve(db00MigrationDirectory, "0001_foundation.sql"), firstMigration);
@@ -613,6 +641,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       resolve(db00MigrationDirectory, "0005_release_lifecycle_guards.sql"),
       fifthMigration,
     );
+    await copyFile(
+      resolve(db00MigrationDirectory, "0006_package_lifecycle_guards.sql"),
+      sixthMigration,
+    );
     await writeFile(
       failedMigration,
       `CREATE TABLE ops.db01_forward_repair_probe (
@@ -626,7 +658,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_EXECUTION_FAILED",
     );
-    await assertProbeAndLedgerState(client, false, 5);
+    await assertProbeAndLedgerState(client, false, 6);
 
     await rm(failedMigration);
     await writeFile(
@@ -640,7 +672,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const defectRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       defectRun.applied.map(({ version }) => version),
-      [6],
+      [7],
     );
 
     await writeFile(
@@ -654,7 +686,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const repairRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       repairRun.applied.map(({ version }) => version),
-      [7],
+      [8],
     );
 
     const definitions = await loadMigrationDefinitions(directory);
@@ -690,7 +722,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_HISTORY_DIVERGED",
     );
-    await assertProbeAndLedgerState(client, true, 7);
+    await assertProbeAndLedgerState(client, true, 8);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -895,8 +927,14 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
     `INSERT INTO meta.package_revisions
        (package_revision_id, package_id, version, manifest_digest, manifest,
         created_by_principal_id)
-     VALUES ($1, $2, '1.0.0', $3, '{"schemaVersion":1}'::jsonb, $4)`,
-    [db01Ids.packageRevision, db01Ids.package, db01Digests.package, db01Ids.principal],
+     VALUES ($1, $2, '1.0.0', $3, $4::jsonb, $5)`,
+    [
+      db01Ids.packageRevision,
+      db01Ids.package,
+      db01Digests.package,
+      JSON.stringify(db01PackageManifest(db01Digests.package)),
+      db01Ids.principal,
+    ],
   );
   await client.query(
     `INSERT INTO meta.package_installations
@@ -905,18 +943,107 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
     [db01Ids.installation, db01Ids.project, db01Ids.package],
   );
   await client.query(
+    `INSERT INTO meta.releases
+       (release_id, project_id, release_number, manifest_digest, target_channel_name,
+        created_by_principal_id)
+     VALUES ($1, $2, 2, $3, 'production', $4)`,
+    [db01Ids.packageRelease, db01Ids.project, db01Digests.other, db01Ids.principal],
+  );
+  await client.query(
+    `INSERT INTO meta.release_pins
+       (release_id, resource_id, revision_id, pin_order, family, content_digest)
+     VALUES ($1, $2, $3, 0, 'object_type', $4)`,
+    [db01Ids.packageRelease, db01Ids.resource, db01Ids.revision, db01Digests.revision],
+  );
+  await client.query(
     `INSERT INTO meta.package_installation_changes
        (change_id, installation_id, project_id, package_id, request_key,
-        target_package_revision_id, target_release_id)
-     VALUES ($1, $2, $3, $4, 'db01-package-request-0001', $5, $6)`,
+        target_package_revision_id, target_release_id, operation,
+        previous_package_revision_id, previous_release_id, request_digest,
+        input_bindings, input_bindings_digest, compatibility_report,
+        created_by_principal_id)
+     VALUES ($1, $2, $3, $4, 'db01-package-request-0001', $5, $6,
+             'install', NULL, NULL, $7, '[]'::jsonb, $8, $9::jsonb, $10)`,
     [
       db01Ids.change,
       db01Ids.installation,
       db01Ids.project,
       db01Ids.package,
       db01Ids.packageRevision,
-      db01Ids.release,
+      db01Ids.packageRelease,
+      db01Digests.other,
+      db01Digests.artifact,
+      JSON.stringify({
+        schemaVersion: 1,
+        reportId: "00000000-0000-4000-8000-000000000306",
+        baselineDigest: `sha256:${"0".repeat(64)}`,
+        candidateDigest: db01Digests.package,
+        outcome: "compatible",
+        findings: [],
+      }),
+      db01Ids.principal,
     ],
+  );
+  await client.query(
+    `INSERT INTO meta.validation_reports
+       (report_id, subject_type, subject_id, release_id, subject_digest,
+        validation_context_digest, validator_version, valid, issues)
+     VALUES ($1, 'release', $2, $2, $3, $3,
+             'metadata-release-g2-01-v1', TRUE, '[]'::jsonb)`,
+    [db01Ids.packageReleaseValidationReport, db01Ids.packageRelease, db01Digests.other],
+  );
+  await client.query(
+    `UPDATE meta.releases
+     SET state = 'staging', staged_from_release_id = $2,
+         staged_from_activation_id = $3, staged_channel_control_sequence = 1,
+         staged_validation_context_digest = $4, staged_at = clock_timestamp(),
+         changed_at = clock_timestamp()
+     WHERE release_id = $1`,
+    [db01Ids.packageRelease, db01Ids.release, db01Ids.activation, db01Digests.other],
+  );
+  await client.query(
+    `UPDATE meta.releases SET state = 'ready', changed_at = clock_timestamp()
+     WHERE release_id = $1`,
+    [db01Ids.packageRelease],
+  );
+  await client.query("BEGIN");
+  await client.query(
+    `INSERT INTO meta.runtime_activations
+       (activation_id, release_id, activation_digest)
+     VALUES ($1, $2, $3)`,
+    [db01Ids.packageActivation, db01Ids.packageRelease, db01Digests.artifact],
+  );
+  await client.query(
+    `INSERT INTO meta.release_serving_heads
+       (release_id, activation_id, control_sequence)
+     VALUES ($1, $2, 1)`,
+    [db01Ids.packageRelease, db01Ids.packageActivation],
+  );
+  await client.query(
+    `UPDATE meta.releases
+     SET state = 'published', published_by_principal_id = $2,
+         published_at = clock_timestamp(), changed_at = clock_timestamp()
+     WHERE release_id = $1`,
+    [db01Ids.packageRelease, db01Ids.principal],
+  );
+  await client.query(
+    `UPDATE meta.releases SET state = 'superseded', changed_at = clock_timestamp()
+     WHERE release_id = $1`,
+    [db01Ids.release],
+  );
+  await client.query(
+    `UPDATE meta.release_channels
+     SET release_id = $2, activation_id = $3,
+         control_sequence = control_sequence + 1, changed_at = clock_timestamp()
+     WHERE project_id = $1 AND channel_name = 'production'`,
+    [db01Ids.project, db01Ids.packageRelease, db01Ids.packageActivation],
+  );
+  await client.query(
+    `UPDATE meta.package_installations
+     SET active_package_revision_id = $2, active_release_id = $3,
+         control_sequence = control_sequence + 1, changed_at = clock_timestamp()
+     WHERE installation_id = $1`,
+    [db01Ids.installation, db01Ids.packageRevision, db01Ids.packageRelease],
   );
   await client.query(
     `UPDATE meta.package_installation_changes
@@ -924,13 +1051,7 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
      WHERE change_id = $1`,
     [db01Ids.change],
   );
-  await client.query(
-    `UPDATE meta.package_installations
-     SET active_package_revision_id = $2, active_release_id = $3,
-         control_sequence = control_sequence + 1, changed_at = clock_timestamp()
-     WHERE installation_id = $1`,
-    [db01Ids.installation, db01Ids.packageRevision, db01Ids.release],
-  );
+  await client.query("COMMIT");
   await client.query(
     `INSERT INTO meta.artifact_references
        (artifact_reference_id, digest, media_type, source_kind, source_id)
@@ -963,7 +1084,7 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
   );
   assert.deepEqual(activePointers.rows[0], {
     active_package_revision_id: db01Ids.packageRevision,
-    active_release_id: db01Ids.release,
+    active_release_id: db01Ids.packageRelease,
     control_sequence: "1",
   });
 }
@@ -1012,8 +1133,14 @@ async function assertDb01Uniqueness(client: pg.Client): Promise<void> {
     `INSERT INTO meta.package_revisions
        (package_revision_id, package_id, version, manifest_digest, manifest,
         created_by_principal_id)
-     VALUES ($1, $2, '1.0.0', $3, '{}'::jsonb, $4)`,
-    [db01Ids.duplicatePackageRevision, db01Ids.package, db01Digests.other, db01Ids.principal],
+     VALUES ($1, $2, '1.0.0', $3, $4::jsonb, $5)`,
+    [
+      db01Ids.duplicatePackageRevision,
+      db01Ids.package,
+      db01Digests.other,
+      JSON.stringify(db01PackageManifest(db01Digests.other)),
+      db01Ids.principal,
+    ],
     "23505",
   );
   await assertQueryError(
@@ -1021,7 +1148,7 @@ async function assertDb01Uniqueness(client: pg.Client): Promise<void> {
     `INSERT INTO meta.release_channels
        (project_id, channel_name, release_id, activation_id, control_sequence)
      VALUES ($1, 'production', $2, $3, 1)`,
-    [db01Ids.project, db01Ids.release, db01Ids.activation],
+    [db01Ids.project, db01Ids.packageRelease, db01Ids.packageActivation],
     "23505",
   );
   await assertQueryError(

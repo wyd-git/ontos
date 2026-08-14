@@ -61,6 +61,13 @@ import {
 } from "@ontos/metadata-domain";
 import type pg from "pg";
 
+export {
+  PostgresPackageStore,
+  sha256CanonicalText,
+  type PackagePrepareFaultPoint,
+  type PostgresPackageStoreOptions,
+} from "./package.ts";
+
 export type UuidFactory = () => string;
 
 interface PrincipalRow {

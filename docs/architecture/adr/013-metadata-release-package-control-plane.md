@@ -1,7 +1,7 @@
 # ADR-013：Metadata、Release、Package 与管理授权控制面
 
 - 状态：Accepted for G2-01-01
-- 实现状态：DB-01、Project/RBAC、Resource Revision、Definition/Dependency/Compatibility Gate 与 Release Lifecycle 已于 G2-01-03～08 落地；Package/API 仍 OPEN
+- 实现状态：DB-01、Project/RBAC、Resource Revision、Definition/Dependency/Compatibility Gate、Release Lifecycle 与 Package Lifecycle 已于 G2-01-03～09 落地；Admin HTTP/OIDC 仍 OPEN
 - 日期：2026-08-14
 - Owner：Tech Lead / Database / Security
 - 决策范围：DB-01 候选表、不可变 Revision/Release/Package 状态、原子 Publish、零成员 Activation、管理 RBAC、锁顺序与向前恢复
@@ -132,7 +132,7 @@ PROJECT_CONTROL
 
 Publish 使用 Project、Channel、Release、Pins、Serving Heads；DB-02 Snapshot Cutover 使用 Project、Snapshot Group、Serving Heads。两者可以跳过不需要的锁，但禁止逆序或重复取得低等级锁。Project `publication_sequence`/控制 CAS 处理 Publish 与 Refresh 的计划陈旧；锁处理提交期间的并发写。
 
-状态 Harness 对 Publish 的 Release、Serving Head、Channel、Package、Epoch 五个边界逐一注入失败，并证明调用者持有的已提交状态未改变。真实 PostgreSQL 行锁、隔离级别、Deadlock 和连接中断仍必须由 G2-01-03/08 Integration 证明。
+状态 Harness 对 Publish 的 Release、Serving Head、Channel、Package、Epoch 边界逐一注入失败，并证明调用者持有的已提交状态未改变。G2-01-08/09 的真实 PostgreSQL 16 Integration 已分别覆盖 Release Publish 和 Package Prepare/Publish 事务的全部故障注入点；连接中断与长时间容量仍由最终运维 Gate 持续验证。
 
 ## 6. 最小管理授权与 G2-03 边界
 
@@ -188,6 +188,6 @@ G2-03 才拥有 OIDC Claim Mapping 业务规则、Delegation、Object/Property/L
 
 `tools/runtime-activation/` 已验证 R1/A0 → R2/A1 → R2/A2 与并发 R3 的兼容 seam，并保持历史 Manifest/Plan/Activation 不变。
 
-`migrations/db-00/0002_metadata_control_plane.sql`、`0003_resource_revision_guards.sql`、`0004_dependency_validation_guards.sql`、`0005_release_lifecycle_guards.sql` 和真实 PostgreSQL 16 Integration 已验证 DB-01 的 18 张表、Owner/Grant、唯一约束、初始/前向状态、Published 事实不可变、验证/Stage 上下文不可变、服务器提取边一致性、Release/Activation/Channel 最终一致、无隐式 Worker/Ops 写权、并发 Migration 与故障后向前修复。Project/RBAC/Epoch、Resource/Draft Revision、Definition Validator、Dependency Graph、Compatibility 与 Release Lifecycle 已有正式 Domain/Application/Repository 实现；详细见 [G2-01-04 Evidence](../../evidence/g2-01-04-project-rbac-epoch.md)、[G2-01-05 Evidence](../../evidence/g2-01-05-resource-revision-lifecycle.md)、[G2-01-06 Evidence](../../evidence/g2-01-06-definition-validation-dependency-graph.md)、[G2-01-07 Evidence](../../evidence/g2-01-07-compatibility-engine.md)和 [G2-01-08 Evidence](../../evidence/g2-01-08-release-lifecycle.md)。
+`migrations/db-00/0002_metadata_control_plane.sql`、`0003_resource_revision_guards.sql`、`0004_dependency_validation_guards.sql`、`0005_release_lifecycle_guards.sql`、`0006_package_lifecycle_guards.sql` 和真实 PostgreSQL 16 Integration 已验证 DB-01 的 18 张表、Owner/Grant、唯一约束、初始/前向状态、Published 事实不可变、验证/Stage 上下文不可变、服务器提取边一致性、Release/Activation/Channel/Installation 最终一致、无隐式 Worker/Ops 写权、并发 Migration 与故障后向前修复。Project/RBAC/Epoch、Resource/Draft Revision、Definition Validator、Dependency Graph、Compatibility、Release 与 Package Lifecycle 已有正式 Domain/Application/Repository 实现；详细见 [G2-01-04 Evidence](../../evidence/g2-01-04-project-rbac-epoch.md)、[G2-01-05 Evidence](../../evidence/g2-01-05-resource-revision-lifecycle.md)、[G2-01-06 Evidence](../../evidence/g2-01-06-definition-validation-dependency-graph.md)、[G2-01-07 Evidence](../../evidence/g2-01-07-compatibility-engine.md)、[G2-01-08 Evidence](../../evidence/g2-01-08-release-lifecycle.md) 和 [G2-01-09 Evidence](../../evidence/g2-01-09-package-lifecycle.md)。
 
-当前仍不宣称已实现 HTTP/OIDC 或真实 Package 展开/安装。Release Publish 已使用服务器选择的 Published Baseline、不可变 Validation Report、Stage CAS 和真实短 PostgreSQL 事务；Package Pointer 原子切换仍由 G2-01-09 负责。数据库 Trigger 保住最终行级不变量，不代替 G2-01-09～10 的 Package 事务与网络入口证据。
+当前仍不宣称已实现 HTTP/OIDC。Release Publish 已使用服务器选择的 Published Baseline、不可变 Validation Report、Stage CAS 和真实短 PostgreSQL 事务；Package 展开、兼容报告、Pending Change 和 Installation/Package Revision/Channel 三者原子切换已由 G2-01-09 落地。数据库 Trigger 保住最终行级不变量，不代替 G2-01-10 的网络入口证据。

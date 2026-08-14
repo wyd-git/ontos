@@ -2,7 +2,7 @@
 
 - 状态：Active for G2-01-03
 - 适用版本：PostgreSQL 16
-- Migration：`0001_foundation.sql` → `0002_metadata_control_plane.sql` → `0003_resource_revision_guards.sql` → `0004_dependency_validation_guards.sql`
+- Migration：`0001_foundation.sql` → `0002_metadata_control_plane.sql` → `0003_resource_revision_guards.sql` → `0004_dependency_validation_guards.sql` → `0005_release_lifecycle_guards.sql` → `0006_package_lifecycle_guards.sql`
 - Owner：Database / Platform
 
 ## 1. 这次迁移会产生什么
@@ -38,7 +38,7 @@ FROM ontos_migration.schema_migrations
 ORDER BY version;
 ```
 
-预期有且仅有连续的 `0001 foundation`、`0002 metadata_control_plane`、`0003 resource_revision_guards` 和 `0004 dependency_validation_guards`；重复执行不应新增账本行。Runtime 账号不应能运行这条账本查询。
+预期有且仅有连续的 `0001 foundation`、`0002 metadata_control_plane`、`0003 resource_revision_guards`、`0004 dependency_validation_guards`、`0005 release_lifecycle_guards` 和 `0006 package_lifecycle_guards`；重复执行不应新增账本行。Runtime 账号不应能运行这条账本查询。
 
 仓库级验证命令：
 
@@ -53,7 +53,7 @@ npm run test:database
 
 - Preflight 失败：数据库不应出现新 Role、Schema 或账本；修正版本、扩展或部署身份后重试。
 - `0002` 未提交前失败：整个 Migration 回滚，不应留下部分表、Trigger 或 `0002` 账本行；修正同一未提交文件后重试。
-- 已提交 Migration 发现语义缺陷：不改 Hash，不做自动 Down Migration；新增更高版本向前修复。`0003` 加固 Revision 父链与 Published Dependency 插入窗口，`0004` 增加验证上下文摘要、服务器边一致性和 Draft→Validated 守卫。
+- 已提交 Migration 发现语义缺陷：不改 Hash，不做自动 Down Migration；新增更高版本向前修复。`0003` 加固 Revision 父链与 Published Dependency 插入窗口，`0004` 增加验证上下文摘要、服务器边一致性和 Draft→Validated 守卫，`0005` 加固 Release Stage/Publish，`0006` 加固 Package Change 与 Installation/Release 原子激活。
 - 账本 Hash、名称或顺序与仓库不一致：Runner 以 `DB_MIGRATION_HISTORY_DIVERGED` 停止；先确认目标库和仓库版本，不要跳过检查。
 
 ## 5. 权限故障判断
