@@ -60,5 +60,6 @@ Domain、Application 与 Contracts 使用外部模块 allowlist，而不是已�
 6. 生产模块依赖 Testkit；
 7. 未知基础设施 SDK 绕过包名黑名单；
 8. 公共包导出内部子路径。
+9. 任意正式 Workspace 运行时导入冻结的 `spikes/g1` 源码。
 
 策略后续可以通过 ADR 收紧，但不能在普通业务 PR 中静默放宽。任何例外必须说明为何不能通过公开 Port 解决，并提供删除期限。

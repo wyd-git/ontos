@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "objectType": "EntityA",
+  "cases": [
+    {
+      "id": "different-property-base-change",
+      "basis": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "incoming": {
+        "snapshotId": "v2",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha renamed", "status": "OPEN", "owner": "u1" }
+      },
+      "operations": [
+        {
+          "seq": 1,
+          "type": "SET_PROPERTY",
+          "propertyName": "status",
+          "value": "IN_PROGRESS",
+          "basisSnapshotId": "v1"
+        }
+      ],
+      "expected": {
+        "properties": { "name": "alpha renamed", "status": "IN_PROGRESS", "owner": "u1" },
+        "lifecycleState": "active",
+        "conflictState": null
+      }
+    },
+    {
+      "id": "same-property-base-change",
+      "basis": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "incoming": {
+        "snapshotId": "v2",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "CLOSED", "owner": "u1" }
+      },
+      "operations": [
+        {
+          "seq": 1,
+          "type": "SET_PROPERTY",
+          "propertyName": "status",
+          "value": "IN_PROGRESS",
+          "basisSnapshotId": "v1"
+        }
+      ],
+      "expected": {
+        "properties": { "name": "alpha", "status": "IN_PROGRESS", "owner": "u1" },
+        "lifecycleState": "active",
+        "conflictState": "BASE_CHANGED_UNDER_OVERRIDE",
+        "conflicts": [
+          {
+            "type": "BASE_CHANGED_UNDER_OVERRIDE",
+            "propertyName": "status",
+            "basisSnapshotId": "v1",
+            "basisValue": "OPEN",
+            "incomingValue": "CLOSED",
+            "overlayValue": "IN_PROGRESS",
+            "operationSeq": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "source-removed-with-overlay",
+      "basis": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "incoming": null,
+      "operations": [
+        {
+          "seq": 1,
+          "type": "SET_PROPERTY",
+          "propertyName": "status",
+          "value": "IN_PROGRESS",
+          "basisSnapshotId": "v1"
+        }
+      ],
+      "expected": {
+        "properties": { "name": "alpha", "status": "IN_PROGRESS", "owner": "u1" },
+        "lifecycleState": "source_removed",
+        "conflictState": "BASE_OBJECT_REMOVED"
+      }
+    },
+    {
+      "id": "clear-property",
+      "basis": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "incoming": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "operations": [
+        { "seq": 1, "type": "CLEAR_PROPERTY", "propertyName": "owner", "basisSnapshotId": "v1" }
+      ],
+      "expected": {
+        "properties": { "name": "alpha", "status": "OPEN", "owner": null },
+        "lifecycleState": "active",
+        "conflictState": null
+      }
+    },
+    {
+      "id": "remove-override",
+      "basis": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "incoming": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "operations": [
+        { "seq": 1, "type": "CLEAR_PROPERTY", "propertyName": "owner", "basisSnapshotId": "v1" },
+        { "seq": 2, "type": "REMOVE_OVERRIDE", "propertyName": "owner", "basisSnapshotId": "v1" }
+      ],
+      "expected": {
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" },
+        "lifecycleState": "active",
+        "conflictState": null
+      }
+    },
+    {
+      "id": "tombstone-restore-latest-base",
+      "basis": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "incoming": {
+        "snapshotId": "v2",
+        "primaryKey": "A-1",
+        "properties": { "name": "new alpha", "status": "CLOSED", "owner": "u9" }
+      },
+      "operations": [
+        { "seq": 1, "type": "TOMBSTONE_OBJECT", "basisSnapshotId": "v1" },
+        { "seq": 2, "type": "RESTORE_OBJECT", "basisSnapshotId": "v2" }
+      ],
+      "expected": {
+        "properties": { "name": "new alpha", "status": "CLOSED", "owner": "u9" },
+        "lifecycleState": "active",
+        "conflictState": null
+      }
+    },
+    {
+      "id": "overlay-created-identity-collision",
+      "basis": null,
+      "incoming": {
+        "snapshotId": "v2",
+        "primaryKey": "A-9",
+        "properties": { "name": "source", "status": "OPEN" }
+      },
+      "operations": [
+        {
+          "seq": 1,
+          "type": "CREATE_OBJECT",
+          "primaryKey": "A-9",
+          "value": { "name": "operator", "status": "IN_PROGRESS" },
+          "basisSnapshotId": "empty"
+        }
+      ],
+      "expected": {
+        "properties": { "name": "operator", "status": "IN_PROGRESS" },
+        "lifecycleState": "active",
+        "conflictState": "IDENTITY_COLLISION"
+      }
+    },
+    {
+      "id": "high-watermark-catch-up",
+      "basis": {
+        "snapshotId": "v1",
+        "objects": [
+          { "primaryKey": "A-1", "properties": { "status": "OPEN" } },
+          { "primaryKey": "A-2", "properties": { "owner": "u2" } }
+        ]
+      },
+      "incoming": {
+        "snapshotId": "v2",
+        "objects": [
+          { "primaryKey": "A-1", "properties": { "status": "OPEN" } },
+          { "primaryKey": "A-2", "properties": { "owner": "u2" } }
+        ]
+      },
+      "operations": [
+        {
+          "seq": 1,
+          "type": "SET_PROPERTY",
+          "primaryKey": "A-1",
+          "propertyName": "status",
+          "value": "IN_PROGRESS",
+          "basisSnapshotId": "v1"
+        },
+        {
+          "seq": 2,
+          "type": "SET_PROPERTY",
+          "primaryKey": "A-2",
+          "propertyName": "owner",
+          "value": "u9",
+          "basisSnapshotId": "v1"
+        }
+      ],
+      "stagingWatermark": 1,
+      "catchUpWatermark": 2,
+      "expected": {
+        "objects": [
+          { "primaryKey": "A-1", "properties": { "status": "IN_PROGRESS" } },
+          { "primaryKey": "A-2", "properties": { "owner": "u9" } }
+        ],
+        "overlayWatermark": 2
+      }
+    },
+    {
+      "id": "provenance-only-change",
+      "basis": {
+        "snapshotId": "v1",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" },
+        "objectVersion": 1
+      },
+      "incoming": {
+        "snapshotId": "v2",
+        "primaryKey": "A-1",
+        "properties": { "name": "alpha", "status": "OPEN", "owner": "u1" }
+      },
+      "operations": [],
+      "expected": { "objectVersion": 1, "provenanceSnapshotId": "v2", "conflictState": null }
+    }
+  ]
+}

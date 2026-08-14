@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "releaseRevision": "benchmark-r1",
+  "objectTypes": ["EntityA", "EntityB", "EntityC", "EntityD", "EntityE"],
+  "linkTypes": [
+    { "apiName": "LinkAB", "sourceType": "EntityA", "targetType": "EntityB" },
+    { "apiName": "LinkBC", "sourceType": "EntityB", "targetType": "EntityC" },
+    { "apiName": "LinkCD", "sourceType": "EntityC", "targetType": "EntityD" },
+    { "apiName": "LinkDE", "sourceType": "EntityD", "targetType": "EntityE" },
+    { "apiName": "LinkEA", "sourceType": "EntityE", "targetType": "EntityA" }
+  ],
+  "cases": [
+    {
+      "id": "primary-key-get",
+      "operation": "search",
+      "objectType": "EntityA",
+      "policy": "actor_all",
+      "request": {
+        "select": ["id", "name", "status"],
+        "where": { "property": "id", "op": "eq", "value": "EA-010000" },
+        "page": { "size": 1 }
+      },
+      "referenceThresholdMs": 300
+    },
+    {
+      "id": "status-time-list",
+      "operation": "search",
+      "objectType": "EntityA",
+      "policy": "actor_all",
+      "request": {
+        "select": ["id", "name", "status", "updatedAt"],
+        "where": {
+          "and": [
+            { "property": "status", "op": "in", "value": ["OPEN", "BLOCKED"] },
+            { "property": "updatedAt", "op": "gte", "value": "2025-06-01T00:00:00Z" }
+          ]
+        },
+        "orderBy": [{ "property": "updatedAt", "direction": "desc" }],
+        "page": { "size": 50 }
+      },
+      "referenceThresholdMs": 1000
+    },
+    {
+      "id": "policy-region-list",
+      "operation": "search",
+      "objectType": "EntityD",
+      "policy": "actor_region_east",
+      "request": {
+        "select": ["id", "status", "region"],
+        "where": { "property": "status", "op": "eq", "value": "OPEN" },
+        "page": { "size": 50 }
+      },
+      "referenceThresholdMs": 1000
+    },
+    {
+      "id": "name-prefix",
+      "operation": "search",
+      "objectType": "EntityC",
+      "policy": "actor_all",
+      "request": {
+        "select": ["id", "name"],
+        "where": { "property": "name", "op": "prefix", "value": "EntityC record 19" },
+        "orderBy": [{ "property": "id", "direction": "asc" }],
+        "page": { "size": 50 }
+      },
+      "referenceThresholdMs": 1000
+    },
+    {
+      "id": "name-contains",
+      "operation": "search",
+      "objectType": "EntityC",
+      "policy": "actor_all",
+      "request": {
+        "select": ["id", "name"],
+        "where": { "property": "name", "op": "contains", "value": "record 199" },
+        "page": { "size": 50 }
+      },
+      "referenceThresholdMs": 1000
+    },
+    {
+      "id": "amount-range",
+      "operation": "search",
+      "objectType": "EntityB",
+      "policy": "actor_all",
+      "request": {
+        "select": ["id", "amount"],
+        "where": {
+          "and": [
+            { "property": "amount", "op": "gte", "value": "10000" },
+            { "property": "amount", "op": "lt", "value": "10500" }
+          ]
+        },
+        "orderBy": [{ "property": "amount", "direction": "asc" }],
+        "page": { "size": 50 }
+      },
+      "referenceThresholdMs": 1000
+    },
+    {
+      "id": "tags-contains-any",
+      "operation": "search",
+      "objectType": "EntityE",
+      "policy": "actor_all",
+      "request": {
+        "select": ["id", "tags"],
+        "where": { "property": "tags", "op": "containsAny", "value": ["tag-7"] },
+        "page": { "size": 50 }
+      },
+      "referenceThresholdMs": 1000
+    },
+    {
+      "id": "policy-aggregate",
+      "operation": "aggregate",
+      "objectType": "EntityB",
+      "policy": "actor_region_east",
+      "request": {
+        "groupBy": "status",
+        "measures": [
+          { "op": "count", "as": "objects" },
+          { "op": "avg", "property": "amount", "as": "averageAmount" }
+        ]
+      },
+      "referenceThresholdMs": 2000
+    },
+    {
+      "id": "one-hop",
+      "operation": "traverse",
+      "startObjectType": "EntityA",
+      "startPrimaryKey": "EA-010003",
+      "policy": "actor_all",
+      "linkPolicy": "allow_all",
+      "request": {
+        "path": [{ "linkType": "LinkAB", "direction": "out" }],
+        "select": ["id", "name", "status"],
+        "pageSize": 50
+      },
+      "referenceThresholdMs": 300
+    },
+    {
+      "id": "two-hop",
+      "operation": "traverse",
+      "startObjectType": "EntityA",
+      "startPrimaryKey": "EA-010003",
+      "policy": "actor_all",
+      "linkPolicy": "allow_all",
+      "request": {
+        "path": [
+          { "linkType": "LinkAB", "direction": "out" },
+          { "linkType": "LinkBC", "direction": "out" }
+        ],
+        "select": ["id", "name", "status"],
+        "pageSize": 50
+      },
+      "referenceThresholdMs": 1500
+    }
+  ]
+}

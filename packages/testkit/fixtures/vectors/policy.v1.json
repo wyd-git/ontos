@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "entryPoints": [
+    "objectApi",
+    "sdk",
+    "functionContext",
+    "actionTarget",
+    "exportAdapter",
+    "automationAdapter",
+    "aiToolAdapter"
+  ],
+  "policies": {
+    "actor_all": {
+      "allowObjectType": true,
+      "rowPredicate": null,
+      "defaultPropertyDecision": "allow",
+      "propertyDecisions": {},
+      "actionsAllowed": true
+    },
+    "actor_region_east": {
+      "allowObjectType": true,
+      "rowPredicate": { "property": "region", "op": "eq", "value": "EAST" },
+      "defaultPropertyDecision": "allow",
+      "propertyDecisions": {},
+      "actionsAllowed": true
+    },
+    "actor_masked": {
+      "allowObjectType": true,
+      "rowPredicate": null,
+      "defaultPropertyDecision": "allow",
+      "propertyDecisions": { "amount": "mask", "sensitiveCode": "deny" },
+      "actionsAllowed": true
+    },
+    "service_reader": {
+      "allowObjectType": true,
+      "rowPredicate": null,
+      "defaultPropertyDecision": "allow",
+      "propertyDecisions": { "amount": "mask" },
+      "actionsAllowed": false
+    }
+  },
+  "cases": [
+    {
+      "id": "delegated-strict-intersection",
+      "operation": "intersect",
+      "input": { "servicePolicy": "service_reader", "userPolicy": "actor_region_east" },
+      "expected": {
+        "rowPredicate": { "property": "region", "op": "eq", "value": "EAST" },
+        "propertyDecisions": { "amount": "mask" },
+        "actionsAllowed": false,
+        "delegation": ["service_reader", "actor_region_east"]
+      }
+    },
+    {
+      "id": "all-entry-points-share-search-policy",
+      "operation": "search",
+      "input": {
+        "actor": "actor_region_east",
+        "objectType": "EntityA",
+        "select": ["id", "name", "region"],
+        "where": { "property": "status", "op": "eq", "value": "OPEN" }
+      },
+      "expected": {
+        "sameCompiledQuery": true,
+        "sameRows": true,
+        "auditEveryEntryPoint": true,
+        "outcome": "allow"
+      }
+    },
+    {
+      "id": "sanitizer-deny-and-mask",
+      "operation": "sanitize",
+      "input": {
+        "actor": "actor_masked",
+        "row": {
+          "id": "EA-000001",
+          "name": "record",
+          "amount": "100.00",
+          "sensitiveCode": "SECRET-RAW"
+        }
+      },
+      "expected": {
+        "row": { "id": "EA-000001", "name": "record", "amount": null },
+        "redactedProperties": ["amount"],
+        "auditContainsSensitiveValue": false
+      }
+    },
+    {
+      "id": "action-target-guessed-key-fails-closed",
+      "operation": "loadActionTarget",
+      "input": { "actor": "actor_region_east", "objectType": "EntityA", "primaryKey": "EA-999999" },
+      "expected": { "errorCode": "OBJECT_NOT_ACCESSIBLE", "objectReturned": false }
+    },
+    {
+      "id": "traversal-shares-object-and-link-policy",
+      "operation": "traverse",
+      "input": {
+        "actor": "actor_region_east",
+        "startObjectType": "EntityA",
+        "startPrimaryKey": "EA-000273",
+        "path": [{ "linkType": "LinkAB", "direction": "out" }],
+        "select": ["id", "name", "region"]
+      },
+      "expected": {
+        "sameCompiledQuery": true,
+        "sameRows": true,
+        "auditEveryEntryPoint": true,
+        "outcome": "allow"
+      }
+    },
+    {
+      "id": "link-denial-precedes-execution",
+      "operation": "traverse",
+      "input": {
+        "actor": "actor_all",
+        "linkPolicy": { "allowLinkType": false },
+        "path": [{ "linkType": "LinkAB", "direction": "out" }]
+      },
+      "expected": { "errorCode": "RESOURCE_FORBIDDEN", "queryExecuted": false }
+    },
+    {
+      "id": "explicit-link-policy-resolver-required",
+      "operation": "createGateway",
+      "input": { "hasObjectPolicyResolver": true, "hasLinkPolicyResolver": false },
+      "expected": { "errorCode": "INVALID_GATEWAY" }
+    },
+    {
+      "id": "traversal-sentinel-pagination",
+      "operation": "traverse",
+      "input": { "pageSize": 2, "rows": [{ "id": "EB-1" }, { "id": "EB-2" }, { "id": "EB-3" }] },
+      "expected": { "rowIds": ["EB-1", "EB-2"], "rowCount": 2, "hasNextPage": true }
+    }
+  ]
+}

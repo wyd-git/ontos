@@ -35,5 +35,6 @@
     "testkit": ["*"],
     "tooling": ["*"]
   },
+  "forbiddenRepositoryImportRoots": ["spikes/g1"],
   "forbidDeepWorkspaceImports": true
 }

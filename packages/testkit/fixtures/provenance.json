@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "sourceRoot": "spikes/g1",
+  "sourceFingerprint": {
+    "algorithm": "sha256-path-nul-bytes-nul",
+    "digest": "sha256:dff360ddb4c6683ab0481eb6d3d5f122aea6ad4e8039c51e57634ba894bd4aa1",
+    "fileCount": 47
+  },
+  "groups": {
+    "generator": {
+      "groupDigest": "sha256:e5a38585a2dfaa919a57cd67be1f81dcceaa666312bfa3ac7b4daae354a0a17d",
+      "sources": [
+        {
+          "path": "sql/010_seed.sql",
+          "sha256": "1f16d3e6976c7d5d5b4c95e87eb3eefa19ad59e69e2dc3a265070a82da745681"
+        },
+        {
+          "path": "sql/030_verify.sql",
+          "sha256": "326dfc06ecafc42a2de473de9769d5613dada3f60a2ec021e457f8d44572d053"
+        },
+        {
+          "path": "src/fixtures/benchmark-schema.js",
+          "sha256": "65921c1e365776cefa2ebb041ef8640d4b5f80c048ab379d078a5aca96c83949"
+        }
+      ],
+      "targets": [
+        {
+          "path": "src/generator.ts",
+          "sha256": "dea7e26b84bbe90a8d83e14e3a9c7ededeb1a18c5b57074e37ab1c03b070d5bc"
+        }
+      ],
+      "intentionalTransforms": [
+        "Replace PostgreSQL generate_series and storage writes with a pure streaming Iterable.",
+        "Preserve the default-seed identifiers and formulas while allowing a stable seed offset for additional deterministic datasets.",
+        "Remove database URL, role, password, fixed port and committed generated-output assumptions."
+      ]
+    },
+    "packages": {
+      "groupDigest": "sha256:cc90f7297c1e411017c307f1eae290fd3e2e89ae2031377ffa2a1e9774ed05ca",
+      "sources": [
+        {
+          "path": "packages/commerce/package.json",
+          "sha256": "12cebc3d1ae3e25ab3bd8ef70cf3b020481652a3ba74e6fb1db4342eb11ee08c"
+        },
+        {
+          "path": "packages/work-management/package.json",
+          "sha256": "dcae4da2aea7d9446989d54445c976158c9356095b9eb53d92d9b32f102944da"
+        }
+      ],
+      "targets": [
+        {
+          "path": "fixtures/packages/commerce.v1.json",
+          "sha256": "63a7c687aa8a69e52d624e3d2a13d25f1d663783e8e39d55f4451beeaba124a7"
+        },
+        {
+          "path": "fixtures/packages/work-management.v1.json",
+          "sha256": "cc38faa3f9d9adb0861cd936804daed00524b4599db207dd37c87abd55faf5c0"
+        }
+      ],
+      "intentionalTransforms": [
+        "No JSON semantic transform; copy the two manifests and normalize formatting whitespace with the repository formatter."
+      ]
+    },
+    "query": {
+      "groupDigest": "sha256:62c0be70852444df816604026eec2d4ae8a5fc9cb5e9c21bc9cf874f9b45c131",
+      "sources": [
+        {
+          "path": "src/bench/query-corpus.js",
+          "sha256": "8fe587873193069767eeec51d1eda9f94670237bb4eaf516f45b290715d8c7f1"
+        },
+        {
+          "path": "src/fixtures/benchmark-schema.js",
+          "sha256": "65921c1e365776cefa2ebb041ef8640d4b5f80c048ab379d078a5aca96c83949"
+        }
+      ],
+      "targets": [
+        {
+          "path": "fixtures/vectors/query-corpus.v1.json",
+          "sha256": "007de65779171fce3b91e866c95c6d3c2d9dadae0fcd8cd65c79440ea346d79b"
+        }
+      ],
+      "intentionalTransforms": [
+        "Replace build functions and G1 compiler imports with data-only operation requests.",
+        "Keep G1 latency thresholds only as reference metadata; G2 environments must establish their own blocking budgets."
+      ]
+    },
+    "overlay": {
+      "groupDigest": "sha256:2d089d120e605d73a5b526396756f50dc01314ec88908bb798a26aa7cdda815e",
+      "sources": [
+        {
+          "path": "src/overlay/reference-model.js",
+          "sha256": "4b870b590628d575f09ae5cd37aa1c82070893e4a5c7daa85c72f7fa1eb55bf3"
+        },
+        {
+          "path": "test/overlay-reference-model.test.js",
+          "sha256": "2a6f71ffac89a14d1207a2d812777bf496300e64a13f2acb5cfe2d591ef04713"
+        }
+      ],
+      "targets": [
+        {
+          "path": "fixtures/vectors/overlay-conflict.v1.json",
+          "sha256": "db7b155b72bb5b043e9ccb6bfb110e81a0e4d9b65b85cc3cb5a12362406f8839"
+        }
+      ],
+      "intentionalTransforms": [
+        "Extract inputs and expected semantics as JSON; do not migrate or import the G1 reference-model implementation."
+      ]
+    },
+    "policy": {
+      "groupDigest": "sha256:451a48fca5ff9341dd953cbef2f552800d77d9f00d858f2308f29d36bda34ea8",
+      "sources": [
+        {
+          "path": "src/fixtures/benchmark-schema.js",
+          "sha256": "65921c1e365776cefa2ebb041ef8640d4b5f80c048ab379d078a5aca96c83949"
+        },
+        {
+          "path": "test/policy-intersection.test.js",
+          "sha256": "4f3065915cf5e6bca407b50da7e58677baac04be5d86acd3358bdc0e49c344e6"
+        },
+        {
+          "path": "test/policy-gateway.test.js",
+          "sha256": "eed391bfaae9c31d66370daeded87ea053d4b5644e13d441a375b07fbdf40870"
+        }
+      ],
+      "targets": [
+        {
+          "path": "fixtures/vectors/policy.v1.json",
+          "sha256": "fb2833eb57501a90ce0a6fca482550919b81c0fcb2e8f569043fffb31ae510e0"
+        }
+      ],
+      "intentionalTransforms": [
+        "Extract policy inputs, entry points and expected fail-closed outcomes without migrating the G1 gateway or compiler."
+      ]
+    },
+    "compatibility": {
+      "groupDigest": "sha256:8a49a1c60f27912c7f2fb2ed1aeedd0384f86543d2f9a866e47d45e0d1546802",
+      "sources": [
+        {
+          "path": "packages/commerce/package.json",
+          "sha256": "12cebc3d1ae3e25ab3bd8ef70cf3b020481652a3ba74e6fb1db4342eb11ee08c"
+        },
+        {
+          "path": "packages/work-management/package.json",
+          "sha256": "dcae4da2aea7d9446989d54445c976158c9356095b9eb53d92d9b32f102944da"
+        },
+        {
+          "path": "test/package-manifest.test.js",
+          "sha256": "7be9a563775be95eddb689af687da2355907e8fdafcaa07ed8c352c83fecf646"
+        }
+      ],
+      "targets": [
+        {
+          "path": "fixtures/vectors/package-compatibility.v1.json",
+          "sha256": "f46cfb05164ad81953425ecc5fcf1d6a7112db2cf32a8845b961213b51cb6216"
+        }
+      ],
+      "intentionalTransforms": [
+        "Represent manifest mutations and expected compatibility codes as data without migrating the G1 release-store or runtime bridge."
+      ]
+    }
+  }
+}

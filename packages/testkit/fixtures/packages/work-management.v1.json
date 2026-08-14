@@ -1,0 +1,142 @@
+{
+  "packageApiName": "work_management_fixture",
+  "version": "1.0.0",
+  "namespace": "fixture.work",
+  "kernelContractVersion": "1",
+  "resources": {
+    "objectTypes": [
+      {
+        "apiName": "Site",
+        "primaryKey": "siteId",
+        "properties": {
+          "siteId": { "type": "string", "nullable": false },
+          "name": { "type": "string", "nullable": false },
+          "region": { "type": "string", "nullable": false }
+        }
+      },
+      {
+        "apiName": "Asset",
+        "primaryKey": "assetId",
+        "properties": {
+          "assetId": { "type": "string", "nullable": false },
+          "name": { "type": "string", "nullable": false },
+          "state": {
+            "type": "enum",
+            "nullable": false,
+            "values": ["AVAILABLE", "IN_USE", "OUT_OF_SERVICE"]
+          }
+        }
+      },
+      {
+        "apiName": "WorkItem",
+        "primaryKey": "workItemId",
+        "properties": {
+          "workItemId": { "type": "string", "nullable": false },
+          "title": { "type": "string", "nullable": false },
+          "status": { "type": "enum", "nullable": false, "values": ["OPEN", "ASSIGNED", "DONE"] }
+        }
+      },
+      {
+        "apiName": "Person",
+        "primaryKey": "personId",
+        "properties": {
+          "personId": { "type": "string", "nullable": false },
+          "displayName": { "type": "string", "nullable": false },
+          "team": { "type": "string", "nullable": true }
+        }
+      },
+      {
+        "apiName": "Inspection",
+        "primaryKey": "inspectionId",
+        "properties": {
+          "inspectionId": { "type": "string", "nullable": false },
+          "result": { "type": "enum", "nullable": true, "values": ["PASS", "FAIL"] },
+          "inspectedAt": { "type": "timestamp", "nullable": true }
+        }
+      }
+    ],
+    "linkTypes": [
+      {
+        "apiName": "siteAssets",
+        "sourceType": "Site",
+        "targetType": "Asset",
+        "cardinality": "one_to_many"
+      },
+      {
+        "apiName": "assetWorkItems",
+        "sourceType": "Asset",
+        "targetType": "WorkItem",
+        "cardinality": "one_to_many"
+      },
+      {
+        "apiName": "assigneeWorkItems",
+        "sourceType": "Person",
+        "targetType": "WorkItem",
+        "cardinality": "one_to_many"
+      },
+      {
+        "apiName": "assetInspections",
+        "sourceType": "Asset",
+        "targetType": "Inspection",
+        "cardinality": "one_to_many"
+      },
+      {
+        "apiName": "inspectionInspector",
+        "sourceType": "Inspection",
+        "targetType": "Person",
+        "cardinality": "many_to_one"
+      }
+    ],
+    "actions": [
+      {
+        "apiName": "assignWork",
+        "targetType": "WorkItem",
+        "handlerDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "risk": "required"
+      },
+      {
+        "apiName": "completeInspection",
+        "targetType": "Inspection",
+        "handlerDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "risk": "required"
+      },
+      {
+        "apiName": "changeAssetState",
+        "targetType": "Asset",
+        "handlerDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "risk": "required"
+      }
+    ],
+    "policies": [
+      {
+        "apiName": "workByRegion",
+        "objectType": "WorkItem",
+        "predicate": { "property": "status", "op": "in", "value": ["OPEN", "ASSIGNED", "DONE"] }
+      },
+      {
+        "apiName": "assetsVisible",
+        "objectType": "Asset",
+        "predicate": {
+          "property": "state",
+          "op": "in",
+          "value": ["AVAILABLE", "IN_USE", "OUT_OF_SERVICE"]
+        }
+      }
+    ],
+    "views": [
+      {
+        "apiName": "assetOverview",
+        "objectType": "Asset",
+        "fields": ["assetId", "name", "state"],
+        "actions": ["changeAssetState"]
+      },
+      {
+        "apiName": "workQueue",
+        "objectType": "WorkItem",
+        "fields": ["workItemId", "title", "status"],
+        "actions": ["assignWork"]
+      }
+    ]
+  },
+  "migrations": []
+}
