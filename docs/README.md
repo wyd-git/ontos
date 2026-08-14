@@ -10,7 +10,8 @@
 4. [G2-01 Metadata 任务包](delivery/g2-01-metadata-task-pack.md)：当前唯一获准执行的业务 Gate，覆盖 DB-01、Metadata/Release/Package Store、最小管理授权和 Admin API。
 5. [G2-01 任务包红队](reviews/g2-01-task-pack-red-team.md)：零成员 Activation、Package/Release 原子性、渐进冻结、授权边界和单通道工期的 Kill Criteria。
 6. [ADR-013 Metadata 控制面](architecture/adr/013-metadata-release-package-control-plane.md)、[专项红队](reviews/adr-013-metadata-control-plane-red-team.md)与 [G2-01-01 Evidence](evidence/g2-01-01-metadata-control-plane.md)：DB-01 候选表、状态机、原子 Publish、零成员 Activation、管理授权与 Roll Forward 合同。
-7. [G2-00 Foundation 任务包](delivery/g2-00-foundation-task-pack.md)：已经完成的底座 Gate 清单和历史范围边界。
+7. [Metadata v1 合同治理](architecture/metadata-contract-governance.md)、[G2-01-02 专项红队](reviews/g2-01-02-metadata-contract-red-team.md)与 [Evidence](evidence/g2-01-02-metadata-contracts.md)：12 类 Metadata 合同、严格 Parser、兼容基线、Family Registry、Golden Fixture 与规范 Digest。
+8. [G2-00 Foundation 任务包](delivery/g2-00-foundation-task-pack.md)：已经完成的底座 Gate 清单和历史范围边界。
 8. [G2 工具链基线](architecture/toolchain-baseline.md)与 [Monorepo 依赖边界](architecture/dependency-boundaries.md)：G2-00-01 的已接受工程约束。
 9. [本地生产边界架构](architecture/local-production-boundaries.md)与 [运行手册](operations/local-production-boundary-environment.md)：G2-00-02 的协议、信任和生命周期边界。
 10. [ADR-007 Runtime Activation](architecture/adr/007-runtime-activation-serving-head.md)、[专项红队](reviews/adr-007-runtime-activation-red-team.md)与 [G2-00-03 Evidence](evidence/g2-00-03-runtime-activation-serving-head.md)：Release/Generation 一致绑定、支持窗、容量和 GC 引用语义。

@@ -1,0 +1,544 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ontos.dev/schemas/metadata/v1",
+  "title": "Ontos Metadata Contract v1",
+  "$defs": {
+    "MetadataSchemaVersion": { "type": "integer", "const": 1 },
+    "OntosId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "ArtifactDigest": {
+      "type": "string",
+      "minLength": 71,
+      "maxLength": 71,
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "CanonicalInstant": {
+      "type": "string",
+      "minLength": 27,
+      "maxLength": 27,
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{6}Z$",
+      "format": "ontos-canonical-instant"
+    },
+    "ApiName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[A-Za-z][A-Za-z0-9_]{0,62}$"
+    },
+    "Namespace": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$"
+    },
+    "SemanticVersion": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 64,
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$"
+    },
+    "VersionLabel": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "DisplayName": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "Description": { "type": "string", "minLength": 0, "maxLength": 4096 },
+    "JsonPointer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?:/(?:[^~/]|~0|~1)*)+$"
+    },
+    "StableCode": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$"
+    },
+    "ResourceFamily": {
+      "type": "string",
+      "enum": [
+        "object_type",
+        "link_type",
+        "interface",
+        "mapping",
+        "snapshot_schema",
+        "policy",
+        "function_type",
+        "action_type",
+        "object_view",
+        "application_config"
+      ]
+    },
+    "Classification": {
+      "type": "string",
+      "enum": ["public", "internal", "confidential", "restricted"]
+    },
+    "PropertyValueType": {
+      "type": "string",
+      "enum": [
+        "string",
+        "boolean",
+        "integer",
+        "decimal",
+        "date",
+        "timestamp",
+        "enum",
+        "string[]",
+        "json"
+      ]
+    },
+    "PropertyWriteMode": {
+      "type": "string",
+      "enum": ["source_only", "overlay_override", "overlay_only", "system_managed"]
+    },
+    "Project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "projectId", "apiName", "displayName", "state", "createdAt"],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "apiName": { "$ref": "#/$defs/ApiName" },
+        "displayName": { "$ref": "#/$defs/DisplayName" },
+        "state": { "type": "string", "enum": ["active", "archived"] },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" }
+      }
+    },
+    "ResourceEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "resourceId",
+        "projectId",
+        "namespace",
+        "apiName",
+        "family",
+        "state"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "resourceId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "namespace": { "$ref": "#/$defs/Namespace" },
+        "apiName": { "$ref": "#/$defs/ApiName" },
+        "family": { "$ref": "#/$defs/ResourceFamily" },
+        "state": { "type": "string", "enum": ["active", "deprecated", "archived"] }
+      }
+    },
+    "PropertyDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "apiName",
+        "displayName",
+        "description",
+        "valueType",
+        "nullable",
+        "writeMode",
+        "unique",
+        "filterable",
+        "sortable",
+        "searchable"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "apiName": { "$ref": "#/$defs/ApiName" },
+        "displayName": { "$ref": "#/$defs/DisplayName" },
+        "description": { "$ref": "#/$defs/Description" },
+        "valueType": { "$ref": "#/$defs/PropertyValueType" },
+        "caseSensitive": { "type": "boolean" },
+        "nullable": { "type": "boolean" },
+        "writeMode": { "$ref": "#/$defs/PropertyWriteMode" },
+        "unique": { "type": "boolean" },
+        "filterable": { "type": "boolean" },
+        "sortable": { "type": "boolean" },
+        "searchable": { "type": "boolean" },
+        "classification": { "$ref": "#/$defs/Classification" },
+        "enumValues": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+          }
+        },
+        "decimalPrecision": { "type": "integer", "minimum": 1, "maximum": 38 },
+        "decimalScale": { "type": "integer", "minimum": 0, "maximum": 18 },
+        "jsonFilterPaths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/JsonPointer" }
+        }
+      }
+    },
+    "ObjectSortDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["propertyApiName", "direction"],
+      "properties": {
+        "propertyApiName": { "$ref": "#/$defs/ApiName" },
+        "direction": { "type": "string", "enum": ["asc", "desc"] }
+      }
+    },
+    "ObjectTypeDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "apiName",
+        "displayName",
+        "description",
+        "primaryKeyPropertyApiName",
+        "titlePropertyApiName",
+        "defaultSearchPropertyApiNames",
+        "defaultSort",
+        "defaultClassification",
+        "properties"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "apiName": { "$ref": "#/$defs/ApiName" },
+        "displayName": { "$ref": "#/$defs/DisplayName" },
+        "description": { "$ref": "#/$defs/Description" },
+        "primaryKeyPropertyApiName": { "$ref": "#/$defs/ApiName" },
+        "titlePropertyApiName": { "$ref": "#/$defs/ApiName" },
+        "defaultSearchPropertyApiNames": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/ApiName" }
+        },
+        "defaultSort": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/ObjectSortDefinition" }
+        },
+        "defaultClassification": { "$ref": "#/$defs/Classification" },
+        "properties": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/PropertyDefinition" }
+        }
+      }
+    },
+    "LinkEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectTypeRevisionId", "apiName", "displayName"],
+      "properties": {
+        "objectTypeRevisionId": { "$ref": "#/$defs/OntosId" },
+        "apiName": { "$ref": "#/$defs/ApiName" },
+        "displayName": { "$ref": "#/$defs/DisplayName" }
+      }
+    },
+    "LinkTypeDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "apiName",
+        "displayName",
+        "description",
+        "source",
+        "target",
+        "cardinality",
+        "sourceKind",
+        "deletionBehavior",
+        "actionCreateAllowed",
+        "actionDeleteAllowed"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "apiName": { "$ref": "#/$defs/ApiName" },
+        "displayName": { "$ref": "#/$defs/DisplayName" },
+        "description": { "$ref": "#/$defs/Description" },
+        "source": { "$ref": "#/$defs/LinkEndpoint" },
+        "target": { "$ref": "#/$defs/LinkEndpoint" },
+        "cardinality": {
+          "type": "string",
+          "enum": ["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
+        },
+        "sourceKind": { "type": "string", "enum": ["base", "overlay", "mixed"] },
+        "deletionBehavior": { "type": "string", "enum": ["restrict", "detach", "retain_history"] },
+        "actionCreateAllowed": { "type": "boolean" },
+        "actionDeleteAllowed": { "type": "boolean" }
+      }
+    },
+    "ResourceRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "revisionId",
+        "resourceId",
+        "family",
+        "state",
+        "etag",
+        "contentDigest",
+        "createdByPrincipalId",
+        "createdAt"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "revisionId": { "$ref": "#/$defs/OntosId" },
+        "resourceId": { "$ref": "#/$defs/OntosId" },
+        "parentRevisionId": { "$ref": "#/$defs/OntosId" },
+        "family": { "$ref": "#/$defs/ResourceFamily" },
+        "state": {
+          "type": "string",
+          "enum": ["draft", "validated", "published", "deprecated", "archived"]
+        },
+        "etag": { "type": "integer", "minimum": 1 },
+        "contentDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "createdByPrincipalId": { "$ref": "#/$defs/OntosId" },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" }
+      }
+    },
+    "ResourceDependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "dependencyId",
+        "sourceRevisionId",
+        "targetRevisionId",
+        "dependencyType",
+        "sourcePath"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "dependencyId": { "$ref": "#/$defs/OntosId" },
+        "sourceRevisionId": { "$ref": "#/$defs/OntosId" },
+        "targetRevisionId": { "$ref": "#/$defs/OntosId" },
+        "dependencyType": {
+          "type": "string",
+          "enum": ["property_reference", "link_source", "link_target"]
+        },
+        "sourcePath": { "$ref": "#/$defs/JsonPointer" }
+      }
+    },
+    "ValidationIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "resourceId", "path", "message", "remediation"],
+      "properties": {
+        "code": { "$ref": "#/$defs/StableCode" },
+        "severity": { "type": "string", "enum": ["warning", "error"] },
+        "resourceId": { "$ref": "#/$defs/OntosId" },
+        "path": { "$ref": "#/$defs/JsonPointer" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "remediation": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "ValidationReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "reportId",
+        "subjectId",
+        "subjectDigest",
+        "validatorVersion",
+        "valid",
+        "issues"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "reportId": { "$ref": "#/$defs/OntosId" },
+        "subjectId": { "$ref": "#/$defs/OntosId" },
+        "subjectDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "validatorVersion": { "$ref": "#/$defs/VersionLabel" },
+        "valid": { "type": "boolean" },
+        "issues": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "$ref": "#/$defs/ValidationIssue" }
+        }
+      }
+    },
+    "CompatibilityFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "code", "path", "message", "requiredNextStep"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["compatible", "conditional", "breaking", "forbidden"]
+        },
+        "code": { "$ref": "#/$defs/StableCode" },
+        "path": { "$ref": "#/$defs/JsonPointer" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "requiredNextStep": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "CompatibilityReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "reportId",
+        "baselineDigest",
+        "candidateDigest",
+        "outcome",
+        "findings"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "reportId": { "$ref": "#/$defs/OntosId" },
+        "baselineDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "candidateDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "outcome": {
+          "type": "string",
+          "enum": ["compatible", "conditional", "breaking", "forbidden"]
+        },
+        "findings": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "$ref": "#/$defs/CompatibilityFinding" }
+        }
+      }
+    },
+    "ReleasePin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["order", "resourceId", "revisionId", "family", "contentDigest"],
+      "properties": {
+        "order": { "type": "integer", "minimum": 0 },
+        "resourceId": { "$ref": "#/$defs/OntosId" },
+        "revisionId": { "$ref": "#/$defs/OntosId" },
+        "family": { "$ref": "#/$defs/ResourceFamily" },
+        "contentDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      }
+    },
+    "ReleaseManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "releaseId",
+        "projectId",
+        "releaseNumber",
+        "pins",
+        "manifestDigest",
+        "createdAt"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "releaseId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "releaseNumber": { "type": "integer", "minimum": 1 },
+        "pins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/ReleasePin" }
+        },
+        "manifestDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" }
+      }
+    },
+    "PackageResourceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "apiName", "family", "resourceId", "revisionId", "contentDigest"],
+      "properties": {
+        "namespace": { "$ref": "#/$defs/Namespace" },
+        "apiName": { "$ref": "#/$defs/ApiName" },
+        "family": { "$ref": "#/$defs/ResourceFamily" },
+        "resourceId": { "$ref": "#/$defs/OntosId" },
+        "revisionId": { "$ref": "#/$defs/OntosId" },
+        "contentDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      }
+    },
+    "PackageInstallInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["apiName", "displayName", "description", "required"],
+      "properties": {
+        "apiName": { "$ref": "#/$defs/ApiName" },
+        "displayName": { "$ref": "#/$defs/DisplayName" },
+        "description": { "$ref": "#/$defs/Description" },
+        "required": { "type": "boolean" }
+      }
+    },
+    "PackageManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "packageApiName",
+        "version",
+        "namespace",
+        "kernelContractVersion",
+        "resourceEntries",
+        "artifactDigests",
+        "installInputs",
+        "manifestDigest"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "packageApiName": { "$ref": "#/$defs/ApiName" },
+        "version": { "$ref": "#/$defs/SemanticVersion" },
+        "namespace": { "$ref": "#/$defs/Namespace" },
+        "kernelContractVersion": { "$ref": "#/$defs/VersionLabel" },
+        "resourceEntries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/PackageResourceEntry" }
+        },
+        "artifactDigests": {
+          "type": "array",
+          "maxItems": 128,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/ArtifactDigest" }
+        },
+        "installInputs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/PackageInstallInput" }
+        },
+        "manifestDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      }
+    },
+    "ManagementRoleBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "bindingId",
+        "projectId",
+        "principalId",
+        "scope",
+        "role",
+        "state"
+      ],
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/MetadataSchemaVersion" },
+        "bindingId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "principalId": { "$ref": "#/$defs/OntosId" },
+        "scope": { "type": "string", "enum": ["project", "resource"] },
+        "resourceId": { "$ref": "#/$defs/OntosId" },
+        "role": { "type": "string", "enum": ["owner", "editor", "viewer", "executor", "auditor"] },
+        "state": { "type": "string", "enum": ["active", "revoked"] }
+      }
+    }
+  }
+}

@@ -20,8 +20,10 @@ const supportedSchemaKeywords = new Set([
   "enum",
   "format",
   "items",
+  "maximum",
   "maxItems",
   "maxLength",
+  "minimum",
   "minItems",
   "minLength",
   "pattern",
@@ -100,8 +102,23 @@ function validateValue(
   }
 
   if (typeof value === "string") validateString(schema, value, path, issues);
+  if (typeof value === "number") validateNumber(schema, value, path, issues);
   if (Array.isArray(value)) validateArray(root, schema, value, path, issues);
   if (isRecord(value)) validateObject(root, schema, value, path, issues);
+}
+
+function validateNumber(
+  schema: Readonly<Record<string, unknown>>,
+  value: number,
+  path: string,
+  issues: SchemaValidationIssue[],
+): void {
+  if (typeof schema.minimum === "number" && value < schema.minimum) {
+    addIssue(issues, "MINIMUM", path, "Number is below minimum.");
+  }
+  if (typeof schema.maximum === "number" && value > schema.maximum) {
+    addIssue(issues, "MAXIMUM", path, "Number is above maximum.");
+  }
 }
 
 function validateString(

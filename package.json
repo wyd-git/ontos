@@ -40,6 +40,7 @@
     "test:metadata-control-plane": "node --test tools/metadata-control-plane/*.test.ts",
     "test:testkit": "node --test packages/testkit/src/testkit.test.ts tools/testkit/provenance.test.ts",
     "test:contracts": "node --test tools/contracts/*.test.ts",
+    "test:metadata-contracts": "node --test tools/contracts/metadata*.test.ts",
     "test:database:unit": "node --test tools/database/definitions.test.ts tools/database/handler-boundary.test.ts tools/database/preflight.test.ts",
     "test:database": "node --test tools/database/postgres.integration.test.ts",
     "db:migrate": "node tools/database/cli.ts",

@@ -239,8 +239,26 @@ function validateCatalog(
     requireString(family.owner, `${name}.owner`);
     const gate = requireString(family.latestFreezeGate, `${name}.latestFreezeGate`);
     if (!/^G2-0[1-4]$/u.test(gate)) throw new Error(`${name} has an invalid latest freeze Gate.`);
-    if (family.fieldsFrozen !== false) {
-      throw new Error(`${name} must not claim its fields are frozen during G2-00.`);
+    const isActivatedMetadataFamily = name === "ResourceRevisionReleasePackage";
+    if (family.fieldsFrozen !== isActivatedMetadataFamily) {
+      throw new Error(
+        `${name} fieldsFrozen must reflect whether its owning Gate has activated it.`,
+      );
+    }
+    if (isActivatedMetadataFamily) {
+      const activated = family.activatedDefinitions;
+      const activatedDefinitions = Array.isArray(activated)
+        ? activated.map((definition, index) =>
+            requireString(definition, `${name}.activatedDefinitions[${index}]`),
+          )
+        : undefined;
+      if (
+        activatedDefinitions === undefined ||
+        JSON.stringify([...activatedDefinitions].sort()) !==
+          JSON.stringify(["LinkTypeDefinition", "ObjectTypeDefinition", "PropertyDefinition"])
+      ) {
+        throw new Error(`${name} activated Metadata definitions are incomplete.`);
+      }
     }
     if (!Array.isArray(family.semanticInvariants) || family.semanticInvariants.length < 2) {
       throw new Error(`${name} must declare at least two semantic invariants.`);

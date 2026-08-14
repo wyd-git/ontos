@@ -96,12 +96,123 @@
       "compatibility": "adr-009-golden"
     }
   ],
+  "metadataContracts": [
+    {
+      "name": "Project",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "Project",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "ResourceEnvelope",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "ResourceEnvelope",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "PropertyDefinition",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "PropertyDefinition",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "ObjectTypeDefinition",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "ObjectTypeDefinition",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "LinkTypeDefinition",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "LinkTypeDefinition",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "ResourceRevision",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "ResourceRevision",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "ResourceDependency",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "ResourceDependency",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "ValidationReport",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "ValidationReport",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "CompatibilityReport",
+      "owner": "Metadata",
+      "status": "frozen",
+      "schemaDefinition": "CompatibilityReport",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "ReleaseManifest",
+      "owner": "Metadata / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "ReleaseManifest",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "PackageManifest",
+      "owner": "Metadata / Package",
+      "status": "frozen",
+      "schemaDefinition": "PackageManifest",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "ManagementRoleBinding",
+      "owner": "Metadata / Security",
+      "status": "frozen",
+      "schemaDefinition": "ManagementRoleBinding",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    }
+  ],
   "deferredModuleContracts": [
     {
       "family": "ResourceRevisionReleasePackage",
       "owner": "Metadata",
       "latestFreezeGate": "G2-01",
-      "fieldsFrozen": false,
+      "fieldsFrozen": true,
+      "activatedDefinitions": ["ObjectTypeDefinition", "PropertyDefinition", "LinkTypeDefinition"],
       "semanticInvariants": [
         "Published revisions are immutable",
         "Publish is atomic and failures do not create a partial Release",
