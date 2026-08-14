@@ -2,7 +2,14 @@
   "schemaVersion": 1,
   "gate": "G2-00",
   "scope": {
-    "allowedWorkspacePackages": ["packages/contracts", "packages/testkit", "packages/value-codec"],
+    "allowedWorkspacePackages": [
+      "packages/contracts",
+      "packages/metadata-application",
+      "packages/metadata-domain",
+      "packages/metadata-postgres",
+      "packages/testkit",
+      "packages/value-codec"
+    ],
     "allowedMigrationFiles": [
       "migrations/db-00/0001_foundation.sql",
       "migrations/db-00/0002_metadata_control_plane.sql"
@@ -92,7 +99,8 @@
     "docs/evidence/g2-00-13-foundation-integration-gate.md",
     "docs/evidence/g2-01-01-metadata-control-plane.md",
     "docs/evidence/g2-01-02-metadata-contracts.md",
-    "docs/evidence/g2-01-03-db-01-migration.md"
+    "docs/evidence/g2-01-03-db-01-migration.md",
+    "docs/evidence/g2-01-04-project-rbac-epoch.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

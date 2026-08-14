@@ -37,6 +37,12 @@
 - 原定 G2-01 **4–7 工程周整体范围不变**；按当前单通道，G2-01-04～12 剩余工作仍以 **3–6 工程周** 作为容量情景，不是日期承诺。
 - 数据库可行性风险已下降，但最大剩余不确定性仍是 Project/RBAC 原子创建、Revision/Dependency/Compatibility Repository、Publish 行锁/故障注入和真实 Admin HTTP/OIDC；因此不因 Migration Gate 通过就缩短安全或事务步骤。
 
+### G2-01-04 后检查点（2026-08-14）
+
+- G2-01-01～04 进度为 4/12；Project、Principal、Project/Resource Role Binding 与 Authorization Epoch 已进入正式 Domain/Application/PostgreSQL 包，并用非 Owner `api_runtime` 登录完成真实事务负测。
+- Project/RBAC 原子创建风险已经关闭；剩余 8 个工作项仍包含 Revision/Dependency/Compatibility、Release Publish、Package、Admin HTTP/OIDC 和最终 Gate，整体 **4–7 工程周**与剩余 **3–6 工程周**容量情景暂不缩短。
+- 当前最大不确定性转为 Draft 并发/父链、Dependency Graph 与兼容性、Publish 行锁和入口 OIDC；G2-01-05 继续按原顺序，不提前创建 `apps/api`。
+
 ## 3. 顺序与停止规则
 
 1. G2-00 已 PASS；G2-01 只按 [Metadata 任务包](g2-01-metadata-task-pack.md) 顺序执行，不直接开始 DB-02、页面或 Action。
