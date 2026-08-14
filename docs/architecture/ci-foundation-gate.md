@@ -4,6 +4,7 @@
 - 本地与 CI 唯一入口：`npm run verify`
 - GitHub Required Check：`Foundation Gate`
 - 机器报告：`generated/ci-report/report.json`
+- G2-01 报告：`generated/ci-report/metadata-evidence-manifest.json`
 
 ## 1. 单一执行路径
 
@@ -11,12 +12,13 @@ GitHub Actions 不重新拼装命令，只在固定 Node/npm 环境执行 `npm r
 
 1. `npm ci`：验证 Lockfile 并做确定性安装；
 2. Format、Lint、Typecheck；
-3. Unit、Contract Golden/Diff、Architecture Dependency、Testkit Provenance；
-4. Secret/Private Key Scan；
-5. G2-00 Foundation Scope、ADR/Evidence 与 Owner/容量策略；
-6. License Manifest、CycloneDX SBOM、Vulnerability Policy；
-7. 固定 PostgreSQL 16 镜像的 DB-00 Integration；
-8. PG/OIDC/S3/OTEL 本地生产边界环境 `up → smoke → down`。
+3. Foundation/Metadata Unit、Admin API/OIDC Unit、Contract Golden/Diff、Architecture Dependency；
+4. G1 Testkit Provenance、两份 metadata-only Package、兼容向量和七类 Metadata 负向 Fixture；
+5. Secret/Private Key Scan；
+6. G2-00 Foundation Scope 与 G2-01 Metadata Evidence；
+7. License Manifest、CycloneDX SBOM、Vulnerability Policy；
+8. 固定 PostgreSQL 16 镜像的 DB-00/01 Integration，以及独立真实 HTTP + OIDC + PostgreSQL Gate；
+9. PG/OIDC/S3/OTEL 本地生产边界环境 `up → smoke → down`。
 
 编排器 Fail Fast，但任何已启动的环境必须在 `finally` 清理，并且无论成功或失败都写报告。`generated/` 不提交 Git，由 CI 作为 Artifact 上传。
 
@@ -28,7 +30,8 @@ GitHub Actions 不重新拼装命令，只在固定 Node/npm 环境执行 `npm r
 - OS/Arch、Node、npm、Docker、Docker Compose 版本；
 - 每个 Gate 的命令、Exit Code、开始时间、耗时和安全截断后的输出尾部；
 - 实际 PostgreSQL `server_version_num` 与固定镜像引用；
-- G1/Testkit Fixture Hash、`package-lock.json` Hash；
+- G1/Testkit Fixture、Metadata Fixture、Compatibility Vector、Negative Fixture、Migration、Contract 和 `package-lock.json` Hash；
+- 每个测试 Gate 的 TAP Test Count 和汇总测试数量；
 - Secret、License、SBOM、Vulnerability Artifact 的路径、Hash 和计数；
 - 失败 Gate 和未执行 Gate，不能用缺失字段伪装成 PASS。
 
@@ -37,6 +40,8 @@ GitHub Actions 不重新拼装命令，只在固定 Node/npm 环境执行 `npm r
 G2-00-13 在同一入口追加 `foundation-scope-evidence`，由 `security/g2-00-evidence-policy.json` 冻结当前允许的 Workspace、DB-00 Migration/表、ADR-007～012、G2-00-01～13 Evidence、Owner/容量和未关闭风险。出现 App、非 DB-00 Migration、额外表、非 Spike UI 文件或未提交的必需 Evidence 时 Gate 失败。
 
 运行结束还生成 `foundation-evidence-manifest.json`，记录 Commit、Clean/Dirty、环境、命令、每个 Gate 结果、Artifact/Fixture Digest、Scope、Owner 和风险。只有全部 Gate/Acceptance PASS 且 `dirty=false` 才标记 `CLEAN_ROOM_PASS`；普通开发工作树不会被包装成 clean-room 证据。
+
+G2-01 在不改名远端 Required Check `Foundation Gate` 的前提下追加 `metadata-evidence-manifest.json`。`security/g2-01-evidence-policy.json` 固定 G2-01-01～11 Evidence、两 Package、七类负向 Fixture、21 个必过 Gate、Owner/风险，并记录 13 份 G2-00 历史 Evidence 的精确 SHA-256。历史 Foundation 文档发生任何字节变化都直接阻断 G2-01，而不是把新结论建立在可修改的旧声明上。
 
 ## 3. Secret 与私钥策略
 

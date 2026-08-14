@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "sourcePath": "spikes/g1/packages/work-management/package.json",
+    "sourceSha256": "dcae4da2aea7d9446989d54445c976158c9356095b9eb53d92d9b32f102944da",
+    "transform": "metadata-only-g2-01"
+  },
+  "manifest": {
+    "schemaVersion": 1,
+    "packageApiName": "WorkMetadata",
+    "version": "1.0.0",
+    "namespace": "fixture.work",
+    "kernelContractVersion": "metadata-1",
+    "resourceEntries": [
+      {
+        "namespace": "fixture.work",
+        "apiName": "WorkItem",
+        "family": "object_type",
+        "resourceId": "20000000-0000-4000-8000-000000000001",
+        "revisionId": "20000000-0000-4000-8000-000000000011",
+        "contentDigest": "sha256:8df270255a946c0accf90b10f8904fdb4b2862850dc4877b08e2852c53486312"
+      }
+    ],
+    "artifactDigests": [],
+    "installInputs": [
+      {
+        "apiName": "environment",
+        "displayName": "Environment",
+        "description": "Non-secret deployment label.",
+        "required": true
+      }
+    ],
+    "manifestDigest": "sha256:79f9795050979fa57496ebb3cc4b1c1d870efd1cf463fcbf5c82d238238e6c4d"
+  },
+  "resources": [
+    {
+      "resourceId": "20000000-0000-4000-8000-000000000001",
+      "revisionId": "20000000-0000-4000-8000-000000000011",
+      "content": {
+        "schemaVersion": 1,
+        "apiName": "WorkItem",
+        "displayName": "WorkItem",
+        "description": "WorkItem metadata-only G2-01 fixture.",
+        "primaryKeyPropertyApiName": "workItemId",
+        "titlePropertyApiName": "workItemId",
+        "defaultSearchPropertyApiNames": [],
+        "defaultSort": [
+          {
+            "propertyApiName": "workItemId",
+            "direction": "asc"
+          }
+        ],
+        "defaultClassification": "internal",
+        "properties": [
+          {
+            "schemaVersion": 1,
+            "apiName": "workItemId",
+            "displayName": "workItemId",
+            "description": "workItemId fixture property.",
+            "valueType": "string",
+            "caseSensitive": true,
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": true,
+            "filterable": true,
+            "sortable": true,
+            "searchable": true,
+            "classification": "internal"
+          },
+          {
+            "schemaVersion": 1,
+            "apiName": "title",
+            "displayName": "title",
+            "description": "title fixture property.",
+            "valueType": "string",
+            "caseSensitive": true,
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": false,
+            "filterable": true,
+            "sortable": true,
+            "searchable": true,
+            "classification": "internal"
+          },
+          {
+            "schemaVersion": 1,
+            "apiName": "status",
+            "displayName": "status",
+            "description": "status fixture property.",
+            "valueType": "enum",
+            "enumValues": ["OPEN", "ASSIGNED", "DONE"],
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": false,
+            "filterable": true,
+            "sortable": true,
+            "searchable": false,
+            "classification": "internal"
+          }
+        ]
+      }
+    }
+  ],
+  "installInputBindings": [{ "apiName": "environment", "value": "test" }]
+}

@@ -63,4 +63,5 @@ void test("a Resource binding narrows but never expands its Project role", () =>
     ),
     false,
   );
+  // G2_NEGATIVE:role_overreach
 });

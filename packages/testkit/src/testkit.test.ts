@@ -26,6 +26,7 @@ void test("loads two full domain packages and all migrated vector groups without
   assert.deepEqual(Object.keys(objectField(assets.provenance, "groups")).sort(), [
     "compatibility",
     "generator",
+    "metadataPackages",
     "overlay",
     "packages",
     "policy",
@@ -133,7 +134,7 @@ void test("uses the seed and rejects impossible generation configurations", () =
 void test("keeps fixtures small and free from local credentials, ports, paths, and generated bulk data", async () => {
   let totalBytes = 0;
   const files = await listFixtureFiles(new URL("../fixtures/", import.meta.url));
-  assert.equal(files.length, 7);
+  assert.equal(files.length, 10);
   for (const url of files) {
     const contents = await readFile(url, "utf8");
     totalBytes += (await stat(url)).size;

@@ -101,6 +101,32 @@ void test("rejects business code, UI, extra DB scope and non-accepted evidence",
   assert.ok(violations.some((value) => value.includes("ADR-007 is not Accepted")));
 });
 
+void test("keeps DB-02 Runtime, Action and UI implementations outside the expanded Metadata scope", () => {
+  const snapshot = validSnapshot();
+  const violations = evaluateFoundationSnapshot(
+    {
+      ...snapshot,
+      trackedFiles: [
+        ...snapshot.trackedFiles,
+        "migrations/db-02/0001_materialization.sql",
+        "apps/web/src/page.tsx",
+      ],
+      migrationFiles: [...snapshot.migrationFiles, "migrations/db-02/0001_materialization.sql"],
+      createdTables: [
+        ...snapshot.createdTables,
+        "runtime.object_current",
+        "action.action_definitions",
+      ],
+    },
+    policy,
+  );
+
+  assert.ok(violations.some((value) => value.includes("migrations/db-02")));
+  assert.ok(violations.some((value) => value.includes("runtime.object_current")));
+  assert.ok(violations.some((value) => value.includes("action.action_definitions")));
+  assert.ok(violations.some((value) => value.includes("apps/web/src/page.tsx")));
+});
+
 void test("builds a compact commit-bound clean-room manifest", () => {
   const manifest = foundationEvidenceManifest(
     {

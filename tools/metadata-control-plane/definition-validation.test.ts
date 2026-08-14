@@ -218,6 +218,7 @@ void test("topological order, cycle path and graph digest ignore insertion order
   });
   assert.deepEqual(cycle.cyclePath, ["a", "b", "c", "a"]);
   assert.deepEqual(cycle.topologicalRevisionIds, []);
+  // G2_NEGATIVE:dependency_cycle
 });
 
 function objectType() {

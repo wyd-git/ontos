@@ -61,6 +61,33 @@
         "No JSON semantic transform; copy the two manifests and normalize formatting whitespace with the repository formatter."
       ]
     },
+    "metadataPackages": {
+      "groupDigest": "sha256:cc90f7297c1e411017c307f1eae290fd3e2e89ae2031377ffa2a1e9774ed05ca",
+      "sources": [
+        {
+          "path": "packages/commerce/package.json",
+          "sha256": "12cebc3d1ae3e25ab3bd8ef70cf3b020481652a3ba74e6fb1db4342eb11ee08c"
+        },
+        {
+          "path": "packages/work-management/package.json",
+          "sha256": "dcae4da2aea7d9446989d54445c976158c9356095b9eb53d92d9b32f102944da"
+        }
+      ],
+      "targets": [
+        {
+          "path": "fixtures/metadata-packages/commerce.metadata.v1.json",
+          "sha256": "f56075dcbed975cf837a39e6fa0b087fb65fb077574a66ce039ec41aa284e74f"
+        },
+        {
+          "path": "fixtures/metadata-packages/work-management.metadata.v1.json",
+          "sha256": "a22d11fdb17412da4ca7befcd50d1f9134b8cbf2ff8e40672b2ef52f28dcd664"
+        }
+      ],
+      "intentionalTransforms": [
+        "Derive two G2-01 metadata-only Packages with deterministic identifiers from the frozen G1 Package namespaces.",
+        "Retain Object metadata only; omit Action, Policy, View, migration and secret capabilities that are outside G2-01."
+      ]
+    },
     "query": {
       "groupDigest": "sha256:62c0be70852444df816604026eec2d4ae8a5fc9cb5e9c21bc9cf874f9b45c131",
       "sources": [

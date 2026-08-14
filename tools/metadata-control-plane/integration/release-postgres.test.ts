@@ -281,6 +281,7 @@ void test(
         );
         assert.equal(stateResult.rows[0]?.state, "validated");
       }
+      // G2_NEGATIVE:partial_publish
 
       const orphanTarget = await createAndStage(
         releases,

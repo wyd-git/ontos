@@ -349,6 +349,7 @@ void test(
       assert.equal(blocked.change, null);
       assert.equal(await countRows(pool, "meta.releases"), releaseCountBeforeBreaking);
       await assertActiveWorld(pool, commerceUpgradeChange);
+      // G2_NEGATIVE:breaking_upgrade
 
       const commerceV111Conditional = packageBundle({
         packageApiName: "CommerceCore",
