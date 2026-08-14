@@ -124,6 +124,7 @@ void test(
             "0002_metadata_control_plane.sql",
             "0003_resource_revision_guards.sql",
             "0004_dependency_validation_guards.sql",
+            "0005_release_lifecycle_guards.sql",
           ],
         );
 
@@ -198,7 +199,7 @@ async function assertSecondDatabaseAndConcurrentRunner(
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 4);
+  assert.equal(left.applied.length + right.applied.length, 5);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
 }
 
@@ -481,6 +482,11 @@ async function assertDb01PrivilegeMatrix(client: pg.Client): Promise<void> {
       "meta.releases.changed_at",
       "meta.releases.published_at",
       "meta.releases.published_by_principal_id",
+      "meta.releases.staged_at",
+      "meta.releases.staged_channel_control_sequence",
+      "meta.releases.staged_from_activation_id",
+      "meta.releases.staged_from_release_id",
+      "meta.releases.staged_validation_context_digest",
       "meta.releases.state",
       "meta.resource_revisions.changed_at",
       "meta.resource_revisions.content",
@@ -584,9 +590,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
   const secondMigration = resolve(directory, "0002_metadata_control_plane.sql");
   const thirdMigration = resolve(directory, "0003_resource_revision_guards.sql");
   const fourthMigration = resolve(directory, "0004_dependency_validation_guards.sql");
-  const failedMigration = resolve(directory, "0005_failed_attempt.sql");
-  const defectMigration = resolve(directory, "0005_forward_repair_probe.sql");
-  const repairMigration = resolve(directory, "0006_forward_repair.sql");
+  const fifthMigration = resolve(directory, "0005_release_lifecycle_guards.sql");
+  const failedMigration = resolve(directory, "0006_failed_attempt.sql");
+  const defectMigration = resolve(directory, "0006_forward_repair_probe.sql");
+  const repairMigration = resolve(directory, "0007_forward_repair.sql");
 
   try {
     await copyFile(resolve(db00MigrationDirectory, "0001_foundation.sql"), firstMigration);
@@ -602,6 +609,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       resolve(db00MigrationDirectory, "0004_dependency_validation_guards.sql"),
       fourthMigration,
     );
+    await copyFile(
+      resolve(db00MigrationDirectory, "0005_release_lifecycle_guards.sql"),
+      fifthMigration,
+    );
     await writeFile(
       failedMigration,
       `CREATE TABLE ops.db01_forward_repair_probe (
@@ -615,7 +626,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_EXECUTION_FAILED",
     );
-    await assertProbeAndLedgerState(client, false, 4);
+    await assertProbeAndLedgerState(client, false, 5);
 
     await rm(failedMigration);
     await writeFile(
@@ -629,7 +640,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const defectRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       defectRun.applied.map(({ version }) => version),
-      [5],
+      [6],
     );
 
     await writeFile(
@@ -643,7 +654,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const repairRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       repairRun.applied.map(({ version }) => version),
-      [6],
+      [7],
     );
 
     const definitions = await loadMigrationDefinitions(directory);
@@ -679,7 +690,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_HISTORY_DIVERGED",
     );
-    await assertProbeAndLedgerState(client, true, 6);
+    await assertProbeAndLedgerState(client, true, 7);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -796,8 +807,9 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
 
   await client.query(
     `INSERT INTO meta.releases
-       (release_id, project_id, release_number, manifest_digest, created_by_principal_id)
-     VALUES ($1, $2, 1, $3, $4)`,
+       (release_id, project_id, release_number, manifest_digest, target_channel_name,
+        created_by_principal_id)
+     VALUES ($1, $2, 1, $3, 'production', $4)`,
     [db01Ids.release, db01Ids.project, db01Digests.release, db01Ids.principal],
   );
   await client.query(
@@ -815,9 +827,22 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
     "23505",
   );
   await client.query(
-    `UPDATE meta.releases SET state = 'staging', changed_at = clock_timestamp()
+    `INSERT INTO meta.validation_reports
+       (report_id, subject_type, subject_id, release_id, subject_digest,
+        validation_context_digest, validator_version, valid, issues)
+     VALUES ('00000000-0000-4000-8000-000000000304', 'release', $1, $1, $2,
+             $3, 'metadata-release-g2-01-v1', TRUE, '[]'::jsonb)`,
+    [db01Ids.release, db01Digests.release, db01Digests.other],
+  );
+  await client.query(
+    `UPDATE meta.releases
+     SET state = 'staging',
+         staged_channel_control_sequence = 0,
+         staged_validation_context_digest = $2,
+         staged_at = clock_timestamp(),
+         changed_at = clock_timestamp()
      WHERE release_id = $1`,
-    [db01Ids.release],
+    [db01Ids.release, db01Digests.other],
   );
   await assertQueryError(
     client,
@@ -832,6 +857,7 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
      WHERE release_id = $1`,
     [db01Ids.release],
   );
+  await client.query("BEGIN");
   await client.query(
     `INSERT INTO meta.runtime_activations
        (activation_id, release_id, activation_digest)
@@ -857,6 +883,7 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
      VALUES ($1, 'production', $2, $3, 1)`,
     [db01Ids.project, db01Ids.release, db01Ids.activation],
   );
+  await client.query("COMMIT");
 
   await client.query(
     `INSERT INTO meta.packages
@@ -993,7 +1020,7 @@ async function assertDb01Uniqueness(client: pg.Client): Promise<void> {
     client,
     `INSERT INTO meta.release_channels
        (project_id, channel_name, release_id, activation_id, control_sequence)
-     VALUES ($1, 'production', $2, $3, 2)`,
+     VALUES ($1, 'production', $2, $3, 1)`,
     [db01Ids.project, db01Ids.release, db01Ids.activation],
     "23505",
   );
@@ -1001,7 +1028,7 @@ async function assertDb01Uniqueness(client: pg.Client): Promise<void> {
     client,
     `INSERT INTO meta.release_serving_heads
        (release_id, activation_id, control_sequence)
-     VALUES ($1, $2, 2)`,
+     VALUES ($1, $2, 1)`,
     [db01Ids.release, db01Ids.activation],
     "23505",
   );

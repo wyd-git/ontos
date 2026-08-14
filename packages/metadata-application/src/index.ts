@@ -946,3 +946,14 @@ function epoch(value: unknown): bigint {
   }
   return value;
 }
+
+export {
+  ReleaseLifecycleApplicationService,
+  type PublishedReleaseBinding,
+  type ReleaseLifecycleApplicationServiceOptions,
+  type ReleaseLifecycleRepository,
+  type ReleaseRecord,
+  type ReleaseRollbackResult,
+  type ReleaseStageResult,
+  type ReleaseValidationResult,
+} from "./release.ts";

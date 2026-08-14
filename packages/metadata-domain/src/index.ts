@@ -32,6 +32,17 @@ export type {
   PinnedCompatibilityRevision,
   ResourceCompatibilityInput,
 } from "./compatibility.ts";
+export {
+  METADATA_RELEASE_VALIDATOR_VERSION,
+  assertReleaseStateTransition,
+  evaluateReleaseGate,
+} from "./release.ts";
+export type {
+  ReleaseBaselinePin,
+  ReleaseGateEvaluation,
+  ReleaseGatePin,
+  ReleaseLifecycleState,
+} from "./release.ts";
 
 export type ManagementRole = ManagementRoleValue;
 
