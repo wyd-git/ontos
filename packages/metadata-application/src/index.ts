@@ -166,6 +166,16 @@ export interface ProjectCreation {
   readonly authorizationEpoch: bigint;
 }
 
+export interface ProjectReadResult {
+  readonly project: ProjectRecord;
+  readonly authorizationEpoch: bigint;
+}
+
+export interface RoleBindingListResult {
+  readonly items: readonly RoleBindingRecord[];
+  readonly authorizationEpoch: bigint;
+}
+
 export interface RoleBindingReplacement {
   readonly changed: boolean;
   readonly authorizationEpoch: bigint;
@@ -188,6 +198,7 @@ export interface ProjectRepository {
     readonly apiName: string;
     readonly displayName: string;
   }): Promise<ProjectCreation>;
+  getProjectWithEpoch(projectId: string): Promise<ProjectReadResult>;
   archiveProject(input: {
     readonly projectId: string;
     readonly expectedEpoch: bigint;
@@ -195,6 +206,7 @@ export interface ProjectRepository {
 }
 
 export interface RoleBindingRepository {
+  listRoleBindings(projectId: string): Promise<RoleBindingListResult>;
   replaceRoleBinding(input: {
     readonly projectId: string;
     readonly targetPrincipalId: string;
@@ -338,6 +350,34 @@ export class MetadataApplicationService {
       apiName: command.apiName,
       displayName: command.displayName,
     });
+  }
+
+  async getProject(
+    identityInput: VerifiedFoundationIdentity,
+    commandInput: unknown,
+  ): Promise<ProjectReadResult> {
+    const identity = parseVerifiedFoundationIdentity(identityInput);
+    const { projectId } = parseProjectIdentifierCommand(commandInput);
+    const principal = await this.#principals.resolveVerifiedIdentity(identity);
+    await this.#requirePermission(resolvedIdentity(identity, principal), {
+      projectId,
+      permission: "metadata.read",
+    });
+    return this.#projects.getProjectWithEpoch(projectId);
+  }
+
+  async listRoleBindings(
+    identityInput: VerifiedFoundationIdentity,
+    commandInput: unknown,
+  ): Promise<RoleBindingListResult> {
+    const identity = parseVerifiedFoundationIdentity(identityInput);
+    const { projectId } = parseProjectIdentifierCommand(commandInput);
+    const principal = await this.#principals.resolveVerifiedIdentity(identity);
+    await this.#requirePermission(resolvedIdentity(identity, principal), {
+      projectId,
+      permission: "role.manage",
+    });
+    return this.#roleBindings.listRoleBindings(projectId);
   }
 
   async authorizeManagement(
@@ -519,6 +559,34 @@ export class ResourceLifecycleApplicationService {
     });
   }
 
+  async createChildDraftForResource(
+    identityInput: VerifiedFoundationIdentity,
+    commandInput: unknown,
+  ): Promise<ResourceRevisionRecord> {
+    const identity = parseVerifiedFoundationIdentity(identityInput);
+    const command = parseCreateChildDraftForResourceCommand(commandInput);
+    const resolved = await this.#resolveIdentity(identity);
+    const [resourceScope, revisionScope] = await Promise.all([
+      this.#resources.readResourceScope(command.resourceId),
+      this.#resources.readRevisionScope(command.sourceRevisionId),
+    ]);
+    if (
+      revisionScope.resourceId !== resourceScope.resourceId ||
+      revisionScope.projectId !== resourceScope.projectId
+    ) {
+      throw new MetadataApplicationError("NOT_FOUND", "Source Revision is not accessible.");
+    }
+    await this.#requirePermission(resolved, {
+      ...resourceScope,
+      permission: "metadata.edit",
+    });
+    return this.#resources.createChildDraft({
+      sourceRevisionId: command.sourceRevisionId,
+      authorPrincipalId: resolved.principalId,
+      content: prepareContent(revisionScope.family, command.content),
+    });
+  }
+
   async validateRevision(
     identityInput: VerifiedFoundationIdentity,
     commandInput: unknown,
@@ -679,6 +747,11 @@ function parseCreateProjectCommand(value: unknown): {
     apiName: validateProjectApiName(record["apiName"]),
     displayName: validateDisplayName(record["displayName"]),
   });
+}
+
+function parseProjectIdentifierCommand(value: unknown): { readonly projectId: string } {
+  const record = strictRecord(value, ["projectId"]);
+  return Object.freeze({ projectId: ontosIdentifier(record["projectId"], "projectId") });
 }
 
 function parseManagementAuthorizationRequest(value: unknown): ManagementAuthorizationRequest {
@@ -850,6 +923,19 @@ function parseCreateChildDraftCommand(value: unknown): {
 } {
   const record = strictRecord(value, ["sourceRevisionId", "content"]);
   return Object.freeze({
+    sourceRevisionId: ontosIdentifier(record["sourceRevisionId"], "sourceRevisionId"),
+    content: record["content"],
+  });
+}
+
+function parseCreateChildDraftForResourceCommand(value: unknown): {
+  readonly resourceId: string;
+  readonly sourceRevisionId: string;
+  readonly content: unknown;
+} {
+  const record = strictRecord(value, ["resourceId", "sourceRevisionId", "content"]);
+  return Object.freeze({
+    resourceId: ontosIdentifier(record["resourceId"], "resourceId"),
     sourceRevisionId: ontosIdentifier(record["sourceRevisionId"], "sourceRevisionId"),
     content: record["content"],
   });

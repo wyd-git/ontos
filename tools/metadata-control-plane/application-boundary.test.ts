@@ -52,6 +52,9 @@ void test("Project creation derives the owner Principal and exposes no client ID
         createInput = input;
         return Promise.resolve(creation);
       },
+      getProjectWithEpoch() {
+        return Promise.reject(new Error("unused"));
+      },
       archiveProject() {
         return Promise.reject(new Error("unused"));
       },
@@ -114,6 +117,9 @@ void test("role changes require the unified authorizer and never duplicate its r
       },
     },
     roleBindings: {
+      listRoleBindings() {
+        return Promise.reject(new Error("unused"));
+      },
       replaceRoleBinding(): Promise<RoleBindingReplacement> {
         replacements += 1;
         return Promise.resolve({ changed: true, authorizationEpoch: 2n, activeBinding: null });
@@ -165,11 +171,20 @@ function serviceWith(
       createProjectWithOwner() {
         return Promise.resolve(projectCreation());
       },
+      getProjectWithEpoch() {
+        return Promise.resolve({
+          project: projectCreation().project,
+          authorizationEpoch: 1n,
+        });
+      },
       archiveProject() {
         return Promise.reject(new Error("unused"));
       },
     },
     roleBindings: {
+      listRoleBindings() {
+        return Promise.resolve({ items: [], authorizationEpoch: 1n });
+      },
       replaceRoleBinding() {
         return Promise.resolve({ changed: false, authorizationEpoch: 1n, activeBinding: null });
       },

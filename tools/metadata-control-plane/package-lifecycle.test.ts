@@ -131,12 +131,23 @@ void test("Package application boundary is strict and requires package.manage", 
   assert.equal(result.accepted, true);
   assert.equal(repository.installCalls, 1);
 
+  const pathUpgrade = await service.upgradePackageInstallation(identity(), {
+    installationId,
+    targetChannelName: command.targetChannelName,
+    requestKey: "package-request-0002",
+    manifest: command.manifest,
+    resources: command.resources,
+    installInputBindings: command.installInputBindings,
+  });
+  assert.equal(pathUpgrade.accepted, true);
+  assert.equal(repository.lastUpgradeInstallationId, installationId);
+
   allow = false;
   await assert.rejects(
     service.upgradePackage(identity(), command),
     isApplicationError("FORBIDDEN"),
   );
-  assert.equal(repository.upgradeCalls, 0);
+  assert.equal(repository.upgradeCalls, 1);
 
   await assert.rejects(
     service.installPackage(identity(), { ...command, unknown: true }),
@@ -147,6 +158,7 @@ void test("Package application boundary is strict and requires package.manage", 
 class FakePackageRepository implements PackageLifecycleRepository {
   installCalls = 0;
   upgradeCalls = 0;
+  lastUpgradeInstallationId: string | null = null;
 
   readInstallationScope() {
     return Promise.resolve({ projectId });
@@ -159,6 +171,7 @@ class FakePackageRepository implements PackageLifecycleRepository {
 
   upgradePackage(input: Parameters<PackageLifecycleRepository["upgradePackage"]>[0]) {
     this.upgradeCalls += 1;
+    this.lastUpgradeInstallationId = input.installationId;
     return Promise.resolve(acceptedFixture(input.candidate.manifest));
   }
 

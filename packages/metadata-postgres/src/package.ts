@@ -251,10 +251,29 @@ export class PostgresPackageStore implements PackageLifecycleRepository {
         manifest.packageApiName,
       );
       const packageId = packageIdentity?.package_id ?? this.#uuid();
-      const installation =
-        packageIdentity === null
-          ? null
-          : await findInstallation(client, input.projectId, packageId, true);
+      let installation: InstallationRow | null;
+      if (
+        operation === "upgrade" &&
+        input.installationId !== undefined &&
+        input.installationId !== null
+      ) {
+        installation = await readInstallationById(client, input.installationId, true);
+        if (
+          packageIdentity === null ||
+          installation.project_id !== input.projectId ||
+          installation.package_id !== packageId
+        ) {
+          throw new MetadataApplicationError(
+            "NOT_FOUND",
+            "Package Installation is not accessible for this candidate.",
+          );
+        }
+      } else {
+        installation =
+          packageIdentity === null
+            ? null
+            : await findInstallation(client, input.projectId, packageId, true);
+      }
       const targetRevision =
         packageIdentity === null
           ? null
@@ -512,6 +531,7 @@ export class PostgresPackageStore implements PackageLifecycleRepository {
 }
 
 interface CandidateChangeInput {
+  readonly installationId?: string | null;
   readonly projectId: string;
   readonly targetChannelName: string;
   readonly requestKey: string;

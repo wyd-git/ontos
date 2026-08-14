@@ -92,6 +92,9 @@ function repository(overrides: Partial<ReleaseLifecycleRepository>): ReleaseLife
     readReleaseScope() {
       return Promise.resolve({ projectId });
     },
+    getRelease() {
+      return Promise.reject(new Error("not implemented"));
+    },
     createReleaseDraft() {
       return Promise.reject(new Error("not implemented"));
     },

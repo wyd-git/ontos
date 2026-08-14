@@ -71,6 +71,7 @@ export interface PackageLifecycleRepository {
     readonly createdByPrincipalId: string;
   }): Promise<PackageChangeResult>;
   upgradePackage(input: {
+    readonly installationId: string | null;
     readonly projectId: string;
     readonly targetChannelName: string;
     readonly requestKey: string;
@@ -137,7 +138,28 @@ export class PackageLifecycleApplicationService {
     identityInput: VerifiedFoundationIdentity,
     commandInput: unknown,
   ): Promise<PackageChangeResult> {
-    return this.#preparePackageChange("upgrade", identityInput, commandInput);
+    return this.#preparePackageChange("upgrade", identityInput, commandInput, null);
+  }
+
+  async upgradePackageInstallation(
+    identityInput: VerifiedFoundationIdentity,
+    commandInput: unknown,
+  ): Promise<PackageChangeResult> {
+    const command = parseUpgradePackageInstallationCommand(commandInput);
+    const identity = await this.#resolveIdentity(identityInput);
+    const scope = await this.#packages.readInstallationScope(command.installationId);
+    await this.#requirePackagePermission(identity, scope.projectId);
+    const candidate = prepareCandidate(command);
+    const integrity = assertPreparedIntegrity(candidate, this.#digest);
+    return this.#packages.upgradePackage({
+      installationId: command.installationId,
+      projectId: scope.projectId,
+      targetChannelName: command.targetChannelName,
+      requestKey: command.requestKey,
+      candidate,
+      ...integrity,
+      createdByPrincipalId: identity.principalId,
+    });
   }
 
   async rollbackPackage(
@@ -158,6 +180,7 @@ export class PackageLifecycleApplicationService {
     operation: "install" | "upgrade",
     identityInput: VerifiedFoundationIdentity,
     commandInput: unknown,
+    installationId?: string | null,
   ): Promise<PackageChangeResult> {
     const command = parsePreparePackageCommand(commandInput);
     const identity = await this.#resolveIdentity(identityInput);
@@ -174,7 +197,7 @@ export class PackageLifecycleApplicationService {
     };
     return operation === "install"
       ? this.#packages.installPackage(input)
-      : this.#packages.upgradePackage(input);
+      : this.#packages.upgradePackage({ ...input, installationId: installationId ?? null });
   }
 
   async #resolveIdentity(
@@ -210,11 +233,14 @@ export class PackageLifecycleApplicationService {
   }
 }
 
-interface CandidateCommand {
-  readonly projectId: string;
+interface CandidatePayload {
   readonly manifest: unknown;
   readonly resources: unknown;
   readonly installInputBindings: unknown;
+}
+
+interface CandidateCommand extends CandidatePayload {
+  readonly projectId: string;
 }
 
 interface PrepareCommand extends CandidateCommand {
@@ -256,6 +282,29 @@ function parsePreparePackageCommand(value: unknown): PrepareCommand {
   });
 }
 
+function parseUpgradePackageInstallationCommand(value: unknown): CandidatePayload & {
+  readonly installationId: string;
+  readonly targetChannelName: string;
+  readonly requestKey: string;
+} {
+  const record = strictRecord(value, [
+    "installationId",
+    "targetChannelName",
+    "requestKey",
+    "manifest",
+    "resources",
+    "installInputBindings",
+  ]);
+  return Object.freeze({
+    installationId: ontosIdentifier(record["installationId"], "installationId"),
+    targetChannelName: channelName(record["targetChannelName"]),
+    requestKey: idempotencyKey(record["requestKey"]),
+    manifest: record["manifest"],
+    resources: record["resources"],
+    installInputBindings: record["installInputBindings"],
+  });
+}
+
 function parseRollbackPackageCommand(value: unknown): {
   readonly installationId: string;
   readonly targetPackageRevisionId: string;
@@ -279,7 +328,7 @@ function parseRollbackPackageCommand(value: unknown): {
   });
 }
 
-function prepareCandidate(command: CandidateCommand): PreparedPackageCandidate {
+function prepareCandidate(command: CandidatePayload): PreparedPackageCandidate {
   try {
     return preparePackageCandidate(command);
   } catch (error) {
