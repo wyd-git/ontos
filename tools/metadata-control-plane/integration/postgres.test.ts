@@ -30,7 +30,7 @@ const adminPassword = "local-only-g20104-admin-secret";
 const runtimePassword = "local-only-g20104-runtime-secret";
 
 void test(
-  "G2-01-04/05/06 PostgreSQL management, Revision and validation transactions",
+  "G2-01-04/05/06/07 PostgreSQL management, Revision, validation and compatibility",
   { timeout: 120_000 },
   async () => {
     const containerName = `ontos-g20104-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -565,6 +565,38 @@ void test(
       await resourceApplication.validateRevision(ownerIdentity, {
         revisionId: foreignTarget.initialDraft.revisionId,
       });
+      const foreignTargetChild = await resourceApplication.createChildDraft(ownerIdentity, {
+        sourceRevisionId: foreignTarget.initialDraft.revisionId,
+        content: objectTypeContent("Second foreign target Revision."),
+      });
+      await resourceApplication.validateRevision(ownerIdentity, {
+        revisionId: foreignTargetChild.revisionId,
+      });
+      const foreignEndpointBaseline = await resourceApplication.createChildDraft(ownerIdentity, {
+        sourceRevisionId: successfulLinkValidation.revision.revisionId,
+        content: linkTypeContent(
+          validatedSource.revision.revisionId,
+          foreignTarget.initialDraft.revisionId,
+        ),
+      });
+      const foreignEndpointCandidate = await resourceApplication.createChildDraft(ownerIdentity, {
+        sourceRevisionId: successfulLinkValidation.revision.revisionId,
+        content: linkTypeContent(
+          validatedSource.revision.revisionId,
+          foreignTargetChild.revisionId,
+        ),
+      });
+      const foreignEndpointDiff = await resourceApplication.compareRevisionCompatibility(
+        ownerIdentity,
+        {
+          revisionId: foreignEndpointCandidate.revisionId,
+          againstRevisionId: foreignEndpointBaseline.revisionId,
+        },
+      );
+      assert.equal(foreignEndpointDiff.outcome, "breaking");
+      assert.ok(
+        foreignEndpointDiff.findings.some(({ code }) => code === "LINK_TYPE_ENDPOINT_CHANGED"),
+      );
       const crossProjectLink = await resourceApplication.createResource(ownerIdentity, {
         projectId: creation.project.projectId,
         namespace: "commerce.validation",
@@ -634,6 +666,30 @@ void test(
           ({ parentRevisionId, state, etag }) =>
             parentRevisionId === validated.revisionId && state === "draft" && etag === 1n,
         ),
+      );
+
+      const compatibleDiff = await resourceApplication.compareRevisionCompatibility(ownerIdentity, {
+        revisionId: concurrentChildren[0]?.revisionId,
+        againstRevisionId: validated.revisionId,
+      });
+      assert.equal(compatibleDiff.outcome, "compatible");
+      assert.deepEqual(
+        compatibleDiff.findings.map(({ code }) => code),
+        ["DISPLAY_TEXT_CHANGED"],
+      );
+      assert.deepEqual(
+        await resourceApplication.compareRevisionCompatibility(ownerIdentity, {
+          revisionId: concurrentChildren[0]?.revisionId,
+          againstRevisionId: validated.revisionId,
+        }),
+        compatibleDiff,
+      );
+      await assert.rejects(
+        resourceApplication.compareRevisionCompatibility(ownerIdentity, {
+          revisionId: concurrentChildren[0]?.revisionId,
+          againstRevisionId: retryableLink.initialDraft.revisionId,
+        }),
+        isApplicationError("INVALID_INPUT"),
       );
 
       const listedRevisions = [];

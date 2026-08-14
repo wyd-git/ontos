@@ -1,7 +1,7 @@
 # ADR-013：Metadata、Release、Package 与管理授权控制面
 
 - 状态：Accepted for G2-01-01
-- 实现状态：DB-01、Project/RBAC、Resource Revision、Definition Validator 与 Dependency Graph 已于 G2-01-03～06 落地；Compatibility/Release/Package/API 仍 OPEN
+- 实现状态：DB-01、Project/RBAC、Resource Revision、Definition Validator、Dependency Graph 与 Compatibility Engine 已于 G2-01-03～07 落地；Release/Package/API 仍 OPEN
 - 日期：2026-08-14
 - Owner：Tech Lead / Database / Security
 - 决策范围：DB-01 候选表、不可变 Revision/Release/Package 状态、原子 Publish、零成员 Activation、管理 RBAC、锁顺序与向前恢复
@@ -188,4 +188,4 @@ G2-03 才拥有 OIDC Claim Mapping 业务规则、Delegation、Object/Property/L
 
 `migrations/db-00/0002_metadata_control_plane.sql`、`0003_resource_revision_guards.sql`、`0004_dependency_validation_guards.sql` 和真实 PostgreSQL 16 Integration 已验证 DB-01 的 18 张表、Owner/Grant、唯一约束、初始/前向状态、Published 事实不可变、验证上下文不可变、服务器提取边一致性、无隐式 Worker/Ops 写权、并发 Migration 与故障后向前修复。Project/RBAC/Epoch、Resource/Draft Revision、Definition Validator 与 Dependency Graph 已有正式 Domain/Application/Repository 实现；详细见 [G2-01-04 Evidence](../../evidence/g2-01-04-project-rbac-epoch.md)、[G2-01-05 Evidence](../../evidence/g2-01-05-resource-revision-lifecycle.md)和 [G2-01-06 Evidence](../../evidence/g2-01-06-definition-validation-dependency-graph.md)。
 
-当前仍不宣称已实现 HTTP/OIDC、Compatibility、真实 Package 展开或 Release Publish 生产事务。数据库 Trigger 保住行级不变量，不代替 G2-01-07～10 的应用事务与入口证据。
+当前仍不宣称已实现 HTTP/OIDC、真实 Package 展开或 Release Publish 生产事务。Compatibility 已能确定性比较定义和完整 Pin 集，但受信 Published Baseline 选择与 Gate 持久证据仍由 G2-01-08/09 负责。数据库 Trigger 保住行级不变量，不代替 G2-01-08～10 的应用事务与入口证据。

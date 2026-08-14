@@ -47,7 +47,7 @@
 
 - G2-01-01～06 进度为 6/12；Resource/Draft 并发、服务器 Definition Validator、Dependency Extractor、闭包、确定性拓扑与不可变 Validation Report 已进入正式实现。
 - 第一次失败后依赖状态变化无法重试的报告身份缺口，已通过 `validation_context_digest` 向前迁移关闭；跨 Project 引用按 Missing 同形失败，不读取或锁定外部 Project 的图。
-- 剩余 6 个工作项的主要风险收敛到 Compatibility 的下游影响、Release 原子 Publish、Package 展开事务和真实 Admin HTTP/OIDC；整体 **4–7 工程周**容量情景仍不转换为日期承诺。
+- Compatibility 的下游 Pin 影响与条件阻断已由 G2-01-07 关闭；剩余 5 个工作项的主要风险收敛到 Release 原子 Publish、Package 展开事务、真实 Admin HTTP/OIDC 与最终 clean-room Gate；整体 **4–7 工程周**容量情景仍不转换为日期承诺。
 
 ## 3. 顺序与停止规则
 
