@@ -1,0 +1,154 @@
+{
+  "packageApiName": "commerce_fixture",
+  "version": "1.0.0",
+  "namespace": "fixture.commerce",
+  "kernelContractVersion": "1",
+  "resources": {
+    "objectTypes": [
+      {
+        "apiName": "Customer",
+        "primaryKey": "customerId",
+        "properties": {
+          "customerId": { "type": "string", "nullable": false },
+          "name": { "type": "string", "nullable": false },
+          "segment": { "type": "string", "nullable": true }
+        }
+      },
+      {
+        "apiName": "Order",
+        "primaryKey": "orderId",
+        "properties": {
+          "orderId": { "type": "string", "nullable": false },
+          "status": {
+            "type": "enum",
+            "nullable": false,
+            "values": ["DRAFT", "CONFIRMED", "SHIPPED", "CANCELLED"]
+          },
+          "total": { "type": "decimal", "nullable": false }
+        }
+      },
+      {
+        "apiName": "Product",
+        "primaryKey": "productId",
+        "properties": {
+          "productId": { "type": "string", "nullable": false },
+          "name": { "type": "string", "nullable": false },
+          "active": { "type": "boolean", "nullable": false }
+        }
+      },
+      {
+        "apiName": "Shipment",
+        "primaryKey": "shipmentId",
+        "properties": {
+          "shipmentId": { "type": "string", "nullable": false },
+          "status": {
+            "type": "enum",
+            "nullable": false,
+            "values": ["PENDING", "DISPATCHED", "DELIVERED"]
+          },
+          "dispatchedAt": { "type": "timestamp", "nullable": true }
+        }
+      },
+      {
+        "apiName": "Return",
+        "primaryKey": "returnId",
+        "properties": {
+          "returnId": { "type": "string", "nullable": false },
+          "reason": { "type": "string", "nullable": false },
+          "status": {
+            "type": "enum",
+            "nullable": false,
+            "values": ["REQUESTED", "APPROVED", "REJECTED"]
+          }
+        }
+      }
+    ],
+    "linkTypes": [
+      {
+        "apiName": "customerOrders",
+        "sourceType": "Customer",
+        "targetType": "Order",
+        "cardinality": "one_to_many"
+      },
+      {
+        "apiName": "orderProducts",
+        "sourceType": "Order",
+        "targetType": "Product",
+        "cardinality": "many_to_many"
+      },
+      {
+        "apiName": "orderShipments",
+        "sourceType": "Order",
+        "targetType": "Shipment",
+        "cardinality": "one_to_many"
+      },
+      {
+        "apiName": "orderReturns",
+        "sourceType": "Order",
+        "targetType": "Return",
+        "cardinality": "one_to_many"
+      },
+      {
+        "apiName": "returnProducts",
+        "sourceType": "Return",
+        "targetType": "Product",
+        "cardinality": "many_to_many"
+      }
+    ],
+    "actions": [
+      {
+        "apiName": "confirmOrder",
+        "targetType": "Order",
+        "handlerDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "risk": "required"
+      },
+      {
+        "apiName": "dispatchShipment",
+        "targetType": "Shipment",
+        "handlerDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "risk": "elevated"
+      },
+      {
+        "apiName": "approveReturn",
+        "targetType": "Return",
+        "handlerDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "risk": "required"
+      }
+    ],
+    "policies": [
+      {
+        "apiName": "ordersByStatus",
+        "objectType": "Order",
+        "predicate": {
+          "property": "status",
+          "op": "in",
+          "value": ["DRAFT", "CONFIRMED", "SHIPPED"]
+        }
+      },
+      {
+        "apiName": "returnsVisible",
+        "objectType": "Return",
+        "predicate": {
+          "property": "status",
+          "op": "in",
+          "value": ["REQUESTED", "APPROVED", "REJECTED"]
+        }
+      }
+    ],
+    "views": [
+      {
+        "apiName": "orderConsole",
+        "objectType": "Order",
+        "fields": ["orderId", "status", "total"],
+        "actions": ["confirmOrder"]
+      },
+      {
+        "apiName": "returnQueue",
+        "objectType": "Return",
+        "fields": ["returnId", "reason", "status"],
+        "actions": ["approveReturn"]
+      }
+    ]
+  },
+  "migrations": []
+}

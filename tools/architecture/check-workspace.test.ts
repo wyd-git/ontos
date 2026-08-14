@@ -244,6 +244,42 @@ void test("rejects production modules depending on testkit", async () => {
   });
 });
 
+void test("rejects runtime imports from the frozen G1 spike in every workspace layer", async () => {
+  await withWorkspace(async (root) => {
+    const spikeSource = join(root, "spikes/g1/src/reference.js");
+    await mkdir(dirname(spikeSource), { recursive: true });
+    await writeFile(spikeSource, "export const spikeOnly = true;\n");
+    await writePackage(root, {
+      directory: "packages/testkit",
+      name: "@ontos/testkit",
+      layer: "testkit",
+      source:
+        'import { spikeOnly } from "../../../spikes/g1/src/reference.js";\nexport { spikeOnly };\n',
+    });
+
+    const rootEntry = join(root, "packages/testkit/index.ts");
+    await writeFile(rootEntry, 'export { spikeOnly } from "../../spikes/g1/src/reference.js";\n');
+
+    assert.equal(
+      (await violationCodes(root)).filter((code) => code === "FORBIDDEN_REPOSITORY_IMPORT").length,
+      2,
+    );
+  });
+});
+
+void test("rejects file dependencies that point at the frozen G1 spike", async () => {
+  await withWorkspace(async (root) => {
+    await writePackage(root, {
+      directory: "apps/api",
+      name: "@ontos/api",
+      layer: "app",
+      dependencies: { "g1-spike": "file:../../spikes/g1" },
+    });
+
+    assert.ok((await violationCodes(root)).includes("FORBIDDEN_REPOSITORY_DEPENDENCY"));
+  });
+});
+
 async function violationCodes(root: string): Promise<string[]> {
   const result = await checkWorkspace(root, policy);
   return result.violations.map((violation) => violation.code).sort();

@@ -14,6 +14,7 @@ interface ArchitecturePolicy {
   readonly requireRootExportLayers: readonly string[];
   readonly allowedExternalRuntimeDependencies: Readonly<Record<string, readonly string[]>>;
   readonly allowedExternalImports: Readonly<Record<string, readonly string[]>>;
+  readonly forbiddenRepositoryImportRoots: readonly string[];
   readonly forbidDeepWorkspaceImports: boolean;
 }
 
@@ -53,6 +54,13 @@ export interface ArchitectureResult {
 }
 
 const sourceExtensions = new Set([".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"]);
+const ignoredSourceDirectories = new Set([
+  "build",
+  "coverage",
+  "dist",
+  "generated",
+  "node_modules",
+]);
 
 export async function loadPolicy(policyPath: string): Promise<ArchitecturePolicy> {
   const candidate: unknown = JSON.parse(await readFile(policyPath, "utf8"));
@@ -60,7 +68,12 @@ export async function loadPolicy(policyPath: string): Promise<ArchitecturePolicy
     throw new Error(`Unsupported architecture policy at ${policyPath}.`);
   }
 
-  const requiredArrays = ["workspaceRoots", "layers", "requireRootExportLayers"];
+  const requiredArrays = [
+    "workspaceRoots",
+    "layers",
+    "requireRootExportLayers",
+    "forbiddenRepositoryImportRoots",
+  ];
   for (const key of requiredArrays) {
     if (!isStringArray(candidate[key]))
       throw new Error(`Architecture policy field ${key} is invalid.`);
@@ -107,7 +120,7 @@ export async function checkWorkspace(
   for (const workspacePackage of packages) {
     graph.set(workspacePackage.name, new Set());
     checkLocationAndExports(workspacePackage, policy, violations);
-    checkManifestDependencies(workspacePackage, packagesByName, graph, policy, violations);
+    checkManifestDependencies(root, workspacePackage, packagesByName, graph, policy, violations);
     sourceFileCount += await checkSourceImports(
       root,
       workspacePackage,
@@ -221,17 +234,32 @@ function checkLocationAndExports(
 }
 
 function checkManifestDependencies(
+  root: string,
   workspacePackage: WorkspacePackage,
   packagesByName: ReadonlyMap<string, WorkspacePackage>,
   graph: Map<string, Set<string>>,
   policy: ArchitecturePolicy,
   violations: ArchitectureViolation[],
 ): void {
-  const dependencies = runtimeDependencies(workspacePackage.manifest);
   const allowedExternalDependencies =
     policy.allowedExternalRuntimeDependencies[workspacePackage.layer] ?? [];
 
-  for (const dependency of dependencies) {
+  for (const [dependency, specifier] of runtimeDependencyEntries(workspacePackage.manifest)) {
+    const repositoryTarget = dependencyRepositoryTarget(workspacePackage.directory, specifier);
+    const forbiddenRoot = repositoryTarget
+      ? policy.forbiddenRepositoryImportRoots.find((candidate) =>
+          isInside(join(root, candidate), repositoryTarget),
+        )
+      : undefined;
+    if (forbiddenRoot) {
+      violations.push({
+        code: "FORBIDDEN_REPOSITORY_DEPENDENCY",
+        message: `${workspacePackage.name} cannot declare runtime dependency ${dependency} from frozen or non-production source under ${forbiddenRoot}/.`,
+        packageName: workspacePackage.name,
+        dependency,
+      });
+    }
+
     const target = packagesByName.get(dependency);
     if (target) {
       graph.get(workspacePackage.name)?.add(target.name);
@@ -276,19 +304,32 @@ async function checkSourceImports(
   policy: ArchitecturePolicy,
   violations: ArchitectureViolation[],
 ): Promise<number> {
-  const sourceRoot = join(workspacePackage.directory, "src");
-  const files = await listSourceFiles(sourceRoot);
+  const files = await listSourceFiles(workspacePackage.directory);
   const declaredDependencies = runtimeDependencies(workspacePackage.manifest);
   const allowedExternalImports = policy.allowedExternalImports[workspacePackage.layer] ?? [];
 
   for (const file of files) {
     const contents = await readFile(file, "utf8");
     for (const specifier of moduleSpecifiers(file, contents)) {
-      if (specifier.startsWith(".")) {
-        const targetPath = resolve(dirname(file), specifier);
+      const repositoryTarget = repositoryImportTarget(file, specifier);
+      if (repositoryTarget) {
+        const forbiddenRoot = policy.forbiddenRepositoryImportRoots.find((candidate) =>
+          isInside(join(root, candidate), repositoryTarget),
+        );
+        if (forbiddenRoot) {
+          violations.push({
+            code: "FORBIDDEN_REPOSITORY_IMPORT",
+            message: `${workspacePackage.name} cannot import frozen or non-production source under ${forbiddenRoot}/ with ${specifier}.`,
+            packageName: workspacePackage.name,
+            file: displayPath(root, file),
+            dependency: forbiddenRoot,
+          });
+        }
+
         const otherPackage = packages.find(
           (candidate) =>
-            candidate.name !== workspacePackage.name && isInside(candidate.directory, targetPath),
+            candidate.name !== workspacePackage.name &&
+            isInside(candidate.directory, repositoryTarget),
         );
         if (otherPackage) {
           violations.push({
@@ -390,8 +431,9 @@ async function listSourceFiles(directory: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of entries) {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...(await listSourceFiles(path)));
-    else if (entry.isFile() && sourceExtensions.has(extname(entry.name))) files.push(path);
+    if (entry.isDirectory() && !ignoredSourceDirectories.has(entry.name)) {
+      files.push(...(await listSourceFiles(path)));
+    } else if (entry.isFile() && sourceExtensions.has(extname(entry.name))) files.push(path);
   }
   return files.sort();
 }
@@ -438,6 +480,14 @@ function runtimeDependencies(manifest: PackageManifest): Set<string> {
   ]);
 }
 
+function runtimeDependencyEntries(manifest: PackageManifest): ReadonlyMap<string, string> {
+  return new Map([
+    ...Object.entries(manifest.dependencies ?? {}),
+    ...Object.entries(manifest.optionalDependencies ?? {}),
+    ...Object.entries(manifest.peerDependencies ?? {}),
+  ]);
+}
+
 function workspacePackageName(specifier: string, prefix: string): string | undefined {
   if (!specifier.startsWith(prefix)) return undefined;
   const segments = specifier.split("/");
@@ -448,6 +498,29 @@ function externalPackageName(specifier: string): string {
   if (specifier.startsWith("node:")) return specifier;
   const segments = specifier.split("/");
   return specifier.startsWith("@") ? `${segments[0]}/${segments[1]}` : (segments[0] ?? specifier);
+}
+
+function repositoryImportTarget(file: string, specifier: string): string | undefined {
+  if (specifier.startsWith(".")) return resolve(dirname(file), specifier);
+  if (isAbsolute(specifier)) return resolve(specifier);
+  if (specifier.startsWith("file:")) {
+    try {
+      return fileURLToPath(specifier);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function dependencyRepositoryTarget(directory: string, specifier: string): string | undefined {
+  const path = specifier.startsWith("file:")
+    ? specifier.slice("file:".length)
+    : specifier.startsWith("link:")
+      ? specifier.slice("link:".length)
+      : undefined;
+  if (!path) return undefined;
+  return resolve(directory, path);
 }
 
 function dependencyMatches(dependency: string, pattern: string): boolean {

@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "basePackage": "commerce_fixture",
+  "cases": [
+    {
+      "id": "nullable-property-addition",
+      "nextVersion": "1.1.0",
+      "mutations": [
+        {
+          "op": "addProperty",
+          "objectType": "Shipment",
+          "property": "trackingNote",
+          "definition": { "type": "string", "nullable": true }
+        }
+      ],
+      "expected": {
+        "compatible": true,
+        "changes": [
+          {
+            "kind": "compatible",
+            "code": "NULLABLE_PROPERTY_ADDED",
+            "path": "Shipment.trackingNote"
+          }
+        ]
+      }
+    },
+    {
+      "id": "primary-key-change-and-property-removal",
+      "nextVersion": "2.0.0",
+      "mutations": [
+        {
+          "op": "addProperty",
+          "objectType": "Order",
+          "property": "newOrderId",
+          "definition": { "type": "string", "nullable": false }
+        },
+        { "op": "setPrimaryKey", "objectType": "Order", "property": "newOrderId" },
+        { "op": "removeProperty", "objectType": "Order", "property": "status" }
+      ],
+      "expected": {
+        "compatible": false,
+        "requiredCodes": ["PRIMARY_KEY_CHANGED", "PROPERTY_REMOVED"]
+      }
+    },
+    {
+      "id": "raw-sql-and-kernel-migrations-forbidden",
+      "mutations": [
+        {
+          "op": "addRootField",
+          "field": "kernelMigrations",
+          "value": ["DROP SCHEMA kernel CASCADE"]
+        },
+        {
+          "op": "addActionField",
+          "action": "assignWork",
+          "field": "rawSql",
+          "value": "UPDATE kernel.object_current SET properties = '{}'"
+        },
+        {
+          "op": "setMigrations",
+          "value": ["UPDATE kernel.object_current SET properties = '{}'::jsonb"]
+        }
+      ],
+      "expected": {
+        "accepted": false,
+        "allowedErrorCodes": ["INVALID_PACKAGE", "PACKAGE_CAPABILITY_FORBIDDEN"]
+      }
+    },
+    {
+      "id": "release-history-pin-and-rollback",
+      "operations": [
+        "install-work-management",
+        "install-commerce",
+        "record-action",
+        "compatible-upgrade",
+        "rollback"
+      ],
+      "expected": {
+        "activeCommerceVersion": "1.0.0",
+        "activeWorkVersion": "1.0.0",
+        "historyPinsOriginalHandler": true,
+        "rollbackCreatesRevision": true
+      }
+    },
+    {
+      "id": "breaking-upgrade-not-published",
+      "nextVersion": "2.0.0",
+      "mutations": [{ "op": "removeProperty", "objectType": "Order", "property": "total" }],
+      "expected": {
+        "compatible": false,
+        "errorCode": "BREAKING_PACKAGE_UPGRADE",
+        "releaseCountAfterFailure": 1
+      }
+    },
+    {
+      "id": "namespace-link-action-policy-breaking",
+      "nextVersion": "1.1.0",
+      "mutations": [
+        { "op": "setNamespace", "value": "fixture.renamed" },
+        { "op": "setLinkTarget", "linkType": "orderProducts", "targetType": "Shipment" },
+        { "op": "setActionTarget", "action": "confirmOrder", "targetType": "Return" },
+        { "op": "setPolicyPredicateValue", "policy": "ordersByStatus", "value": ["CONFIRMED"] }
+      ],
+      "expected": {
+        "compatible": false,
+        "requiredCodes": [
+          "NAMESPACE_CHANGED",
+          "LINK_TYPE_ENDPOINT_CHANGED",
+          "ACTION_TARGET_CHANGED",
+          "POLICY_SEMANTICS_CHANGED"
+        ]
+      }
+    },
+    {
+      "id": "handler-digest-compatible-release",
+      "nextVersion": "1.1.0",
+      "mutations": [
+        {
+          "op": "setHandlerDigest",
+          "action": "confirmOrder",
+          "value": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        }
+      ],
+      "expected": {
+        "compatible": true,
+        "changes": [
+          { "kind": "compatible", "code": "ACTION_HANDLER_CHANGED", "path": "confirmOrder" }
+        ]
+      }
+    },
+    {
+      "id": "two-domains-one-runtime-bridge",
+      "packages": ["work_management_fixture", "commerce_fixture"],
+      "expectedPerPackage": {
+        "viewCompilations": 2,
+        "linkCompilations": 5,
+        "policyCompilations": 2,
+        "actionPlans": 3
+      }
+    }
+  ]
+}
