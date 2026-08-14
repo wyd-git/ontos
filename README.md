@@ -6,9 +6,10 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 
 - G1 技术可行性验证：**PASS**；
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
-- G2-00 Foundation：**G2-00-01～05 已合并；G2-00-06 已实现并完成本地验收，待 PR 审查**；
-- 正式产品实现：**尚未开始**；
-- 下一 Gate：**G2-00 Foundation**。
+- G2-00 Foundation：**PASS，13/13 已合并**；
+- G2-01 Metadata：**G2-01-01～04 已实现并通过本地 Gate，进度 4/12**；
+- 正式产品实现：**Project、Principal、管理 RBAC 与 Authorization Epoch 已进入正式 Workspace 包和 PostgreSQL Repository**；
+- 下一工作项：**G2-01-05 Resource 与 Draft Revision 生命周期**。
 
 ## 权威文档
 
@@ -18,6 +19,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [生产实现蓝图](docs/product/ontology-kernel-implementation-blueprint.md) | 工程结构、模块、数据、事务、状态机和 Gate |
 | [蓝图红队审查](docs/reviews/g2-blueprint-red-team.md) | 承重假设、最低成本验证、停止条件和放行结论 |
 | [G2-00 任务包](docs/delivery/g2-00-foundation-task-pack.md) | Foundation 的依赖、WWA 工作项和可执行退出条件 |
+| [G2-01 Metadata 任务包](docs/delivery/g2-01-metadata-task-pack.md) | Metadata 控制面的 12 个顺序工作项、边界与验收条件 |
 | [ADR-007 Runtime Activation](docs/architecture/adr/007-runtime-activation-serving-head.md) | Release/Generation 一致绑定、90 天支持、容量与 GC 语义 |
 | [ADR-010 Job/Lease 与 Outbox](docs/architecture/adr/010-postgresql-job-lease-outbox.md) | 持久 Job 恢复、租约 fencing、至少一次投递与同对象顺序 |
 | [G1 可行性报告](spikes/g1/docs/g1-feasibility-report.md) | 已验证结论、性能和限制 |

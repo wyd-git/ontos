@@ -1,0 +1,16 @@
+{
+  "name": "@ontos/metadata-application",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "application"
+  },
+  "dependencies": {
+    "@ontos/contracts": "0.0.0",
+    "@ontos/metadata-domain": "0.0.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
