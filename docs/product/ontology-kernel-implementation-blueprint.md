@@ -2,13 +2,13 @@
 
 - 版本：0.2
 - 日期：2026-08-13
-- 状态：Red-team Reviewed / G2-00 PASS
+- 状态：Red-team Reviewed / G2-00 PASS / G2-01 Task Pack Ready
 - 上游产品基线：[Ontology Kernel PRD](ontology-kernel-prd.md)
 - 可行性基线：[G1 Feasibility Report](../../spikes/g1/docs/g1-feasibility-report.md)
 - 架构基线：[G1 Architecture Decisions](../../spikes/g1/docs/architecture-decisions.md)
 - G2 准入基线：[G2 Implementation Readiness](../../spikes/g1/docs/g2-implementation-readiness.md)
 - 红队结论：[G2 Blueprint Red-Team](../reviews/g2-blueprint-red-team.md)
-- 当前任务包：[G2-00 Foundation](../delivery/g2-00-foundation-task-pack.md)
+- 当前任务包：[G2-01 Metadata](../delivery/g2-01-metadata-task-pack.md)
 
 ## 0. 蓝图结论
 
@@ -22,7 +22,7 @@
 4. 本蓝图中的“完整产品”特指 PRD 的 **P0 Kernel Alpha**，不是复制 Palantir 全产品，也不包含 P1/P2。
 5. G1 Spike 只复用算法、SQL 结论、Fixtures 和测试向量；不把 Spike 的进程组织、凭据和脚本直接当生产代码。
 
-红队后的放行结论是 **Conditional Go**：现在只允许执行 G2-00 Foundation。G2-00 不包含 DB-01、Resource/Release Store、业务 Endpoint 或页面；其 Gate 未通过前不得用“先写一点业务代码”绕过基础验证。
+蓝图红队最初只对 G2-00 Foundation 给出 **Conditional Go**。G2-00 已于 2026-08-14 通过 clean-room 与远端强制 Gate；当前只允许按 [G2-01 Metadata 任务包](../delivery/g2-01-metadata-task-pack.md)实现 DB-01 与 Project/Resource/Revision/Dependency/Release/Package Store/API，不得跳到 DB-02、Query、Action 或页面。
 
 ### 0.1 对“先闭环还是先做全核心”的最终回答
 
