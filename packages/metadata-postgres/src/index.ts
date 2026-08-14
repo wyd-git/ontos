@@ -1,5 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
+import {
+  canonicalizeContractForDigest,
+  parseArtifactDigest,
+  type ResourceFamily,
+} from "@ontos/contracts";
 import { MetadataApplicationError } from "@ontos/metadata-application";
 import type {
   AuthorizationRoleSnapshot,
@@ -9,12 +14,30 @@ import type {
   ProjectCreation,
   ProjectRecord,
   ProjectRepository,
+  ResourceCreation,
+  ResourceLifecycleRepository,
+  ResourceListCursor,
+  ResourceRecord,
+  ResourceRevisionRecord,
+  ResourceScopeRecord,
+  RevisionListCursor,
+  RevisionScopeRecord,
   RoleBindingRecord,
   RoleBindingReplacement,
   RoleBindingRepository,
   VerifiedFoundationIdentity,
 } from "@ontos/metadata-application";
-import type { ManagementRole } from "@ontos/metadata-domain";
+import {
+  MetadataDomainError,
+  assertChildDraftSourceState,
+  assertResourceRevisionStateTransition,
+  assertResourceStateTransition,
+  prepareDirectResourceContent,
+  type ManagementRole,
+  type PreparedResourceContent,
+  type ResourceRevisionState,
+  type ResourceState,
+} from "@ontos/metadata-domain";
 import type pg from "pg";
 
 export type UuidFactory = () => string;
@@ -56,12 +79,46 @@ interface AuthorizationRow extends EpochRow {
   readonly resource_role: ManagementRole | null;
 }
 
+interface ResourceRow {
+  readonly resource_id: string;
+  readonly project_id: string;
+  readonly namespace: string;
+  readonly api_name: string;
+  readonly family: ResourceFamily;
+  readonly state: ResourceState;
+  readonly created_at: Date | string;
+}
+
+interface RevisionRow {
+  readonly revision_id: string;
+  readonly resource_id: string;
+  readonly parent_revision_id: string | null;
+  readonly revision_number: string;
+  readonly family: ResourceFamily;
+  readonly state: ResourceRevisionState;
+  readonly etag: string;
+  readonly content_digest: string;
+  readonly content: unknown;
+  readonly created_by_principal_id: string;
+  readonly created_at: Date | string;
+}
+
+interface ResourceScopeRow {
+  readonly project_id: string;
+  readonly resource_id: string;
+}
+
+interface RevisionScopeRow extends ResourceScopeRow {
+  readonly family: ResourceFamily;
+}
+
 export class PostgresMetadataControlPlane
   implements
     PrincipalDirectory,
     ProjectRepository,
     RoleBindingRepository,
-    ManagementAuthorizationReader
+    ManagementAuthorizationReader,
+    ResourceLifecycleRepository
 {
   readonly #pool: pg.Pool;
   readonly #uuid: UuidFactory;
@@ -233,6 +290,500 @@ export class PostgresMetadataControlPlane
     });
   }
 
+  async createResourceWithInitialDraft(input: {
+    readonly projectId: string;
+    readonly namespace: string;
+    readonly apiName: string;
+    readonly family: ResourceFamily;
+    readonly authorPrincipalId: string;
+    readonly content: PreparedResourceContent;
+  }): Promise<ResourceCreation> {
+    const prepared = verifiedPreparedContent(input.family, input.content);
+    const digest = digestCanonicalContent(prepared.canonicalContent);
+    const resourceId = this.#uuid();
+    const revisionId = this.#uuid();
+    return this.#transaction(async (client) => {
+      const resourceResult = await client.query<ResourceRow>(
+        `INSERT INTO meta.resources
+           (resource_id, project_id, namespace, api_name, family)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING resource_id, project_id, namespace, api_name, family, state, created_at`,
+        [resourceId, input.projectId, input.namespace, input.apiName, input.family],
+      );
+      const revisionResult = await client.query<RevisionRow>(
+        `INSERT INTO meta.resource_revisions
+           (revision_id, resource_id, parent_revision_id, revision_number, family,
+            content_digest, content, created_by_principal_id)
+         VALUES ($1, $2, NULL, 1, $3, $4, $5::jsonb, $6)
+         RETURNING revision_id, resource_id, parent_revision_id, revision_number::text,
+                   family, state, etag::text, content_digest, content,
+                   created_by_principal_id, created_at`,
+        [
+          revisionId,
+          resourceId,
+          input.family,
+          digest,
+          prepared.canonicalContent,
+          input.authorPrincipalId,
+        ],
+      );
+      return Object.freeze({
+        resource: resourceRecord(
+          requireRow(resourceResult.rows[0], "Resource insert returned no row."),
+        ),
+        initialDraft: revisionRecord(
+          requireRow(revisionResult.rows[0], "Initial Draft insert returned no row."),
+        ),
+      });
+    });
+  }
+
+  async readResourceScope(resourceId: string): Promise<ResourceScopeRecord> {
+    try {
+      const result = await this.#pool.query<ResourceScopeRow>(
+        `SELECT project_id, resource_id
+         FROM meta.resources
+         WHERE resource_id = $1`,
+        [resourceId],
+      );
+      const row = requireRow(result.rows[0], "Resource does not exist.", "NOT_FOUND");
+      return Object.freeze({ projectId: row.project_id, resourceId: row.resource_id });
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
+  async readRevisionScope(revisionId: string): Promise<RevisionScopeRecord> {
+    try {
+      const result = await this.#pool.query<RevisionScopeRow>(
+        `SELECT resource.project_id, revision.resource_id, revision.family
+         FROM meta.resource_revisions AS revision
+         JOIN meta.resources AS resource ON resource.resource_id = revision.resource_id
+         WHERE revision.revision_id = $1`,
+        [revisionId],
+      );
+      const row = requireRow(result.rows[0], "Resource Revision does not exist.", "NOT_FOUND");
+      return Object.freeze({
+        projectId: row.project_id,
+        resourceId: row.resource_id,
+        family: row.family,
+      });
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
+  async getResource(resourceId: string): Promise<ResourceRecord> {
+    try {
+      const result = await this.#pool.query<ResourceRow>(
+        `SELECT resource_id, project_id, namespace, api_name, family, state, created_at
+         FROM meta.resources
+         WHERE resource_id = $1`,
+        [resourceId],
+      );
+      return resourceRecord(requireRow(result.rows[0], "Resource does not exist.", "NOT_FOUND"));
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
+  async listResources(input: {
+    readonly projectId: string;
+    readonly limit: number;
+    readonly after: ResourceListCursor | null;
+  }): Promise<{
+    readonly items: readonly ResourceRecord[];
+    readonly nextCursor: ResourceListCursor | null;
+  }> {
+    try {
+      const result = await this.#pool.query<ResourceRow>(
+        `SELECT resource_id, project_id, namespace, api_name, family, state, created_at
+         FROM meta.resources
+         WHERE project_id = $1
+           AND (
+             $2::text IS NULL
+             OR namespace COLLATE "C" > $2::text COLLATE "C"
+             OR (namespace COLLATE "C" = $2::text COLLATE "C"
+                 AND api_name COLLATE "C" > $3::text COLLATE "C")
+             OR (namespace COLLATE "C" = $2::text COLLATE "C"
+                 AND api_name COLLATE "C" = $3::text COLLATE "C"
+                 AND resource_id > $4::uuid)
+           )
+         ORDER BY namespace COLLATE "C", api_name COLLATE "C", resource_id
+         LIMIT $5`,
+        [
+          input.projectId,
+          input.after?.namespace ?? null,
+          input.after?.apiName ?? null,
+          input.after?.resourceId ?? null,
+          input.limit + 1,
+        ],
+      );
+      const records = result.rows.map(resourceRecord);
+      const items = Object.freeze(records.slice(0, input.limit));
+      const last = records.length > input.limit ? items.at(-1) : undefined;
+      return Object.freeze({
+        items,
+        nextCursor:
+          last === undefined
+            ? null
+            : Object.freeze({
+                namespace: last.namespace,
+                apiName: last.apiName,
+                resourceId: last.resourceId,
+              }),
+      });
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
+  async getRevision(revisionId: string): Promise<ResourceRevisionRecord> {
+    try {
+      const result = await this.#pool.query<RevisionRow>(
+        `SELECT revision_id, resource_id, parent_revision_id, revision_number::text,
+                family, state, etag::text, content_digest, content,
+                created_by_principal_id, created_at
+         FROM meta.resource_revisions
+         WHERE revision_id = $1`,
+        [revisionId],
+      );
+      return revisionRecord(
+        requireRow(result.rows[0], "Resource Revision does not exist.", "NOT_FOUND"),
+      );
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
+  async listRevisions(input: {
+    readonly resourceId: string;
+    readonly limit: number;
+    readonly after: RevisionListCursor | null;
+  }): Promise<{
+    readonly items: readonly ResourceRevisionRecord[];
+    readonly nextCursor: RevisionListCursor | null;
+  }> {
+    try {
+      const result = await this.#pool.query<RevisionRow>(
+        `SELECT revision_id, resource_id, parent_revision_id, revision_number::text,
+                family, state, etag::text, content_digest, content,
+                created_by_principal_id, created_at
+         FROM meta.resource_revisions AS revision
+         WHERE revision.resource_id = $1
+           AND (
+             $2::bigint IS NULL
+             OR revision.revision_number > $2::bigint
+             OR (revision.revision_number = $2::bigint AND revision.revision_id > $3::uuid)
+           )
+         ORDER BY revision.revision_number, revision.revision_id
+         LIMIT $4`,
+        [
+          input.resourceId,
+          input.after?.revisionNumber.toString() ?? null,
+          input.after?.revisionId ?? null,
+          input.limit + 1,
+        ],
+      );
+      const records = result.rows.map(revisionRecord);
+      const items = Object.freeze(records.slice(0, input.limit));
+      const last = records.length > input.limit ? items.at(-1) : undefined;
+      return Object.freeze({
+        items,
+        nextCursor:
+          last === undefined
+            ? null
+            : Object.freeze({
+                revisionNumber: last.revisionNumber,
+                revisionId: last.revisionId,
+              }),
+      });
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
+  async patchDraftRevision(input: {
+    readonly revisionId: string;
+    readonly expectedEtag: bigint;
+    readonly content: PreparedResourceContent;
+  }): Promise<ResourceRevisionRecord> {
+    return this.#transaction(async (client) => {
+      const identityResult = await client.query<{ readonly resource_id: string }>(
+        `SELECT resource_id
+         FROM meta.resource_revisions
+         WHERE revision_id = $1`,
+        [input.revisionId],
+      );
+      const { resource_id: resourceId } = requireRow(
+        identityResult.rows[0],
+        "Resource Revision does not exist.",
+        "NOT_FOUND",
+      );
+      const resourceResult = await client.query<ResourceRow>(
+        `SELECT resource_id, project_id, namespace, api_name, family, state, created_at
+         FROM meta.resources
+         WHERE resource_id = $1
+         FOR UPDATE`,
+        [resourceId],
+      );
+      const resource = resourceRecord(
+        requireRow(resourceResult.rows[0], "Resource does not exist.", "NOT_FOUND"),
+      );
+      if (resource.state !== "active") {
+        throw new MetadataApplicationError(
+          "INVALID_STATE",
+          "A Draft under a non-active Resource cannot be patched.",
+        );
+      }
+      const currentResult = await client.query<RevisionRow>(
+        `SELECT revision_id, resource_id, parent_revision_id, revision_number::text,
+                family, state, etag::text, content_digest, content,
+                created_by_principal_id, created_at
+         FROM meta.resource_revisions
+         WHERE revision_id = $1
+         FOR UPDATE`,
+        [input.revisionId],
+      );
+      const current = revisionRecord(
+        requireRow(currentResult.rows[0], "Resource Revision does not exist.", "NOT_FOUND"),
+      );
+      if (current.state !== "draft") {
+        throw new MetadataApplicationError(
+          "INVALID_STATE",
+          "Only a Draft Resource Revision can be patched.",
+        );
+      }
+      if (current.etag !== input.expectedEtag) {
+        throw new MetadataApplicationError(
+          "CONCURRENT_MODIFICATION",
+          "Resource Revision etag changed before the write.",
+        );
+      }
+      if (current.resourceId !== resource.resourceId || current.family !== resource.family) {
+        throw new MetadataApplicationError(
+          "STORAGE_FAILURE",
+          "Resource and Revision identity facts do not match.",
+        );
+      }
+      const prepared = verifiedPreparedContent(current.family, input.content);
+      const digest = digestCanonicalContent(prepared.canonicalContent);
+      if (current.contentDigest === digest) return current;
+
+      const updatedResult = await client.query<RevisionRow>(
+        `UPDATE meta.resource_revisions
+         SET content = $2::jsonb,
+             content_digest = $3,
+             etag = etag + 1,
+             changed_at = clock_timestamp()
+         WHERE revision_id = $1
+         RETURNING revision_id, resource_id, parent_revision_id, revision_number::text,
+                   family, state, etag::text, content_digest, content,
+                   created_by_principal_id, created_at`,
+        [input.revisionId, prepared.canonicalContent, digest],
+      );
+      return revisionRecord(
+        requireRow(updatedResult.rows[0], "Draft Resource Revision update returned no row."),
+      );
+    });
+  }
+
+  async createChildDraft(input: {
+    readonly sourceRevisionId: string;
+    readonly authorPrincipalId: string;
+    readonly content: PreparedResourceContent;
+  }): Promise<ResourceRevisionRecord> {
+    return this.#transaction(async (client) => {
+      const sourceIdentityResult = await client.query<{ readonly resource_id: string }>(
+        `SELECT resource_id
+         FROM meta.resource_revisions
+         WHERE revision_id = $1`,
+        [input.sourceRevisionId],
+      );
+      const { resource_id: resourceId } = requireRow(
+        sourceIdentityResult.rows[0],
+        "Source Resource Revision does not exist.",
+        "NOT_FOUND",
+      );
+      const resourceResult = await client.query<ResourceRow>(
+        `SELECT resource_id, project_id, namespace, api_name, family, state, created_at
+         FROM meta.resources
+         WHERE resource_id = $1
+         FOR UPDATE`,
+        [resourceId],
+      );
+      const resource = resourceRecord(
+        requireRow(resourceResult.rows[0], "Resource does not exist.", "NOT_FOUND"),
+      );
+      if (resource.state !== "active") {
+        throw new MetadataApplicationError(
+          "INVALID_STATE",
+          "A child Draft cannot be created for a non-active Resource.",
+        );
+      }
+
+      const sourceResult = await client.query<RevisionRow>(
+        `SELECT revision_id, resource_id, parent_revision_id, revision_number::text,
+                family, state, etag::text, content_digest, content,
+                created_by_principal_id, created_at
+         FROM meta.resource_revisions
+         WHERE revision_id = $1
+         FOR UPDATE`,
+        [input.sourceRevisionId],
+      );
+      const source = revisionRecord(
+        requireRow(sourceResult.rows[0], "Source Resource Revision does not exist.", "NOT_FOUND"),
+      );
+      assertChildSourceState(source.state);
+      if (source.family !== resource.family) {
+        throw new MetadataApplicationError(
+          "STORAGE_FAILURE",
+          "Resource and Revision families do not match.",
+        );
+      }
+      const prepared = verifiedPreparedContent(source.family, input.content);
+      const digest = digestCanonicalContent(prepared.canonicalContent);
+      if (source.contentDigest === digest) {
+        throw new MetadataApplicationError(
+          "INVALID_INPUT",
+          "A child Draft must contain a semantic content change.",
+        );
+      }
+      const numberResult = await client.query<{ readonly revision_number: string }>(
+        `SELECT (COALESCE(MAX(revision_number), 0) + 1)::text AS revision_number
+         FROM meta.resource_revisions
+         WHERE resource_id = $1`,
+        [resourceId],
+      );
+      const revisionNumber = requireRow(
+        numberResult.rows[0],
+        "Resource Revision number allocation returned no row.",
+      ).revision_number;
+      const insertedResult = await client.query<RevisionRow>(
+        `INSERT INTO meta.resource_revisions
+           (revision_id, resource_id, parent_revision_id, revision_number, family,
+            content_digest, content, created_by_principal_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+         RETURNING revision_id, resource_id, parent_revision_id, revision_number::text,
+                   family, state, etag::text, content_digest, content,
+                   created_by_principal_id, created_at`,
+        [
+          this.#uuid(),
+          resourceId,
+          source.revisionId,
+          revisionNumber,
+          source.family,
+          digest,
+          prepared.canonicalContent,
+          input.authorPrincipalId,
+        ],
+      );
+      return revisionRecord(
+        requireRow(insertedResult.rows[0], "Child Draft insert returned no row."),
+      );
+    });
+  }
+
+  async transitionResourceState(input: {
+    readonly resourceId: string;
+    readonly targetState: ResourceState;
+  }): Promise<ResourceRecord> {
+    return this.#transaction(async (client) => {
+      const currentResult = await client.query<ResourceRow>(
+        `SELECT resource_id, project_id, namespace, api_name, family, state, created_at
+         FROM meta.resources
+         WHERE resource_id = $1
+         FOR UPDATE`,
+        [input.resourceId],
+      );
+      const current = resourceRecord(
+        requireRow(currentResult.rows[0], "Resource does not exist.", "NOT_FOUND"),
+      );
+      assertResourceTransition(current.state, input.targetState);
+      if (current.state === input.targetState) return current;
+      const updatedResult = await client.query<ResourceRow>(
+        `UPDATE meta.resources
+         SET state = $2, changed_at = clock_timestamp()
+         WHERE resource_id = $1
+         RETURNING resource_id, project_id, namespace, api_name, family, state, created_at`,
+        [input.resourceId, input.targetState],
+      );
+      return resourceRecord(
+        requireRow(updatedResult.rows[0], "Resource state update returned no row."),
+      );
+    });
+  }
+
+  async transitionRevisionState(input: {
+    readonly revisionId: string;
+    readonly targetState: ResourceRevisionState;
+  }): Promise<ResourceRevisionRecord> {
+    return this.#transaction(async (client) => {
+      const identityResult = await client.query<{ readonly resource_id: string }>(
+        `SELECT resource_id
+         FROM meta.resource_revisions
+         WHERE revision_id = $1`,
+        [input.revisionId],
+      );
+      const { resource_id: resourceId } = requireRow(
+        identityResult.rows[0],
+        "Resource Revision does not exist.",
+        "NOT_FOUND",
+      );
+      const resourceResult = await client.query<ResourceRow>(
+        `SELECT resource_id, project_id, namespace, api_name, family, state, created_at
+         FROM meta.resources
+         WHERE resource_id = $1
+         FOR UPDATE`,
+        [resourceId],
+      );
+      const resource = resourceRecord(
+        requireRow(resourceResult.rows[0], "Resource does not exist.", "NOT_FOUND"),
+      );
+      const currentResult = await client.query<RevisionRow>(
+        `SELECT revision_id, resource_id, parent_revision_id, revision_number::text,
+                family, state, etag::text, content_digest, content,
+                created_by_principal_id, created_at
+         FROM meta.resource_revisions
+         WHERE revision_id = $1
+         FOR UPDATE`,
+        [input.revisionId],
+      );
+      const current = revisionRecord(
+        requireRow(currentResult.rows[0], "Resource Revision does not exist.", "NOT_FOUND"),
+      );
+      if (current.resourceId !== resource.resourceId || current.family !== resource.family) {
+        throw new MetadataApplicationError(
+          "STORAGE_FAILURE",
+          "Resource and Revision identity facts do not match.",
+        );
+      }
+      if (current.state === input.targetState) return current;
+      if (
+        (input.targetState === "validated" || input.targetState === "published") &&
+        resource.state !== "active"
+      ) {
+        throw new MetadataApplicationError(
+          "INVALID_STATE",
+          "A non-active Resource cannot advance a Revision toward publication.",
+        );
+      }
+      assertRevisionTransition(current.state, input.targetState);
+      const updatedResult = await client.query<RevisionRow>(
+        `UPDATE meta.resource_revisions
+         SET state = $2, changed_at = clock_timestamp()
+         WHERE revision_id = $1
+         RETURNING revision_id, resource_id, parent_revision_id, revision_number::text,
+                   family, state, etag::text, content_digest, content,
+                   created_by_principal_id, created_at`,
+        [input.revisionId, input.targetState],
+      );
+      return revisionRecord(
+        requireRow(updatedResult.rows[0], "Resource Revision state update returned no row."),
+      );
+    });
+  }
+
   async readAuthorizationRoles(input: {
     readonly principalId: string;
     readonly projectId: string;
@@ -365,6 +916,113 @@ function projectRecord(row: ProjectRow): ProjectRecord {
   });
 }
 
+function resourceRecord(row: ResourceRow): ResourceRecord {
+  return Object.freeze({
+    resourceId: row.resource_id,
+    projectId: row.project_id,
+    namespace: row.namespace,
+    apiName: row.api_name,
+    family: row.family,
+    state: row.state,
+    createdAt: timestamp(row.created_at),
+  });
+}
+
+function revisionRecord(row: RevisionRow): ResourceRevisionRecord {
+  try {
+    const prepared = prepareDirectResourceContent(row.family, row.content);
+    const actualDigest = digestCanonicalContent(prepared.canonicalContent);
+    const storedDigest = parseArtifactDigest(row.content_digest, "$storage.contentDigest");
+    if (storedDigest !== actualDigest) {
+      throw new MetadataApplicationError(
+        "STORAGE_FAILURE",
+        "Stored Resource Revision content does not match its digest.",
+      );
+    }
+    return Object.freeze({
+      revisionId: row.revision_id,
+      resourceId: row.resource_id,
+      parentRevisionId: row.parent_revision_id,
+      revisionNumber: BigInt(row.revision_number),
+      family: row.family,
+      state: row.state,
+      etag: BigInt(row.etag),
+      contentDigest: storedDigest,
+      content: prepared.content,
+      createdByPrincipalId: row.created_by_principal_id,
+      createdAt: timestamp(row.created_at),
+    });
+  } catch (error) {
+    if (error instanceof MetadataApplicationError) throw error;
+    throw new MetadataApplicationError(
+      "STORAGE_FAILURE",
+      "Stored Resource Revision content is invalid.",
+      { cause: error },
+    );
+  }
+}
+
+function verifiedPreparedContent(
+  family: ResourceFamily,
+  input: PreparedResourceContent,
+): PreparedResourceContent {
+  try {
+    const normalized = prepareDirectResourceContent(family, input.content);
+    const suppliedPreimage = canonicalizeContractForDigest(input.content);
+    if (
+      input.canonicalContent !== suppliedPreimage ||
+      input.canonicalContent !== normalized.canonicalContent
+    ) {
+      throw new MetadataApplicationError(
+        "INVALID_INPUT",
+        "Resource content canonical preimage does not match its parsed content.",
+      );
+    }
+    return normalized;
+  } catch (error) {
+    if (error instanceof MetadataApplicationError) throw error;
+    throw new MetadataApplicationError(
+      "INVALID_INPUT",
+      "Resource content does not satisfy its family contract.",
+      { cause: error },
+    );
+  }
+}
+
+function digestCanonicalContent(canonicalContent: string): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(canonicalContent, "utf8").digest("hex")}`;
+}
+
+function timestamp(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function assertChildSourceState(state: ResourceRevisionState): void {
+  mapDomainState(() => assertChildDraftSourceState(state));
+}
+
+function assertResourceTransition(current: ResourceState, target: ResourceState): void {
+  mapDomainState(() => assertResourceStateTransition(current, target));
+}
+
+function assertRevisionTransition(
+  current: ResourceRevisionState,
+  target: ResourceRevisionState,
+): void {
+  mapDomainState(() => assertResourceRevisionStateTransition(current, target));
+}
+
+function mapDomainState(action: () => void): void {
+  try {
+    action();
+  } catch (error) {
+    if (error instanceof MetadataDomainError) {
+      throw new MetadataApplicationError(error.code, error.message, { cause: error });
+    }
+    throw error;
+  }
+}
+
 function bindingRecord(row: BindingRow): RoleBindingRecord {
   return Object.freeze({
     bindingId: row.binding_id,
@@ -411,6 +1069,13 @@ function mapStorageError(error: unknown): MetadataApplicationError {
     return new MetadataApplicationError(
       "CONCURRENT_MODIFICATION",
       "The metadata transaction must be retried from a fresh read.",
+      { cause: error },
+    );
+  }
+  if (postgresCode === "55000") {
+    return new MetadataApplicationError(
+      "INVALID_STATE",
+      "The metadata lifecycle transition is not allowed.",
       { cause: error },
     );
   }
