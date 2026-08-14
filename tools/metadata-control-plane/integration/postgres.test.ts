@@ -30,7 +30,7 @@ const adminPassword = "local-only-g20104-admin-secret";
 const runtimePassword = "local-only-g20104-runtime-secret";
 
 void test(
-  "G2-01-04/05 PostgreSQL management and Resource Revision transactions",
+  "G2-01-04/05/06 PostgreSQL management, Revision and validation transactions",
   { timeout: 120_000 },
   async () => {
     const containerName = `ontos-g20104-${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -357,10 +357,261 @@ void test(
       assert.equal(noOpPatch.etag, patched.etag);
       assert.equal(noOpPatch.contentDigest, patched.contentDigest);
 
-      const validated = await store.transitionRevisionState({
+      const validation = await resourceApplication.validateRevision(ownerIdentity, {
         revisionId: patched.revisionId,
-        targetState: "validated",
       });
+      assert.equal(validation.report.valid, true);
+      assert.deepEqual(validation.report.issues, []);
+      const validated = validation.revision;
+
+      const linkSource = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.validation",
+        apiName: "LinkSource",
+        family: "object_type",
+        content: objectTypeContent("Validated Link source."),
+      });
+      const linkTarget = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.validation",
+        apiName: "LinkTarget",
+        family: "object_type",
+        content: objectTypeContent("Initially unvalidated Link target."),
+      });
+      const validatedSource = await resourceApplication.validateRevision(ownerIdentity, {
+        revisionId: linkSource.initialDraft.revisionId,
+      });
+      const retryableLink = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.validation",
+        apiName: "RetryableLink",
+        family: "link_type",
+        content: linkTypeContent(
+          validatedSource.revision.revisionId,
+          linkTarget.initialDraft.revisionId,
+        ),
+      });
+      const failedBeforeTargetValidation = await resourceApplication.validateRevision(
+        ownerIdentity,
+        { revisionId: retryableLink.initialDraft.revisionId },
+      );
+      assert.equal(failedBeforeTargetValidation.report.valid, false);
+      assert.deepEqual(
+        failedBeforeTargetValidation.report.issues.map(({ code, path }) => ({ code, path })),
+        [
+          {
+            code: "DEPENDENCY_NOT_VALIDATED",
+            path: "/target/objectTypeRevisionId",
+          },
+        ],
+      );
+      assert.equal(failedBeforeTargetValidation.revision.state, "draft");
+      assert.equal(
+        Number(
+          (
+            await pool.query<{ readonly count: string }>(
+              `SELECT COUNT(*)::text AS count
+               FROM meta.resource_dependencies
+               WHERE source_revision_id = $1`,
+              [retryableLink.initialDraft.revisionId],
+            )
+          ).rows[0]?.count ?? "0",
+        ),
+        0,
+      );
+
+      await resourceApplication.validateRevision(ownerIdentity, {
+        revisionId: linkTarget.initialDraft.revisionId,
+      });
+      const concurrentValidations = await Promise.all(
+        Array.from({ length: 32 }, () =>
+          resourceApplication.validateRevision(ownerIdentity, {
+            revisionId: retryableLink.initialDraft.revisionId,
+          }),
+        ),
+      );
+      assert.ok(concurrentValidations.every(({ revision }) => revision.state === "validated"));
+      assert.equal(new Set(concurrentValidations.map(({ report }) => report.reportId)).size, 1);
+      const successfulLinkValidation = concurrentValidations[0];
+      assert.ok(successfulLinkValidation);
+      assert.equal(successfulLinkValidation.report.valid, true);
+      assert.equal(
+        successfulLinkValidation.report.subjectDigest,
+        failedBeforeTargetValidation.report.subjectDigest,
+      );
+      assert.notEqual(
+        successfulLinkValidation.report.reportId,
+        failedBeforeTargetValidation.report.reportId,
+      );
+      const reportContexts = await pool.query<{
+        readonly report_id: string;
+        readonly validation_context_digest: string;
+      }>(
+        `SELECT report_id, validation_context_digest
+         FROM meta.validation_reports
+         WHERE resource_revision_id = $1
+         ORDER BY report_id`,
+        [retryableLink.initialDraft.revisionId],
+      );
+      assert.equal(reportContexts.rowCount, 2);
+      assert.equal(
+        new Set(reportContexts.rows.map(({ validation_context_digest: context }) => context)).size,
+        2,
+      );
+      assert.deepEqual(
+        await resourceApplication.getRevisionValidationReport(ownerIdentity, {
+          revisionId: retryableLink.initialDraft.revisionId,
+        }),
+        successfulLinkValidation.report,
+      );
+      const persistedEdges = await pool.query<{
+        readonly dependency_type: string;
+        readonly source_path: string;
+        readonly target_revision_id: string;
+      }>(
+        `SELECT dependency_type, source_path, target_revision_id
+         FROM meta.resource_dependencies
+         WHERE source_revision_id = $1
+         ORDER BY dependency_type, source_path, target_revision_id`,
+        [retryableLink.initialDraft.revisionId],
+      );
+      assert.deepEqual(persistedEdges.rows, [
+        {
+          dependency_type: "link_source",
+          source_path: "/source/objectTypeRevisionId",
+          target_revision_id: validatedSource.revision.revisionId,
+        },
+        {
+          dependency_type: "link_target",
+          source_path: "/target/objectTypeRevisionId",
+          target_revision_id: linkTarget.initialDraft.revisionId,
+        },
+      ]);
+
+      const forgedLink = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.validation",
+        apiName: "ForgedLink",
+        family: "link_type",
+        content: linkTypeContent(
+          validatedSource.revision.revisionId,
+          linkTarget.initialDraft.revisionId,
+        ),
+      });
+      await assert.rejects(
+        pool.query(
+          `INSERT INTO meta.resource_dependencies
+             (dependency_id, source_revision_id, target_revision_id, dependency_type, source_path)
+           VALUES ($1, $2, $3, 'link_source', '/target/objectTypeRevisionId')`,
+          [randomUUID(), forgedLink.initialDraft.revisionId, validatedSource.revision.revisionId],
+        ),
+        isPostgresError("23514"),
+      );
+      await resourceApplication.validateRevision(ownerIdentity, {
+        revisionId: forgedLink.initialDraft.revisionId,
+      });
+
+      const bypassDraft = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.validation",
+        apiName: "BypassDraft",
+        family: "object_type",
+        content: objectTypeContent("Direct state update must be rejected."),
+      });
+      await assert.rejects(
+        pool.query(
+          `UPDATE meta.resource_revisions
+           SET state = 'validated', changed_at = clock_timestamp()
+           WHERE revision_id = $1`,
+          [bypassDraft.initialDraft.revisionId],
+        ),
+        isPostgresError("55000"),
+      );
+
+      const missingRevision = randomUUID();
+      const missingLink = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.validation",
+        apiName: "MissingLink",
+        family: "link_type",
+        content: linkTypeContent(validatedSource.revision.revisionId, missingRevision),
+      });
+      const missingReport = (
+        await resourceApplication.validateRevision(ownerIdentity, {
+          revisionId: missingLink.initialDraft.revisionId,
+        })
+      ).report;
+      assert.equal(missingReport.valid, false);
+      assert.ok(
+        missingReport.issues.some(
+          ({ code, path, message }) =>
+            code === "DEPENDENCY_UNAVAILABLE" &&
+            path === "/target/objectTypeRevisionId" &&
+            !message.includes(missingRevision),
+        ),
+      );
+
+      const foreignProject = await application.createProject(ownerIdentity, {
+        apiName: "ForeignValidation",
+        displayName: "Foreign Validation",
+      });
+      const foreignTarget = await resourceApplication.createResource(ownerIdentity, {
+        projectId: foreignProject.project.projectId,
+        namespace: "foreign.validation",
+        apiName: "ForeignTarget",
+        family: "object_type",
+        content: objectTypeContent("Foreign target."),
+      });
+      await resourceApplication.validateRevision(ownerIdentity, {
+        revisionId: foreignTarget.initialDraft.revisionId,
+      });
+      const crossProjectLink = await resourceApplication.createResource(ownerIdentity, {
+        projectId: creation.project.projectId,
+        namespace: "commerce.validation",
+        apiName: "CrossProjectLink",
+        family: "link_type",
+        content: linkTypeContent(
+          validatedSource.revision.revisionId,
+          foreignTarget.initialDraft.revisionId,
+        ),
+      });
+      const crossProjectReport = (
+        await resourceApplication.validateRevision(ownerIdentity, {
+          revisionId: crossProjectLink.initialDraft.revisionId,
+        })
+      ).report;
+      assert.equal(missingReport.issues.length, 1);
+      assert.equal(crossProjectReport.issues.length, 1);
+      const missingIssue = missingReport.issues.find(
+        ({ code, path }) =>
+          code === "DEPENDENCY_UNAVAILABLE" && path === "/target/objectTypeRevisionId",
+      );
+      const crossProjectIssue = crossProjectReport.issues.find(
+        ({ code, path }) =>
+          code === "DEPENDENCY_UNAVAILABLE" && path === "/target/objectTypeRevisionId",
+      );
+      assert.deepEqual(
+        missingIssue === undefined
+          ? undefined
+          : {
+              code: missingIssue.code,
+              severity: missingIssue.severity,
+              path: missingIssue.path,
+              message: missingIssue.message,
+              remediation: missingIssue.remediation,
+            },
+        crossProjectIssue === undefined
+          ? undefined
+          : {
+              code: crossProjectIssue.code,
+              severity: crossProjectIssue.severity,
+              path: crossProjectIssue.path,
+              message: crossProjectIssue.message,
+              remediation: crossProjectIssue.remediation,
+            },
+      );
+      assert.ok(!JSON.stringify(crossProjectReport).includes(foreignTarget.resource.resourceId));
+
       const concurrentChildren = await Promise.all(
         Array.from({ length: 100 }, (_, index) =>
           store.createChildDraft({
@@ -762,6 +1013,30 @@ function objectTypeContent(description: string) {
         classification: "internal",
       },
     ],
+  };
+}
+
+function linkTypeContent(sourceRevisionId: string, targetRevisionId: string) {
+  return {
+    schemaVersion: 1,
+    apiName: "OrderToCustomer",
+    displayName: "Order to Customer",
+    description: "Validated Link definition.",
+    source: {
+      objectTypeRevisionId: sourceRevisionId,
+      apiName: "order",
+      displayName: "Order",
+    },
+    target: {
+      objectTypeRevisionId: targetRevisionId,
+      apiName: "customer",
+      displayName: "Customer",
+    },
+    cardinality: "many_to_one",
+    sourceKind: "base",
+    deletionBehavior: "restrict",
+    actionCreateAllowed: false,
+    actionDeleteAllowed: false,
   };
 }
 

@@ -3,7 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   canonicalizeContractForDigest,
   parseArtifactDigest,
+  parseOntosId,
+  parseValidationReport,
   type ResourceFamily,
+  type ValidationIssueContract,
+  type ValidationReportContract,
 } from "@ontos/contracts";
 import { MetadataApplicationError } from "@ontos/metadata-application";
 import type {
@@ -20,6 +24,7 @@ import type {
   ResourceRecord,
   ResourceRevisionRecord,
   ResourceScopeRecord,
+  RevisionValidationResult,
   RevisionListCursor,
   RevisionScopeRecord,
   RoleBindingRecord,
@@ -28,11 +33,20 @@ import type {
   VerifiedFoundationIdentity,
 } from "@ontos/metadata-application";
 import {
+  METADATA_VALIDATOR_VERSION,
   MetadataDomainError,
+  analyzeDependencyGraph,
   assertChildDraftSourceState,
   assertResourceRevisionStateTransition,
   assertResourceStateTransition,
+  extractResourceDependencies,
   prepareDirectResourceContent,
+  sortValidationIssues,
+  validateDependencyTargets,
+  validateRevisionDefinition,
+  type DependencyGraphEdge,
+  type DependencyTargetSnapshot,
+  type ExtractedResourceDependency,
   type ManagementRole,
   type PreparedResourceContent,
   type ResourceRevisionState,
@@ -110,6 +124,27 @@ interface ResourceScopeRow {
 
 interface RevisionScopeRow extends ResourceScopeRow {
   readonly family: ResourceFamily;
+}
+
+interface ValidationNodeRow extends RevisionRow {
+  readonly project_id: string;
+  readonly resource_state: ResourceState;
+}
+
+interface DependencyRow {
+  readonly source_revision_id: string;
+  readonly target_revision_id: string;
+  readonly dependency_type: "property_reference" | "link_source" | "link_target";
+  readonly source_path: string;
+}
+
+interface ValidationReportRow {
+  readonly report_id: string;
+  readonly subject_id: string;
+  readonly subject_digest: string;
+  readonly validator_version: string;
+  readonly valid: boolean;
+  readonly issues: unknown;
 }
 
 export class PostgresMetadataControlPlane
@@ -684,6 +719,358 @@ export class PostgresMetadataControlPlane
     });
   }
 
+  async validateDraftRevision(input: {
+    readonly revisionId: string;
+    readonly validatorVersion: string;
+  }): Promise<RevisionValidationResult> {
+    if (input.validatorVersion !== METADATA_VALIDATOR_VERSION) {
+      throw new MetadataApplicationError("INVALID_INPUT", "Validator version is not active.");
+    }
+    return this.#transaction(async (client) => {
+      const identityResult = await client.query<{
+        readonly resource_id: string;
+        readonly project_id: string;
+      }>(
+        `SELECT revision.resource_id, resource.project_id
+         FROM meta.resource_revisions AS revision
+         JOIN meta.resources AS resource ON resource.resource_id = revision.resource_id
+         WHERE revision.revision_id = $1`,
+        [input.revisionId],
+      );
+      const identity = requireRow(
+        identityResult.rows[0],
+        "Resource Revision does not exist.",
+        "NOT_FOUND",
+      );
+      const projectResult = await client.query<{ readonly state: "active" | "archived" }>(
+        `SELECT state FROM meta.projects WHERE project_id = $1 FOR UPDATE`,
+        [identity.project_id],
+      );
+      const project = requireRow(projectResult.rows[0], "Project does not exist.", "NOT_FOUND");
+      if (project.state !== "active") {
+        throw new MetadataApplicationError(
+          "INVALID_STATE",
+          "A Revision in an archived Project cannot be validated.",
+        );
+      }
+      const resourceResult = await client.query<ResourceRow>(
+        `SELECT resource_id, project_id, namespace, api_name, family, state, created_at
+         FROM meta.resources
+         WHERE resource_id = $1
+         FOR UPDATE`,
+        [identity.resource_id],
+      );
+      const resource = resourceRecord(
+        requireRow(resourceResult.rows[0], "Resource does not exist.", "NOT_FOUND"),
+      );
+      if (resource.state !== "active") {
+        throw new MetadataApplicationError(
+          "INVALID_STATE",
+          "A Revision under a non-active Resource cannot be validated.",
+        );
+      }
+      const rootResult = await client.query<RevisionRow>(
+        `SELECT revision_id, resource_id, parent_revision_id, revision_number::text,
+                family, state, etag::text, content_digest, content,
+                created_by_principal_id, created_at
+         FROM meta.resource_revisions
+         WHERE revision_id = $1
+         FOR UPDATE`,
+        [input.revisionId],
+      );
+      const root = revisionRecord(
+        requireRow(rootResult.rows[0], "Resource Revision does not exist.", "NOT_FOUND"),
+      );
+      if (root.state !== "draft") {
+        if (
+          new Set<ResourceRevisionState>(["validated", "published", "deprecated"]).has(root.state)
+        ) {
+          const report = await readRevisionValidationReport(
+            client,
+            root.revisionId,
+            root.contentDigest,
+            input.validatorVersion,
+            true,
+          );
+          return Object.freeze({ revision: root, report });
+        }
+        throw new MetadataApplicationError(
+          "INVALID_STATE",
+          "Only a Draft or reusable immutable Revision can be validated.",
+        );
+      }
+
+      const definition = validateRevisionDefinition({
+        revisionId: root.revisionId,
+        resourceId: root.resourceId,
+        family: root.family,
+        content: root.content,
+      });
+      const initialTargets = definition.dependencies.map(
+        ({ targetRevisionId }) => targetRevisionId,
+      );
+      const validationNodes = await client.query<ValidationNodeRow>(
+        `WITH RECURSIVE closure(revision_id) AS (
+           SELECT initial.revision_id
+           FROM unnest($1::uuid[]) AS initial(revision_id)
+           UNION
+           SELECT dependency.target_revision_id
+           FROM closure
+           JOIN meta.resource_revisions AS source_revision
+             ON source_revision.revision_id = closure.revision_id
+           JOIN meta.resources AS source_resource
+             ON source_resource.resource_id = source_revision.resource_id
+            AND source_resource.project_id = $2
+           JOIN meta.resource_dependencies AS dependency
+             ON dependency.source_revision_id = closure.revision_id
+         )
+         SELECT revision.revision_id, revision.resource_id, revision.parent_revision_id,
+                revision.revision_number::text, revision.family, revision.state,
+                revision.etag::text, revision.content_digest, revision.content,
+                revision.created_by_principal_id, revision.created_at,
+                resource.project_id, resource.state AS resource_state
+         FROM closure
+         JOIN meta.resource_revisions AS revision ON revision.revision_id = closure.revision_id
+         JOIN meta.resources AS resource ON resource.resource_id = revision.resource_id
+         WHERE resource.project_id = $2
+         ORDER BY revision.revision_id
+         FOR UPDATE OF revision, resource`,
+        [initialTargets, resource.projectId],
+      );
+      const storedDependencies = await client.query<DependencyRow>(
+        `WITH RECURSIVE closure(revision_id) AS (
+           SELECT initial.revision_id
+           FROM unnest($1::uuid[]) AS initial(revision_id)
+           UNION
+           SELECT dependency.target_revision_id
+           FROM closure
+           JOIN meta.resource_revisions AS source_revision
+             ON source_revision.revision_id = closure.revision_id
+           JOIN meta.resources AS source_resource
+             ON source_resource.resource_id = source_revision.resource_id
+            AND source_resource.project_id = $2
+           JOIN meta.resource_dependencies AS dependency
+             ON dependency.source_revision_id = closure.revision_id
+         )
+         SELECT dependency.source_revision_id, dependency.target_revision_id,
+                dependency.dependency_type, dependency.source_path
+         FROM closure
+         JOIN meta.resource_dependencies AS dependency
+           ON dependency.source_revision_id = closure.revision_id
+         JOIN meta.resource_revisions AS source_revision
+           ON source_revision.revision_id = dependency.source_revision_id
+         JOIN meta.resources AS source_resource
+           ON source_resource.resource_id = source_revision.resource_id
+          AND source_resource.project_id = $2
+         ORDER BY dependency.source_revision_id, dependency.dependency_type,
+                  dependency.source_path, dependency.target_revision_id`,
+        [initialTargets, resource.projectId],
+      );
+
+      const parsedNodes = validationNodes.rows.map((row) => ({
+        row,
+        revision: revisionRecord(row),
+      }));
+      const targetSnapshots: DependencyTargetSnapshot[] = parsedNodes.map(({ row, revision }) => ({
+        revisionId: revision.revisionId,
+        resourceId: revision.resourceId,
+        projectId: row.project_id,
+        family: revision.family,
+        resourceState: row.resource_state,
+        revisionState: revision.state,
+      }));
+      const issues: ValidationIssueContract[] = [
+        ...definition.issues,
+        ...validateDependencyTargets({
+          projectId: resource.projectId,
+          resourceId: resource.resourceId,
+          dependencies: definition.dependencies,
+          targets: targetSnapshots,
+        }),
+      ];
+
+      const nodeByRevision = new Map(parsedNodes.map((node) => [node.revision.revisionId, node]));
+      const directTargetIds = new Set(
+        definition.dependencies.map(({ targetRevisionId }) => targetRevisionId),
+      );
+      let closureInvalid = false;
+      let graphDrift = false;
+      for (const { row, revision } of parsedNodes) {
+        if (revision.revisionId === root.revisionId) continue;
+        if (
+          !directTargetIds.has(revision.revisionId) &&
+          (row.project_id !== resource.projectId ||
+            row.resource_state === "archived" ||
+            revision.state === "archived" ||
+            !new Set<ResourceRevisionState>(["validated", "published", "deprecated"]).has(
+              revision.state,
+            ))
+        ) {
+          closureInvalid = true;
+        }
+        const expected = extractResourceDependencies(
+          revision.revisionId,
+          revision.family,
+          revision.content,
+        );
+        const actual = storedDependencies.rows
+          .filter(({ source_revision_id: source }) => source === revision.revisionId)
+          .map(dependencyFromRow);
+        if (!sameDependencyEdges(expected, actual)) graphDrift = true;
+      }
+      if (closureInvalid) {
+        issues.push(
+          validationReportIssue(
+            "DEPENDENCY_CLOSURE_INVALID",
+            resource.resourceId,
+            "/dependencies",
+            "The dependency closure contains an unavailable or unsupported Revision.",
+            "Repair and validate the dependency chain before retrying.",
+          ),
+        );
+      }
+      if (graphDrift) {
+        issues.push(
+          validationReportIssue(
+            "DEPENDENCY_GRAPH_DRIFT",
+            resource.resourceId,
+            "/dependencies",
+            "Stored dependency edges do not match server extraction.",
+            "Create a new Draft and let the server rebuild its dependency graph.",
+          ),
+        );
+      }
+
+      const graphEdges: DependencyGraphEdge[] = [
+        ...definition.dependencies,
+        ...storedDependencies.rows.map(dependencyFromRow),
+      ];
+      const graph = analyzeDependencyGraph({
+        roots: [root.revisionId],
+        revisionIds: [
+          root.revisionId,
+          ...[...nodeByRevision.keys()].filter((revisionId) => revisionId !== root.revisionId),
+        ],
+        edges: graphEdges,
+      });
+      if (
+        graph.missingRevisionIds.length > 0 &&
+        !issues.some(({ code }) => code === "DEPENDENCY_UNAVAILABLE")
+      ) {
+        issues.push(
+          validationReportIssue(
+            "DEPENDENCY_UNAVAILABLE",
+            resource.resourceId,
+            "/dependencies",
+            "The dependency closure contains an unavailable Revision.",
+            "Select visible, validated Revisions from the same Project.",
+          ),
+        );
+      }
+      if (graph.cyclePath !== null) {
+        const cyclePointers = cycleSourcePaths(graph.cyclePath, graphEdges);
+        issues.push(
+          validationReportIssue(
+            "DEPENDENCY_CYCLE",
+            resource.resourceId,
+            "/dependencies",
+            "The dependency graph contains a cycle.",
+            `Break the stable dependency path: ${cyclePointers.join(" -> ")}.`,
+          ),
+        );
+      }
+
+      const sortedIssues = sortValidationIssues(issues);
+      const valid = !sortedIssues.some(({ severity }) => severity === "error");
+      const contextDigest = validationContextDigest({
+        validatorVersion: input.validatorVersion,
+        root,
+        nodes: parsedNodes.map(({ row, revision }) => ({ row, revision })),
+        missingRevisionIds: graph.missingRevisionIds,
+        edges: graphEdges,
+        topologicalRevisionIds: graph.topologicalRevisionIds,
+        cyclePath: graph.cyclePath,
+      });
+      let report = await findRevisionValidationReport(
+        client,
+        root.revisionId,
+        root.contentDigest,
+        contextDigest,
+        input.validatorVersion,
+      );
+      if (report === null) {
+        const insertedReport = await client.query<ValidationReportRow>(
+          `INSERT INTO meta.validation_reports
+             (report_id, subject_type, subject_id, resource_revision_id, release_id,
+              subject_digest, validation_context_digest, validator_version, valid, issues)
+           VALUES ($1, 'resource_revision', $2, $2, NULL, $3, $4, $5, $6, $7::jsonb)
+           RETURNING report_id, subject_id, subject_digest, validator_version, valid, issues`,
+          [
+            this.#uuid(),
+            root.revisionId,
+            root.contentDigest,
+            contextDigest,
+            input.validatorVersion,
+            valid,
+            canonicalizeContractForDigest(sortedIssues),
+          ],
+        );
+        report = validationReportRecord(
+          requireRow(insertedReport.rows[0], "Validation Report insert returned no row."),
+        );
+      }
+
+      if (!report.valid) return Object.freeze({ revision: root, report });
+      for (const dependency of definition.dependencies) {
+        await client.query(
+          `INSERT INTO meta.resource_dependencies
+             (dependency_id, source_revision_id, target_revision_id, dependency_type, source_path)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            this.#uuid(),
+            dependency.sourceRevisionId,
+            dependency.targetRevisionId,
+            dependency.dependencyType,
+            dependency.sourcePath,
+          ],
+        );
+      }
+      const updated = await client.query<RevisionRow>(
+        `UPDATE meta.resource_revisions
+         SET state = 'validated', changed_at = clock_timestamp()
+         WHERE revision_id = $1
+         RETURNING revision_id, resource_id, parent_revision_id, revision_number::text,
+                   family, state, etag::text, content_digest, content,
+                   created_by_principal_id, created_at`,
+        [root.revisionId],
+      );
+      return Object.freeze({
+        revision: revisionRecord(
+          requireRow(updated.rows[0], "Validated Revision update returned no row."),
+        ),
+        report,
+      });
+    });
+  }
+
+  async getRevisionValidationReport(input: {
+    readonly revisionId: string;
+    readonly validatorVersion: string;
+  }): Promise<ValidationReportContract> {
+    try {
+      const revision = await this.getRevision(input.revisionId);
+      return await readRevisionValidationReport(
+        this.#pool,
+        input.revisionId,
+        revision.contentDigest,
+        input.validatorVersion,
+        false,
+      );
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
   async transitionResourceState(input: {
     readonly resourceId: string;
     readonly targetState: ResourceState;
@@ -718,6 +1105,12 @@ export class PostgresMetadataControlPlane
     readonly revisionId: string;
     readonly targetState: ResourceRevisionState;
   }): Promise<ResourceRevisionRecord> {
+    if (input.targetState === "validated") {
+      throw new MetadataApplicationError(
+        "INVALID_STATE",
+        "Draft validation must use the server Validator and Dependency Extractor.",
+      );
+    }
     return this.#transaction(async (client) => {
       const identityResult = await client.query<{ readonly resource_id: string }>(
         `SELECT resource_id
@@ -861,6 +1254,190 @@ export class PostgresMetadataControlPlane
       client.release(releaseError);
     }
   }
+}
+
+type ValidationQueryable = Pick<pg.Pool, "query"> | Pick<pg.PoolClient, "query">;
+
+async function findRevisionValidationReport(
+  queryable: ValidationQueryable,
+  revisionId: string,
+  subjectDigest: string,
+  contextDigest: string,
+  validatorVersion: string,
+): Promise<ValidationReportContract | null> {
+  const result = await queryable.query<ValidationReportRow>(
+    `SELECT report_id, subject_id, subject_digest, validator_version, valid, issues
+     FROM meta.validation_reports
+     WHERE subject_type = 'resource_revision'
+       AND resource_revision_id = $1
+       AND subject_digest = $2
+       AND validation_context_digest = $3
+       AND validator_version = $4
+     ORDER BY report_id
+     LIMIT 1`,
+    [revisionId, subjectDigest, contextDigest, validatorVersion],
+  );
+  const row = result.rows[0];
+  return row === undefined ? null : validationReportRecord(row);
+}
+
+async function readRevisionValidationReport(
+  queryable: ValidationQueryable,
+  revisionId: string,
+  subjectDigest: string,
+  validatorVersion: string,
+  requireValid: boolean,
+): Promise<ValidationReportContract> {
+  const result = await queryable.query<ValidationReportRow>(
+    `SELECT report_id, subject_id, subject_digest, validator_version, valid, issues
+     FROM meta.validation_reports
+     WHERE subject_type = 'resource_revision'
+       AND resource_revision_id = $1
+       AND subject_digest = $2
+       AND validator_version = $3
+       AND ($4::boolean = FALSE OR valid = TRUE)
+     ORDER BY created_at DESC, report_id DESC
+     LIMIT 1`,
+    [revisionId, subjectDigest, validatorVersion, requireValid],
+  );
+  return validationReportRecord(
+    requireRow(result.rows[0], "Validation Report does not exist.", "NOT_FOUND"),
+  );
+}
+
+function validationReportRecord(row: ValidationReportRow): ValidationReportContract {
+  try {
+    return parseValidationReport({
+      schemaVersion: 1,
+      reportId: row.report_id,
+      subjectId: row.subject_id,
+      subjectDigest: row.subject_digest,
+      validatorVersion: row.validator_version,
+      valid: row.valid,
+      issues: row.issues,
+    });
+  } catch (error) {
+    throw new MetadataApplicationError("STORAGE_FAILURE", "Stored Validation Report is invalid.", {
+      cause: error,
+    });
+  }
+}
+
+function dependencyFromRow(row: DependencyRow): ExtractedResourceDependency {
+  return Object.freeze({
+    sourceRevisionId: row.source_revision_id,
+    targetRevisionId: row.target_revision_id,
+    dependencyType: row.dependency_type,
+    sourcePath: row.source_path,
+  });
+}
+
+function sameDependencyEdges(
+  left: readonly ExtractedResourceDependency[],
+  right: readonly ExtractedResourceDependency[],
+): boolean {
+  const leftKeys = left.map(dependencyComparisonKey).sort();
+  const rightKeys = right.map(dependencyComparisonKey).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every((value, index) => value === rightKeys[index])
+  );
+}
+
+function dependencyComparisonKey(edge: ExtractedResourceDependency): string {
+  return [edge.sourceRevisionId, edge.dependencyType, edge.sourcePath, edge.targetRevisionId].join(
+    "\u0000",
+  );
+}
+
+function cycleSourcePaths(
+  cyclePath: readonly string[],
+  edges: readonly DependencyGraphEdge[],
+): readonly string[] {
+  const paths: string[] = [];
+  for (let index = 0; index + 1 < cyclePath.length; index += 1) {
+    const source = cyclePath[index];
+    const target = cyclePath[index + 1];
+    const edge = edges
+      .filter(
+        (candidate) =>
+          candidate.sourceRevisionId === source && candidate.targetRevisionId === target,
+      )
+      .sort((left, right) =>
+        compareValidationText(dependencyComparisonKey(left), dependencyComparisonKey(right)),
+      )[0];
+    paths.push(edge?.sourcePath ?? "/dependencies");
+  }
+  return Object.freeze(paths);
+}
+
+function validationContextDigest(input: {
+  readonly validatorVersion: string;
+  readonly root: ResourceRevisionRecord;
+  readonly nodes: readonly {
+    readonly row: ValidationNodeRow;
+    readonly revision: ResourceRevisionRecord;
+  }[];
+  readonly missingRevisionIds: readonly string[];
+  readonly edges: readonly DependencyGraphEdge[];
+  readonly topologicalRevisionIds: readonly string[];
+  readonly cyclePath: readonly string[] | null;
+}): `sha256:${string}` {
+  const nodes = input.nodes
+    .map(({ row, revision }) => ({
+      revisionId: revision.revisionId,
+      resourceId: revision.resourceId,
+      projectId: row.project_id,
+      family: revision.family,
+      resourceState: row.resource_state,
+      revisionState: revision.state,
+      contentDigest: revision.contentDigest,
+    }))
+    .sort((left, right) => compareValidationText(left.revisionId, right.revisionId));
+  const edges = input.edges
+    .map((edge) => ({
+      sourceRevisionId: edge.sourceRevisionId,
+      targetRevisionId: edge.targetRevisionId,
+      dependencyType: edge.dependencyType,
+      sourcePath: edge.sourcePath,
+    }))
+    .sort((left, right) =>
+      compareValidationText(dependencyComparisonKey(left), dependencyComparisonKey(right)),
+    );
+  return digestCanonicalContent(
+    canonicalizeContractForDigest({
+      schemaVersion: 1,
+      validatorVersion: input.validatorVersion,
+      subjectRevisionId: input.root.revisionId,
+      subjectDigest: input.root.contentDigest,
+      nodes,
+      missingRevisionIds: [...input.missingRevisionIds].sort(compareValidationText),
+      edges,
+      topologicalRevisionIds: input.topologicalRevisionIds,
+      cyclePath: input.cyclePath,
+    }),
+  );
+}
+
+function validationReportIssue(
+  code: string,
+  resourceId: string,
+  path: string,
+  message: string,
+  remediation: string,
+): ValidationIssueContract {
+  return Object.freeze({
+    code,
+    severity: "error",
+    resourceId: parseOntosId(resourceId, "$validationIssue.resourceId"),
+    path,
+    message,
+    remediation,
+  });
+}
+
+function compareValidationText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 async function lockEpoch(client: pg.PoolClient, projectId: string): Promise<bigint> {

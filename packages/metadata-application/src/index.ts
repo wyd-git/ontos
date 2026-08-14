@@ -5,8 +5,10 @@ import {
   type ArtifactDigest,
   type CanonicalInstant,
   type ResourceFamily,
+  type ValidationReportContract,
 } from "@ontos/contracts";
 import {
+  METADATA_VALIDATOR_VERSION,
   MetadataDomainError,
   isManagementPermissionAllowed,
   prepareDirectResourceContent,
@@ -105,6 +107,11 @@ export interface ResourceRevisionRecord {
 export interface ResourceCreation {
   readonly resource: ResourceRecord;
   readonly initialDraft: ResourceRevisionRecord;
+}
+
+export interface RevisionValidationResult {
+  readonly revision: ResourceRevisionRecord;
+  readonly report: ValidationReportContract;
 }
 
 export interface ResourceScopeRecord {
@@ -218,6 +225,14 @@ export interface ResourceLifecycleRepository {
     readonly authorPrincipalId: string;
     readonly content: PreparedResourceContent;
   }): Promise<ResourceRevisionRecord>;
+  validateDraftRevision(input: {
+    readonly revisionId: string;
+    readonly validatorVersion: string;
+  }): Promise<RevisionValidationResult>;
+  getRevisionValidationReport(input: {
+    readonly revisionId: string;
+    readonly validatorVersion: string;
+  }): Promise<ValidationReportContract>;
   transitionResourceState(input: {
     readonly resourceId: string;
     readonly targetState: ResourceState;
@@ -485,6 +500,42 @@ export class ResourceLifecycleApplicationService {
       sourceRevisionId: command.sourceRevisionId,
       authorPrincipalId: resolved.principalId,
       content: prepareContent(scope.family, command.content),
+    });
+  }
+
+  async validateRevision(
+    identityInput: VerifiedFoundationIdentity,
+    commandInput: unknown,
+  ): Promise<RevisionValidationResult> {
+    const identity = parseVerifiedFoundationIdentity(identityInput);
+    const { revisionId } = parseRevisionIdentifierCommand(commandInput);
+    const resolved = await this.#resolveIdentity(identity);
+    const scope = await this.#resources.readRevisionScope(revisionId);
+    await this.#requirePermission(resolved, {
+      ...scope,
+      permission: "metadata.edit",
+    });
+    return this.#resources.validateDraftRevision({
+      revisionId,
+      validatorVersion: METADATA_VALIDATOR_VERSION,
+    });
+  }
+
+  async getRevisionValidationReport(
+    identityInput: VerifiedFoundationIdentity,
+    commandInput: unknown,
+  ): Promise<ValidationReportContract> {
+    const identity = parseVerifiedFoundationIdentity(identityInput);
+    const { revisionId } = parseRevisionIdentifierCommand(commandInput);
+    const resolved = await this.#resolveIdentity(identity);
+    const scope = await this.#resources.readRevisionScope(revisionId);
+    await this.#requirePermission(resolved, {
+      ...scope,
+      permission: "metadata.read",
+    });
+    return this.#resources.getRevisionValidationReport({
+      revisionId,
+      validatorVersion: METADATA_VALIDATOR_VERSION,
     });
   }
 

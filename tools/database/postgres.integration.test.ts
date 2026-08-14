@@ -47,6 +47,7 @@ const db01Ids = {
   duplicateResource: "00000000-0000-4000-8000-000000000202",
   revision: "00000000-0000-4000-8000-000000000301",
   duplicateRevision: "00000000-0000-4000-8000-000000000302",
+  validationReport: "00000000-0000-4000-8000-000000000303",
   release: "00000000-0000-4000-8000-000000000401",
   activation: "00000000-0000-4000-8000-000000000501",
   package: "00000000-0000-4000-8000-000000000601",
@@ -122,6 +123,7 @@ void test(
             "0001_foundation.sql",
             "0002_metadata_control_plane.sql",
             "0003_resource_revision_guards.sql",
+            "0004_dependency_validation_guards.sql",
           ],
         );
 
@@ -196,7 +198,7 @@ async function assertSecondDatabaseAndConcurrentRunner(
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 3);
+  assert.equal(left.applied.length + right.applied.length, 4);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
 }
 
@@ -581,9 +583,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
   const firstMigration = resolve(directory, "0001_foundation.sql");
   const secondMigration = resolve(directory, "0002_metadata_control_plane.sql");
   const thirdMigration = resolve(directory, "0003_resource_revision_guards.sql");
-  const failedMigration = resolve(directory, "0004_failed_attempt.sql");
-  const defectMigration = resolve(directory, "0004_forward_repair_probe.sql");
-  const repairMigration = resolve(directory, "0005_forward_repair.sql");
+  const fourthMigration = resolve(directory, "0004_dependency_validation_guards.sql");
+  const failedMigration = resolve(directory, "0005_failed_attempt.sql");
+  const defectMigration = resolve(directory, "0005_forward_repair_probe.sql");
+  const repairMigration = resolve(directory, "0006_forward_repair.sql");
 
   try {
     await copyFile(resolve(db00MigrationDirectory, "0001_foundation.sql"), firstMigration);
@@ -594,6 +597,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     await copyFile(
       resolve(db00MigrationDirectory, "0003_resource_revision_guards.sql"),
       thirdMigration,
+    );
+    await copyFile(
+      resolve(db00MigrationDirectory, "0004_dependency_validation_guards.sql"),
+      fourthMigration,
     );
     await writeFile(
       failedMigration,
@@ -608,7 +615,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_EXECUTION_FAILED",
     );
-    await assertProbeAndLedgerState(client, false, 3);
+    await assertProbeAndLedgerState(client, false, 4);
 
     await rm(failedMigration);
     await writeFile(
@@ -622,7 +629,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const defectRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       defectRun.applied.map(({ version }) => version),
-      [4],
+      [5],
     );
 
     await writeFile(
@@ -636,7 +643,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const repairRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       repairRun.applied.map(({ version }) => version),
-      [5],
+      [6],
     );
 
     const definitions = await loadMigrationDefinitions(directory);
@@ -672,7 +679,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_HISTORY_DIVERGED",
     );
-    await assertProbeAndLedgerState(client, true, 5);
+    await assertProbeAndLedgerState(client, true, 6);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -766,6 +773,13 @@ async function assertDb01ApiWritesAndConstraints(client: pg.Client): Promise<voi
         created_by_principal_id)
      VALUES ($1, $2, 1, 'object_type', $3, '{"schemaVersion":1}'::jsonb, $4)`,
     [db01Ids.revision, db01Ids.resource, db01Digests.revision, db01Ids.principal],
+  );
+  await client.query(
+    `INSERT INTO meta.validation_reports
+       (report_id, subject_type, subject_id, resource_revision_id, subject_digest,
+        validation_context_digest, validator_version, valid, issues)
+     VALUES ($1, 'resource_revision', $2, $2, $3, $3, 'metadata-g2-01-v1', TRUE, '[]'::jsonb)`,
+    [db01Ids.validationReport, db01Ids.revision, db01Digests.revision],
   );
   await client.query(
     `UPDATE meta.resource_revisions

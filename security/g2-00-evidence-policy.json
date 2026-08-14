@@ -13,7 +13,8 @@
     "allowedMigrationFiles": [
       "migrations/db-00/0001_foundation.sql",
       "migrations/db-00/0002_metadata_control_plane.sql",
-      "migrations/db-00/0003_resource_revision_guards.sql"
+      "migrations/db-00/0003_resource_revision_guards.sql",
+      "migrations/db-00/0004_dependency_validation_guards.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -102,7 +103,8 @@
     "docs/evidence/g2-01-02-metadata-contracts.md",
     "docs/evidence/g2-01-03-db-01-migration.md",
     "docs/evidence/g2-01-04-project-rbac-epoch.md",
-    "docs/evidence/g2-01-05-resource-revision-lifecycle.md"
+    "docs/evidence/g2-01-05-resource-revision-lifecycle.md",
+    "docs/evidence/g2-01-06-definition-validation-dependency-graph.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

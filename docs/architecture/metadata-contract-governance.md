@@ -74,7 +74,7 @@ Digest 前像规则固定如下：
 5. `contentDigest` 对规范化 Resource Content 计算；Release/Package `manifestDigest` 对 Manifest 除 `manifestDigest` 自身之外的全部字段计算；
 6. 基础设施 Adapter 对前像 UTF-8 Bytes 执行 SHA-256，并编码为 `sha256:` 加 64 位小写十六进制。
 
-修改任何有意义的字段都改变前像；只改变 Key 顺序、缩进或空白不改变前像。Parser 验证和实际 Digest 比对将在 G2-01-05/08/09 的 Store/Use Case 边界执行。
+修改任何有意义的字段都改变前像；只改变 Key 顺序、缩进或空白不改变前像。Resource Parser 与实际 Digest 比对已在 G2-01-05/06 的 Store/Use Case 边界落地；Release/Package Manifest Digest 仍由 G2-01-08/09 完成。
 
 ## 6. 兼容规则与滚动发布顺序
 
@@ -95,7 +95,7 @@ Metadata Artifact 是版本化、严格读取的持久事实。Reader 必须先�
 
 - G2-01-03 将这些合同映射到 DB-01，但数据库 Row 不得成为公共类型；
 - G2-01-05 在 Draft 写入/校验时重算 Content Digest，并用 `etag` 防止丢失更新；
-- G2-01-06/07 实现 Dependency Extractor 与业务兼容分类，复用本任务冻结的 Report Envelope；
+- G2-01-06 已实现 Dependency Extractor、Validation Report 与确定性图；G2-01-07 实现业务兼容分类；
 - G2-01-08 在 Stage/Publish 事务中验证 Pin、Report 与 Digest 一致；
 - G2-01-09 的 Package Expander 必须调用当前 Registry，不能维护第二份 Family Switch；
 - G2-01-10 的 HTTP Adapter 必须先执行这些 Parser，再映射到 Application Use Case。

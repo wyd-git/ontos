@@ -43,6 +43,12 @@
 - Project/RBAC 原子创建风险已经关闭；剩余 8 个工作项仍包含 Revision/Dependency/Compatibility、Release Publish、Package、Admin HTTP/OIDC 和最终 Gate，整体 **4–7 工程周**与剩余 **3–6 工程周**容量情景暂不缩短。
 - 当前最大不确定性转为 Draft 并发/父链、Dependency Graph 与兼容性、Publish 行锁和入口 OIDC；G2-01-05 继续按原顺序，不提前创建 `apps/api`。
 
+### G2-01-06 后检查点（2026-08-14）
+
+- G2-01-01～06 进度为 6/12；Resource/Draft 并发、服务器 Definition Validator、Dependency Extractor、闭包、确定性拓扑与不可变 Validation Report 已进入正式实现。
+- 第一次失败后依赖状态变化无法重试的报告身份缺口，已通过 `validation_context_digest` 向前迁移关闭；跨 Project 引用按 Missing 同形失败，不读取或锁定外部 Project 的图。
+- 剩余 6 个工作项的主要风险收敛到 Compatibility 的下游影响、Release 原子 Publish、Package 展开事务和真实 Admin HTTP/OIDC；整体 **4–7 工程周**容量情景仍不转换为日期承诺。
+
 ## 3. 顺序与停止规则
 
 1. G2-00 已 PASS；G2-01 只按 [Metadata 任务包](g2-01-metadata-task-pack.md) 顺序执行，不直接开始 DB-02、页面或 Action。
