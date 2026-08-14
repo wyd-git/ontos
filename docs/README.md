@@ -9,26 +9,27 @@
 3. [G2 蓝图红队审查](reviews/g2-blueprint-red-team.md)：承重假设、验证、Kill Criteria 和 Conditional Go 结论。
 4. [G2-01 Metadata 任务包](delivery/g2-01-metadata-task-pack.md)：当前唯一获准执行的业务 Gate，覆盖 DB-01、Metadata/Release/Package Store、最小管理授权和 Admin API。
 5. [G2-01 任务包红队](reviews/g2-01-task-pack-red-team.md)：零成员 Activation、Package/Release 原子性、渐进冻结、授权边界和单通道工期的 Kill Criteria。
-6. [G2-00 Foundation 任务包](delivery/g2-00-foundation-task-pack.md)：已经完成的底座 Gate 清单和历史范围边界。
-7. [G2 工具链基线](architecture/toolchain-baseline.md)与 [Monorepo 依赖边界](architecture/dependency-boundaries.md)：G2-00-01 的已接受工程约束。
-8. [本地生产边界架构](architecture/local-production-boundaries.md)与 [运行手册](operations/local-production-boundary-environment.md)：G2-00-02 的协议、信任和生命周期边界。
-9. [ADR-007 Runtime Activation](architecture/adr/007-runtime-activation-serving-head.md)、[专项红队](reviews/adr-007-runtime-activation-red-team.md)与 [G2-00-03 Evidence](evidence/g2-00-03-runtime-activation-serving-head.md)：Release/Generation 一致绑定、支持窗、容量和 GC 引用语义。
-10. [ADR-008 Shared Projection](architecture/adr/008-shared-projection-index-capacity.md)、[专项红队](reviews/adr-008-shared-projection-red-team.md)与 [G2-00-04 Evidence](evidence/g2-00-04-shared-projection-index-capacity.md)：共享表键、Index Plan、Generation 容量、审批与 GC 上界。
-11. [ADR-009 Public Value Codec](architecture/adr/009-public-value-codec.md)、[专项红队](reviews/adr-009-public-value-codec-red-team.md)与 [G2-00-05 Evidence](evidence/g2-00-05-public-value-codec.md)：公共值、Primary Key、排序、Golden Vector 与 PostgreSQL 交叉验证。
-12. [ADR-010 Job/Lease 与 Outbox](architecture/adr/010-postgresql-job-lease-outbox.md)、[专项红队](reviews/adr-010-postgresql-job-lease-outbox-red-team.md)与 [G2-00-06 Evidence](evidence/g2-00-06-postgresql-job-lease-outbox.md)：持久 Job 恢复、数据库租约、至少一次投递和同对象顺序。
-13. [ADR-011 Trusted Handler Host](architecture/adr/011-trusted-handler-host-boundary.md)、[专项红队](reviews/adr-011-trusted-handler-host-red-team.md)与 [G2-00-07 Evidence](evidence/g2-00-07-trusted-handler-host.md)：登记 Artifact、私有 RPC、受限 Context、硬超时、进程恢复与 trusted deployment 声明。
-14. [ADR-012 Policy Epoch](architecture/adr/012-policy-epoch-cache-fail-closed.md)、[专项红队](reviews/adr-012-policy-epoch-red-team.md)与 [G2-00-08 Evidence](evidence/g2-00-08-policy-epoch-cache.md)：同事务 Epoch、双进程有界缓存、通知加速、版本绑定与 fail-closed。
-15. [Foundation Contract 与兼容性治理](architecture/foundation-contract-governance.md)、[专项红队](reviews/g2-00-09-foundation-contract-red-team.md)与 [G2-00-09 Evidence](evidence/g2-00-09-foundation-contracts.md)：公共 ID、版本、身份、Release、错误、兼容性规则和渐进冻结边界。
-16. [DB-00 Migration、数据库角色与逻辑 Schema](architecture/db-00-migration-roles.md)、[专项红队](reviews/g2-00-10-db-migration-roles-red-team.md)与 [G2-00-10 Evidence](evidence/g2-00-10-db-migration-roles.md)：只向前迁移协议、权限边界、默认权限、并发与故障恢复合同。
-17. [G1 资产迁移与正式 Testkit 边界](architecture/testkit-g1-migration.md)：G2-00-11 的来源指纹、迁移转换、确定性生成协议和 Spike 依赖禁线。
-18. [G2-00-11 专项红队](reviews/g2-00-11-testkit-red-team.md)与 [Evidence](evidence/g2-00-11-testkit-fixtures.md)：正式 Testkit、确定性 100k/1m Generator、六组资产 Provenance 与 G1 依赖禁线。
-19. [强制 CI 与供应链 Gate](architecture/ci-foundation-gate.md)：G2-00-12 的唯一执行路径、报告合同、Secret/License/SBOM/Vulnerability 策略和分支保护。
-20. [G2-00-12 专项红队](reviews/g2-00-12-ci-gate-red-team.md)与 [Evidence](evidence/g2-00-12-ci-supply-chain-gate.md)：统一本地/远端执行、故意失败协议、供应链 Fail-Closed、机器报告和不可绕过合并条件。
-21. [G2 Owner 与容量矩阵](delivery/g2-owner-capacity-matrix.md)：实际 Accountable Owner、单通道并行度、第二视角和 G2-01～05 的顺序日历。
-22. [G2-00-13 专项红队](reviews/g2-00-13-foundation-red-team.md)与 [Foundation 总 Evidence](evidence/g2-00-13-foundation-integration-gate.md)：clean checkout、总 Manifest、Intended-vs-Implemented、范围与 teardown 证据。
-23. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
-24. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
-25. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
+6. [ADR-013 Metadata 控制面](architecture/adr/013-metadata-release-package-control-plane.md)、[专项红队](reviews/adr-013-metadata-control-plane-red-team.md)与 [G2-01-01 Evidence](evidence/g2-01-01-metadata-control-plane.md)：DB-01 候选表、状态机、原子 Publish、零成员 Activation、管理授权与 Roll Forward 合同。
+7. [G2-00 Foundation 任务包](delivery/g2-00-foundation-task-pack.md)：已经完成的底座 Gate 清单和历史范围边界。
+8. [G2 工具链基线](architecture/toolchain-baseline.md)与 [Monorepo 依赖边界](architecture/dependency-boundaries.md)：G2-00-01 的已接受工程约束。
+9. [本地生产边界架构](architecture/local-production-boundaries.md)与 [运行手册](operations/local-production-boundary-environment.md)：G2-00-02 的协议、信任和生命周期边界。
+10. [ADR-007 Runtime Activation](architecture/adr/007-runtime-activation-serving-head.md)、[专项红队](reviews/adr-007-runtime-activation-red-team.md)与 [G2-00-03 Evidence](evidence/g2-00-03-runtime-activation-serving-head.md)：Release/Generation 一致绑定、支持窗、容量和 GC 引用语义。
+11. [ADR-008 Shared Projection](architecture/adr/008-shared-projection-index-capacity.md)、[专项红队](reviews/adr-008-shared-projection-red-team.md)与 [G2-00-04 Evidence](evidence/g2-00-04-shared-projection-index-capacity.md)：共享表键、Index Plan、Generation 容量、审批与 GC 上界。
+12. [ADR-009 Public Value Codec](architecture/adr/009-public-value-codec.md)、[专项红队](reviews/adr-009-public-value-codec-red-team.md)与 [G2-00-05 Evidence](evidence/g2-00-05-public-value-codec.md)：公共值、Primary Key、排序、Golden Vector 与 PostgreSQL 交叉验证。
+13. [ADR-010 Job/Lease 与 Outbox](architecture/adr/010-postgresql-job-lease-outbox.md)、[专项红队](reviews/adr-010-postgresql-job-lease-outbox-red-team.md)与 [G2-00-06 Evidence](evidence/g2-00-06-postgresql-job-lease-outbox.md)：持久 Job 恢复、数据库租约、至少一次投递和同对象顺序。
+14. [ADR-011 Trusted Handler Host](architecture/adr/011-trusted-handler-host-boundary.md)、[专项红队](reviews/adr-011-trusted-handler-red-team.md)与 [G2-00-07 Evidence](evidence/g2-00-07-trusted-handler-host.md)：登记 Artifact、私有 RPC、受限 Context、硬超时、进程恢复与 trusted deployment 声明。
+15. [ADR-012 Policy Epoch](architecture/adr/012-policy-epoch-cache-fail-closed.md)、[专项红队](reviews/adr-012-policy-epoch-red-team.md)与 [G2-00-08 Evidence](evidence/g2-00-08-policy-epoch-cache.md)：同事务 Epoch、双进程有界缓存、通知加速、版本绑定与 fail-closed。
+16. [Foundation Contract 与兼容性治理](architecture/foundation-contract-governance.md)、[专项红队](reviews/g2-00-09-foundation-contract-red-team.md)与 [G2-00-09 Evidence](evidence/g2-00-09-foundation-contracts.md)：公共 ID、版本、身份、Release、错误、兼容性规则和渐进冻结边界。
+17. [DB-00 Migration、数据库角色与逻辑 Schema](architecture/db-00-migration-roles.md)、[专项红队](reviews/g2-00-10-db-migration-roles-red-team.md)与 [G2-00-10 Evidence](evidence/g2-00-10-db-migration-roles.md)：只向前迁移协议、权限边界、默认权限、并发与故障恢复合同。
+18. [G1 资产迁移与正式 Testkit 边界](architecture/testkit-g1-migration.md)：G2-00-11 的来源指纹、迁移转换、确定性生成协议和 Spike 依赖禁线。
+19. [G2-00-11 专项红队](reviews/g2-00-11-testkit-red-team.md)与 [Evidence](evidence/g2-00-11-testkit-fixtures.md)：正式 Testkit、确定性 100k/1m Generator、六组资产 Provenance 与 G1 依赖禁线。
+20. [强制 CI 与供应链 Gate](architecture/ci-foundation-gate.md)：G2-00-12 的唯一执行路径、报告合同、Secret/License/SBOM/Vulnerability 策略和分支保护。
+21. [G2-00-12 专项红队](reviews/g2-00-12-ci-gate-red-team.md)与 [Evidence](evidence/g2-00-12-ci-supply-chain-gate.md)：统一本地/远端执行、故意失败协议、供应链 Fail-Closed、机器报告和不可绕过合并条件。
+22. [G2 Owner 与容量矩阵](delivery/g2-owner-capacity-matrix.md)：实际 Accountable Owner、单通道并行度、第二视角和 G2-01～05 的顺序日历。
+23. [G2-00-13 专项红队](reviews/g2-00-13-foundation-red-team.md)与 [Foundation 总 Evidence](evidence/g2-00-13-foundation-integration-gate.md)：clean checkout、总 Manifest、Intended-vs-Implemented、范围与 teardown 证据。
+24. `architecture/adr/`：编码前逐项冻结的实现决策；只有 Accepted ADR 可以覆盖蓝图中的建议性技术选择，不能静默改变 PRD 产品语义。
+25. `delivery/`：任务、依赖、Gate 状态与风险；不能反向扩大 PRD 范围。
+26. `evidence/`：可复现的 Gate 报告；证据不等于新的产品需求。
 
 ## 计划目录
 

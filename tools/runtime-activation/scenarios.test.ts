@@ -36,6 +36,78 @@ void test("R1 publish atomically binds Channel and explicit Serving Head to one 
   model.assertInvariants(0);
 });
 
+void test("a metadata-only R1 stays immutable while R2 adds the first runtime member plan", () => {
+  const model = new RuntimeActivationModel();
+  registerRelease(model, {
+    id: "r1-metadata-only",
+    schemaHash: "unused",
+    mappingHash: "unused",
+    pins: [],
+  });
+  createActivation(model, {
+    id: "a0-r1-empty",
+    releaseId: "r1-metadata-only",
+    members: {},
+    at: 0,
+  });
+  publishFixtureRelease(model, "r1-metadata-only", "a0-r1-empty", 0);
+
+  const r1Before = model.snapshot().releases["r1-metadata-only"];
+  const a0Before = model.snapshot().activations["a0-r1-empty"];
+  assert.ok(r1Before);
+  assert.ok(a0Before);
+
+  registerRelease(model, { id: "r2-runtime", schemaHash: "schema-2", mappingHash: "mapping-2" });
+  const r2s1 = createVersion(model, { label: "r2-s1", releaseId: "r2-runtime", at: 1 });
+  publishFixtureRelease(model, "r2-runtime", r2s1.activationId, 1);
+
+  const r2BeforeRefresh = structuredClone(model.snapshot().releases["r2-runtime"]);
+  const r2s1BeforeRefresh = structuredClone(model.snapshot().activations[r2s1.activationId]);
+  const r2s2 = createVersion(model, { label: "r2-s2", releaseId: "r2-runtime", at: 2 });
+
+  registerRelease(model, { id: "r3-concurrent", schemaHash: "schema-3", mappingHash: "mapping-3" });
+  const r3s1 = createVersion(model, { label: "r3-s1", releaseId: "r3-concurrent", at: 2 });
+  const plannedRevision = model.controlRevision;
+
+  model.refresh({
+    replacements: [{ releaseId: "r2-runtime", activationId: r2s2.activationId }],
+    expectedControlRevision: plannedRevision,
+    at: 3,
+  });
+  assertRuntimeError(
+    () =>
+      model.publish({
+        releaseId: "r3-concurrent",
+        channel: fixtureChannel,
+        activationId: r3s1.activationId,
+        expectedControlRevision: plannedRevision,
+        at: 3,
+        supportUntil: 90 * DAY_IN_MS,
+      }),
+    "CONCURRENT_MODIFICATION",
+  );
+  publishFixtureRelease(model, "r3-concurrent", r3s1.activationId, 4);
+
+  const after = model.snapshot();
+  assert.deepEqual(after.releases["r1-metadata-only"]?.pins, r1Before.pins);
+  assert.equal(after.releases["r1-metadata-only"]?.manifestHash, r1Before.manifestHash);
+  assert.deepEqual(after.activations["a0-r1-empty"]?.members, a0Before.members);
+  assert.equal(after.activations["a0-r1-empty"]?.releaseManifestHash, a0Before.releaseManifestHash);
+  assert.deepEqual(after.releases["r2-runtime"]?.pins, r2BeforeRefresh?.pins);
+  assert.equal(after.releases["r2-runtime"]?.manifestHash, r2BeforeRefresh?.manifestHash);
+  assert.deepEqual(after.activations[r2s1.activationId]?.members, r2s1BeforeRefresh?.members);
+  assert.equal(
+    model.resolve({ kind: "release", releaseId: "r1-metadata-only" }).activationId,
+    "a0-r1-empty",
+  );
+  assert.equal(
+    model.resolve({ kind: "release", releaseId: "r2-runtime" }).activationId,
+    r2s2.activationId,
+  );
+  assert.equal(model.resolve(channelSelector()).releaseId, "r3-concurrent");
+  model.assertInvariants(4);
+});
+
 void test("compatible R1/R2 pins reuse the same certified Generation without crossing manifests", () => {
   const model = new RuntimeActivationModel();
   registerRelease(model, { id: "r1", schemaHash: "schema-1", mappingHash: "mapping-1" });

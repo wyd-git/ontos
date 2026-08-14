@@ -11,13 +11,25 @@
 一次可服务状态只能由一个不可变 `Runtime Activation` 表示。Activation 同时绑定：
 
 - 一个不可变 Release Manifest；
-- Release 的完整 Member Pins；
+- Release 的完整 Runtime Member Plan Pins；
 - 每个 Object/Link Member 对应的 Generation 与 Snapshot；
 - 同一 Snapshot Group 的统一 Group Version。
 
 Channel 与每个受支持 Release 的 Serving Head 都只指向 Activation，不能分别保存 Release Pointer 和 Generation Pointer。Query 在请求开始解析一次 Activation，此后只使用该 Activation；Preflight Token 也绑定解析到的 Activation。
 
 该决策保留 PRD 的“Published Release API/SDK 至少支持 90 天”，但明确不承诺保留 90 天内每一次历史数据 Generation。受支持 Release 的 Serving Head 可以在 Release Pins 不变的前提下随数据刷新前移到新的兼容 Generation。
+
+### 1.1 Metadata Resource Pin 与 Runtime Member Plan Pin
+
+G2-01 发现原文中的 `Release Pin` 命名存在歧义，现做兼容性澄清：
+
+- **Metadata Resource Pin** 是 PRD Resource Graph 的 `resourceId → resourceRevisionId`，由 G2-01 Release Manifest 保存；
+- **Runtime Member Plan Pin** 是需要 Generation 的 Object/Link Member 计划，额外绑定 Schema、Mapping 与 Snapshot Group，由 Release Staging 在拥有相应合同时生成；
+- Runtime Activation 的 Member 集合必须与 Runtime Member Plan 完全相等，不要求与全部 Metadata Resource Pin 相等；
+- 一个只包含 Metadata 定义、尚无可物化 Mapping 的 Release，其 Runtime Member Plan 可以为空，因此可以发布成员数为零的 Activation；
+- 从空 Runtime Plan 加入首个 Member 会改变 Release 的运行计划，必须创建新 Release。只有 Plan 不变、Generation/Snapshot 改变时，才属于同 Release 数据 Refresh。
+
+因此 G2-01 的兼容 seam 是 `R1 metadata-only + A0(empty) → R2 first-member + A1 → R2 refresh + A2`。禁止通过原地修改 R1/A0 得到首 Member。该澄清不改变 Channel/Serving Head 只指向 Activation、Query 一次解析、Publish/Refresh CAS 或历史不可变语义。
 
 ## 2. 为什么这套语义可落地
 
@@ -34,7 +46,8 @@ Channel 与每个受支持 Release 的 Serving Head 都只指向 Activation，�
 
 | 记录                                   | 是否可变                 | 作用                                                                        |
 | -------------------------------------- | ------------------------ | --------------------------------------------------------------------------- |
-| Release Pin                            | 否                       | 固定 Member、Resource Revision、Schema Hash、Mapping Hash 与 Snapshot Group |
+| Metadata Resource Pin                  | 否                       | 固定 Resource 与 Resource Revision；属于 G2-01 Release Manifest             |
+| Runtime Member Plan Pin                | 否                       | 固定 Member、Resource Revision、Schema Hash、Mapping Hash 与 Snapshot Group |
 | Release                                | 发布后否；只迁移生命周期 | 保存 Manifest、Pins、发布时间、支持截止和可选 `rollbackOf`                  |
 | Snapshot                               | 否；只迁移生命周期       | 表示一次输入数据版本及 Snapshot Group Version                               |
 | Generation                             | 否；只迁移生命周期       | 表示某 Member 的物化结果及其 Release Pin 兼容证明                           |
@@ -46,7 +59,7 @@ Channel 与每个受支持 Release 的 Serving Head 都只指向 Activation，�
 必须始终成立：
 
 1. Activation 的 Release ID、Manifest Hash 和项目一致。
-2. Activation Member 集合与 Release Pin 集合完全相等，不能缺 Member 或多 Member。
+2. Activation Member 集合与 Release 的 Runtime Member Plan 集合完全相等，不能缺 Member 或多 Member；空 Plan 对应空 Activation。
 3. 每个 Generation 必须携带目标 Pin Fingerprint 的兼容证明；Fingerprint 同时包含 Member、Resource Revision、Schema、Mapping 和 Snapshot Group。
 4. 同一 Snapshot Group 的所有 Activation Members 使用同一 Group Version。
 5. Channel 和 Serving Head 只能引用 READY Activation；Serving Head 的 Release 必须与 Activation Release 相同。
@@ -69,7 +82,7 @@ Channel 与每个受支持 Release 的 Serving Head 都只指向 Activation，�
 
 ### 4.1 Publish
 
-前置条件：Release 为 STAGED，候选 Activation READY，全部 Pins/Generation 证明与 Snapshot Group 通过，并且容量检查通过。
+前置条件：Release 为 STAGED，候选 Activation READY，全部 Runtime Member Plan Pins/Generation 证明与 Snapshot Group 通过，并且容量检查通过。空 Runtime Plan 的 Release 不需要伪造空 Snapshot/Generation。
 
 同一控制事务执行：
 
@@ -83,7 +96,7 @@ Channel 与每个受支持 Release 的 Serving Head 都只指向 Activation，�
 
 ### 4.2 纯数据 Refresh
 
-Refresh 不修改 Release Pins。调度器按仍受支持 Release 的 Pin 枚举目标：
+Refresh 不修改 Metadata Resource Pins 或 Runtime Member Plan Pins。调度器按仍受支持 Release 的 Runtime Member Plan Pin 枚举目标：
 
 - 有受信兼容证明时，不同 Release 的新 Activation 可以引用同一 Generation；
 - 不兼容时，必须按各自 Pin 独立物化；
@@ -201,7 +214,7 @@ GC Plan 记录 `state_revision`。任何 Pointer、Token、Job、Hold、History 
 
 可执行证据位于：
 
-- `tools/runtime-activation/scenarios.test.ts`：13 个固定场景；
+- `tools/runtime-activation/scenarios.test.ts`：14 个固定场景，包括 Metadata-only 空 Activation 到新 Release 首 Member 的兼容 seam；
 - `tools/runtime-activation/properties.test.ts`：固定种子、每项 200 次的 property-based 验证；
 - `tools/runtime-activation/model.ts`：无数据库、无 Endpoint 的纯状态模型。
 

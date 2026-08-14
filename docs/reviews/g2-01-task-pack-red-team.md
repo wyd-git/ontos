@@ -11,27 +11,27 @@
 
 **Claim**
 
-G2-01 可以发布一个零 Generation Member 的真实 Activation；G2-02 只新增 Member/Generation，不需要修改 Release、Channel 或 Serving Head 身份。
+G2-01 可以发布一个零 Generation Member 的真实 Activation；G2-02 不需要修改历史 Release、Channel 或 Serving Head 身份即可引入首个 Member/Generation。
 
 **Steelman**
 
-ADR-007 已把 Release Pin 与 Activation 分开，Activation 本身是不可变可服务状态；零成员只是合法成员集合的最小值。先证明 Release/Pointer 原子性，可以避免 G2-01 伪造 Snapshot 或空 Generation。
+ADR-007 已把 Release 与 Activation 分开，Activation 本身是不可变可服务状态；零成员是空 Runtime Member Plan 的合法集合。先证明 Release/Pointer 原子性，可以避免 G2-01 伪造 Snapshot 或空 Generation。
 
 **Fails if**
 
-DB-02 的第一个 Object Type Generation 无法通过创建“新的同 Release Activation”加入，而必须原地修改 G2-01 Activation、重写 Release Binding、移动历史 Serving Head 语义或让 Release Publish 等待 Materializer。
+DB-02 的第一个 Object Type Generation 无法通过创建新 Release/Activation 加入，而必须原地修改 G2-01 Activation、重写历史 Release Binding、移动历史 Serving Head 语义或让 G2-01 Publish 等待 Materializer。
 
 **Evidence to get this week**
 
-在 G2-01-01 状态模型中固定执行：发布 R1/空 Activation A0；为 R1 构造 G1 Member 后创建 A1；Channel 切到 A1；显式 R1 Serving Head 按同一规则切到 A1；A0 与原 Release Pin 保持不可变。再并发一个 R2 Publish，检查锁域和期望旧 Activation。
+在 G2-01-01 状态模型中区分 Metadata Resource Pin 与 Runtime Member Plan Pin，并固定执行：发布 R1/空 Plan/空 A0；创建包含首 Member Plan 的 R2/A1；对 R2 做数据 Refresh A2；同时并发 R3 Publish。检查 R1/A0、R2 Plan/Manifest 和历史 Binding 不变。
 
 **Kill criterion**
 
-只要加入首个 Member 需要 UPDATE A0、改变 R1 Manifest Digest，或 Release Publish 事务需要等待 DB-02 Worker，就停止 DB-01 表设计并修订 ADR-007/任务边界。
+只要加入首个 Member 需要 UPDATE A0/R1、同一 Release 通过 Refresh 改变 Member Plan，或 G2-01 Publish 事务需要等待 DB-02 Worker，就停止 DB-01 表设计并修订 ADR-007/任务边界。
 
 **Cheapest test**
 
-扩展现有 Runtime Activation 纯状态 Harness，加入 `zero-member publish → same-release data refresh → concurrent new release` 三个固定场景，不创建数据库表。
+扩展现有 Runtime Activation 纯状态 Harness，加入 `metadata-only empty publish → new Release first member → same-Release data refresh → concurrent Release publish`，不创建数据库表。
 
 **Decision**
 
@@ -177,7 +177,7 @@ G2-00 已完成工具链、Migration Runner、OIDC 环境、Foundation Contracts
 ## Required revisions resolution
 
 1. **已写回**：任务包 §3.2/3.5/3.6 与 G2-01-09 把 Package Installation 分为 Pending Change 与 Active Pointer，并规定与 Release Channel 同事务切换。
-2. **已写回**：G2-01-01 增加 `R1 + zero-member A0 → R1 + first-member A1 → concurrent R2 publish` seam proof。
+2. **已写回并在 G2-01-01 审计中纠正歧义**：seam proof 为 `R1 empty A0 → R2 first-member A1 → R2 refresh A2 concurrent with R3 publish`；同 Release 不能改变 Runtime Member Plan。
 3. **已写回**：G2-01-02 规定 Resource Family Registry 同时约束直接 Resource API 与 Package 展开器。
 4. **已写回**：任务包 §3.7、G2-01-04/10 规定 Application Use Case 不接触原始 JWT Claims，只接收已验证 Identity 与 `ManagementAuthorizer`。
 5. **已写回**：任务包与 Owner/容量矩阵将单通道 G2-01 调整为 4–7 工程周，并在 G2-01-03 后强制重新估算。

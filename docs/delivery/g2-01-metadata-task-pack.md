@@ -277,7 +277,7 @@ DB-01 同时承载不可变 Revision、Release Pointer、Package Upgrade 和最�
 - Resource Revision、Release、Package Installation 和 Role Binding 状态机均有合法/非法转换测试；
 - Publish 锁顺序固定为 Project 发布序列、Channel、Release/Pin，且与后续 Snapshot Cutover 的锁域不冲突；
 - 明确 G2-01 为什么不创建 Activation Member，以及 DB-02 如何只增量扩展；
-- 状态 Harness 必须通过 `R1 + zero-member A0 → R1 + first-member A1 → concurrent R2 publish`，且 A0、R1 Pin/Manifest 和历史 Binding 全程不可变；
+- 状态 Harness 必须通过 `R1 metadata-only + zero-member A0 → R2 + first-member A1 → R2 refresh A2 concurrent with R3 publish`；A0、R1/R2 Pin/Manifest 和历史 Binding 全程不可变；同 Release 不得通过 Refresh 改变 Runtime Member Plan；
 - 明确管理 RBAC 与 G2-03 Object Policy 的信任边界，无未经认证的测试后门；
 - 任一方案需要外部调用进入 Publish 事务、需要修改 ADR-007/012 或无法证明 Roll Forward 时，本任务 FAIL 并先修订 ADR。
 
