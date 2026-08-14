@@ -28,8 +28,26 @@ const policy: FoundationPolicy = {
     },
   ],
   requiredEvidence: ["docs/evidence/g2-00-01.md", "docs/evidence/g2-00-03.md"],
-  delivery: { effectiveParallelLanes: 1 },
-  residualRisks: [{ id: "RISK-1", owner: "Platform" }],
+  delivery: {
+    accountableOwner: "owner",
+    implementationSupport: "support",
+    effectiveParallelLanes: 1,
+    responsibilities: [{ area: "Platform", accountable: "owner", execution: "one lane" }],
+    independentReview: {
+      reviewerRole: "reviewer",
+      method: "clean-room review",
+      accountableApprover: "owner",
+    },
+    calendar: {
+      withdrawnScenario: "parallel plan",
+      planningRangeEngineeringWeeks: { minimum: 2, maximum: 4 },
+      gates: [{ id: "G2-01", minimumWeeks: 2, maximumWeeks: 4 }],
+      rule: "sequential",
+    },
+  },
+  residualRisks: [
+    { id: "RISK-1", risk: "availability", owner: "Platform", nextGate: "Continuous" },
+  ],
 };
 
 void test("accepts the exact Foundation-only repository snapshot", () => {
@@ -100,11 +118,43 @@ void test("builds a compact commit-bound clean-room manifest", () => {
   assert.equal(JSON.stringify(manifest).includes("must not be duplicated"), false);
 });
 
+void test("rejects an owner calendar whose total does not match its Gate ranges", () => {
+  const invalidPolicy: FoundationPolicy = {
+    ...policy,
+    delivery: {
+      ...policy.delivery,
+      calendar: {
+        ...policy.delivery.calendar,
+        planningRangeEngineeringWeeks: { minimum: 2, maximum: 5 },
+      },
+    },
+  };
+
+  assert.throws(
+    () => evaluateFoundationSnapshot(validSnapshot(), invalidPolicy),
+    /evidence policy is invalid/u,
+  );
+});
+
+void test("never labels a dirty worktree as a clean-room pass", () => {
+  const manifest = foundationEvidenceManifest(
+    { status: "PASS", commit: "b".repeat(40), dirty: true, steps: [] },
+    { status: "PASS" },
+  );
+
+  assert.equal(manifest.status, "PASS");
+  assert.equal(manifest.qualification, "WORKTREE_PASS");
+  assert.equal(manifest.cleanCheckout, false);
+});
+
 function validSnapshot(): FoundationRepositorySnapshot {
   return {
     trackedFiles: [
       "packages/contracts/package.json",
       "migrations/db-00/0001_foundation.sql",
+      "docs/architecture/adr/007.md",
+      "docs/evidence/g2-00-01.md",
+      "docs/evidence/g2-00-03.md",
       "spikes/g1/example.tsx",
     ],
     workspacePackages: ["packages/contracts"],

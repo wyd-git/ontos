@@ -82,6 +82,21 @@ ONTOS_ENVIRONMENT=production docker compose \
 
 该负向测试会创建三个空项目卷。检查状态后，用相同项目名和文件执行 `down --volumes --remove-orphans` 清理。不要把 `.env.example` 改名后用于共享或生产环境。该 Compose 文件的受支持入口拒绝任何非 `local` 模式；刻意使用 `--no-deps`、覆盖 Entrypoint 或修改文件属于显式运维绕过，不在此守卫的承诺内。
 
+## 6.1 G2-00 clean-room 顺序
+
+新 Checkout 没有 `node_modules` 时，必须先 Bootstrap，再执行环境命令。`env:reset` 会加载与 Smoke 共用的环境模块，因此不支持在 `npm ci` 前运行。
+
+```bash
+npm ci
+npm run env:reset
+npm run verify
+npm run env:reset
+```
+
+前置 Reset 证明 PostgreSQL、S3 和 OIDC 不复用旧项目卷；`verify` 自己执行完整安装、DB-00、Integration 和 `up → smoke → down`；末尾 Reset 删除本次新建的三个项目卷。两个 Reset 都只允许固定 Compose 项目 `ontos-g2-local`，会不可恢复地删除其中的本地测试数据，不得替换为全局 `docker volume prune`。
+
+只有 `generated/ci-report/foundation-evidence-manifest.json` 同时为 `PASS`、`CLEAN_ROOM_PASS`、`cleanCheckout=true` 且 Commit 等于 Clone Head，才是 G2-00 clean-room 证据。普通脏工作树运行最多得到 `WORKTREE_PASS`。
+
 ## 7. 故障定位
 
 先运行 `npm run env:status`。如果启动失败，读取固定项目日志：

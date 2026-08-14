@@ -10,6 +10,46 @@ export interface FoundationDecision {
   readonly evidence: string;
 }
 
+interface DeliveryResponsibility {
+  readonly area: string;
+  readonly accountable: string;
+  readonly execution: string;
+}
+
+interface DeliveryGateRange {
+  readonly id: string;
+  readonly minimumWeeks: number;
+  readonly maximumWeeks: number;
+}
+
+interface DeliveryPolicy {
+  readonly accountableOwner: string;
+  readonly implementationSupport: string;
+  readonly effectiveParallelLanes: number;
+  readonly responsibilities: readonly DeliveryResponsibility[];
+  readonly independentReview: {
+    readonly reviewerRole: string;
+    readonly method: string;
+    readonly accountableApprover: string;
+  };
+  readonly calendar: {
+    readonly withdrawnScenario: string;
+    readonly planningRangeEngineeringWeeks: {
+      readonly minimum: number;
+      readonly maximum: number;
+    };
+    readonly gates: readonly DeliveryGateRange[];
+    readonly rule: string;
+  };
+}
+
+interface ResidualRisk {
+  readonly id: string;
+  readonly risk: string;
+  readonly owner: string;
+  readonly nextGate: string;
+}
+
 export interface FoundationPolicy {
   readonly schemaVersion: 1;
   readonly gate: "G2-00";
@@ -23,8 +63,8 @@ export interface FoundationPolicy {
   };
   readonly requiredDecisions: readonly FoundationDecision[];
   readonly requiredEvidence: readonly string[];
-  readonly delivery: Readonly<Record<string, unknown>>;
-  readonly residualRisks: readonly Readonly<Record<string, unknown>>[];
+  readonly delivery: DeliveryPolicy;
+  readonly residualRisks: readonly ResidualRisk[];
 }
 
 export interface FoundationRepositorySnapshot {
@@ -47,6 +87,7 @@ export function evaluateFoundationSnapshot(
 ): readonly string[] {
   assertPolicy(policy);
   const violations: string[] = [];
+  const trackedFiles = new Set(snapshot.trackedFiles);
   compareExact(
     "workspace package",
     snapshot.workspacePackages,
@@ -77,6 +118,9 @@ export function evaluateFoundationSnapshot(
   }
 
   for (const decision of policy.requiredDecisions) {
+    if (!trackedFiles.has(decision.path)) {
+      violations.push(`Required decision document is not Git tracked: ${decision.path}.`);
+    }
     const contents = snapshot.documents[decision.path];
     if (contents === undefined) {
       violations.push(`Required decision document is missing: ${decision.path}.`);
@@ -92,6 +136,9 @@ export function evaluateFoundationSnapshot(
   }
 
   for (const path of policy.requiredEvidence) {
+    if (!trackedFiles.has(path)) {
+      violations.push(`Required Foundation evidence is not Git tracked: ${path}.`);
+    }
     const contents = snapshot.documents[path];
     if (contents === undefined) {
       violations.push(`Required Foundation evidence is missing: ${path}.`);
@@ -310,12 +357,102 @@ function assertPolicy(value: unknown): asserts value is FoundationPolicy {
     !Array.isArray(value.requiredDecisions) ||
     !value.requiredDecisions.every(isDecision) ||
     !isStringArray(value.requiredEvidence) ||
-    !isRecord(value.delivery) ||
+    !isDeliveryPolicy(value.delivery) ||
     !Array.isArray(value.residualRisks) ||
-    !value.residualRisks.every(isRecord)
+    value.residualRisks.length === 0 ||
+    !value.residualRisks.every(isResidualRisk)
   ) {
     throw new Error("G2-00 evidence policy is invalid.");
   }
+  const decisions = value.requiredDecisions;
+  const evidence = value.requiredEvidence;
+  const risks = value.residualRisks;
+  if (
+    decisions.length === 0 ||
+    evidence.length === 0 ||
+    new Set(decisions.map((decision) => decision.id)).size !== decisions.length ||
+    new Set(evidence).size !== evidence.length ||
+    !decisions.every((decision) => evidence.includes(decision.evidence)) ||
+    new Set(risks.map((risk) => risk.id)).size !== risks.length
+  ) {
+    throw new Error("G2-00 evidence policy is invalid.");
+  }
+}
+
+function isDeliveryPolicy(value: unknown): value is DeliveryPolicy {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.accountableOwner) ||
+    !isNonEmptyString(value.implementationSupport) ||
+    !Number.isInteger(value.effectiveParallelLanes) ||
+    typeof value.effectiveParallelLanes !== "number" ||
+    value.effectiveParallelLanes < 1 ||
+    !Array.isArray(value.responsibilities) ||
+    value.responsibilities.length === 0 ||
+    !value.responsibilities.every(isDeliveryResponsibility) ||
+    !isRecord(value.independentReview) ||
+    !isNonEmptyString(value.independentReview.reviewerRole) ||
+    !isNonEmptyString(value.independentReview.method) ||
+    !isNonEmptyString(value.independentReview.accountableApprover) ||
+    !isRecord(value.calendar) ||
+    !isNonEmptyString(value.calendar.withdrawnScenario) ||
+    !isRecord(value.calendar.planningRangeEngineeringWeeks) ||
+    !isPositiveInteger(value.calendar.planningRangeEngineeringWeeks.minimum) ||
+    !isPositiveInteger(value.calendar.planningRangeEngineeringWeeks.maximum) ||
+    value.calendar.planningRangeEngineeringWeeks.minimum >
+      value.calendar.planningRangeEngineeringWeeks.maximum ||
+    !Array.isArray(value.calendar.gates) ||
+    value.calendar.gates.length === 0 ||
+    !value.calendar.gates.every(isDeliveryGateRange) ||
+    !isNonEmptyString(value.calendar.rule)
+  ) {
+    return false;
+  }
+  const gateIds = value.calendar.gates.map(({ id }) => id);
+  const minimum = value.calendar.gates.reduce((total, gate) => total + gate.minimumWeeks, 0);
+  const maximum = value.calendar.gates.reduce((total, gate) => total + gate.maximumWeeks, 0);
+  return (
+    new Set(gateIds).size === gateIds.length &&
+    minimum === value.calendar.planningRangeEngineeringWeeks.minimum &&
+    maximum === value.calendar.planningRangeEngineeringWeeks.maximum
+  );
+}
+
+function isDeliveryResponsibility(value: unknown): value is DeliveryResponsibility {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.area) &&
+    isNonEmptyString(value.accountable) &&
+    isNonEmptyString(value.execution)
+  );
+}
+
+function isDeliveryGateRange(value: unknown): value is DeliveryGateRange {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    isPositiveInteger(value.minimumWeeks) &&
+    isPositiveInteger(value.maximumWeeks) &&
+    value.minimumWeeks <= value.maximumWeeks
+  );
+}
+
+function isResidualRisk(value: unknown): value is ResidualRisk {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.id) &&
+    isNonEmptyString(value.risk) &&
+    isNonEmptyString(value.owner) &&
+    isNonEmptyString(value.nextGate)
+  );
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function isDecision(value: unknown): value is FoundationDecision {

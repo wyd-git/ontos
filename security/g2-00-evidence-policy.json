@@ -59,7 +59,8 @@
     "docs/evidence/g2-00-09-foundation-contracts.md",
     "docs/evidence/g2-00-10-db-migration-roles.md",
     "docs/evidence/g2-00-11-testkit-fixtures.md",
-    "docs/evidence/g2-00-12-ci-supply-chain-gate.md"
+    "docs/evidence/g2-00-12-ci-supply-chain-gate.md",
+    "docs/evidence/g2-00-13-foundation-integration-gate.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",
@@ -98,7 +99,13 @@
         "minimum": 14,
         "maximum": 22
       },
-      "sequence": ["G2-01", "G2-02", "G2-03", "G2-04", "G2-05"],
+      "gates": [
+        { "id": "G2-01", "minimumWeeks": 2, "maximumWeeks": 4 },
+        { "id": "G2-02", "minimumWeeks": 4, "maximumWeeks": 6 },
+        { "id": "G2-03", "minimumWeeks": 3, "maximumWeeks": 4 },
+        { "id": "G2-04", "minimumWeeks": 3, "maximumWeeks": 4 },
+        { "id": "G2-05", "minimumWeeks": 2, "maximumWeeks": 4 }
+      ],
       "rule": "One effective lane; no overlapping Gate implementation and no date commitment before each prior Gate passes"
     }
   },

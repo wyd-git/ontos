@@ -2,7 +2,7 @@
 
 - 版本：0.2
 - 日期：2026-08-13
-- 状态：Red-team Reviewed / G2-00 Authorized
+- 状态：Red-team Reviewed / G2-00 PASS
 - 上游产品基线：[Ontology Kernel PRD](ontology-kernel-prd.md)
 - 可行性基线：[G1 Feasibility Report](../../spikes/g1/docs/g1-feasibility-report.md)
 - 架构基线：[G1 Architecture Decisions](../../spikes/g1/docs/architecture-decisions.md)
@@ -782,7 +782,7 @@ Package Manifest
 只有以下条目全部完成才开始 G2-01 业务功能编码：
 
 - [x] 正式仓库确定为 `wyd-git/ontos`；
-- [ ] 各责任 Owner、第二审查人和实际并行度确定；
+- [x] 各责任 Owner、第二审查人和实际并行度确定；见 [Owner/容量矩阵](../delivery/g2-owner-capacity-matrix.md)；
 - [x] 本蓝图完成红队审查，P0/P1/P2 范围保持不变；
 - [x] ADR-007：Runtime Activation、Release Serving Head 与 90 天支持窗；
 - [x] ADR-008：共享 Generation 表与索引计划；
@@ -791,10 +791,10 @@ Package Manifest
 - [x] ADR-011：Trusted TypeScript Artifact + 独立 Handler Host 信任声明；
 - [x] ADR-012：Policy Epoch、5 秒 TTL 和 fail-closed；
 - [x] Foundation JSON Schema 合同骨架和错误码冻结；OpenAPI 发布合同按 G2-05 冻结；
-- [ ] 数据库迁移、角色和本地生产等价环境跑通；
-- [ ] 两 Package Fixture、固定数据生成器和 G1 向量移入 `testkit`；
-- [ ] CI 能运行 Contract、真实 PostgreSQL Integration 和依赖边界检查；
-- [ ] 单区域验收环境、OIDC 测试 Provider、S3-compatible Storage 和 OTEL 可用。
+- [x] 数据库迁移、角色和本地生产等价环境跑通；
+- [x] 两 Package Fixture、固定数据生成器和 G1 向量移入 `testkit`；
+- [x] CI 能运行 Contract、真实 PostgreSQL Integration 和依赖边界检查；
+- [x] 单区域验收环境、OIDC 测试 Provider、S3-compatible Storage 和 OTEL 可用。
 
 这里的“冻结”是对公共合同和架构方向冻结，不是一次性写完所有实现细节。任何偏离必须新增 ADR，并说明对 Gate、迁移和兼容性的影响。
 
