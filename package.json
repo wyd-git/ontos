@@ -20,12 +20,16 @@
     "check:architecture": "node tools/architecture/check-workspace.ts",
     "check:contracts": "node tools/contracts/check.ts",
     "check:testkit-provenance": "node tools/testkit/provenance.ts",
+    "check:secrets": "node tools/ci/secret-scan.ts",
+    "check:supply-chain": "node tools/ci/supply-chain.ts",
+    "github-protection:verify": "node tools/ci/github-protection.ts verify",
+    "github-protection:apply": "node tools/ci/github-protection.ts apply",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run test:unit",
-    "test:unit": "node --test tools/toolchain/check-versions.test.mjs tools/architecture/check-workspace.test.ts tools/contracts/*.test.ts tools/database/definitions.test.ts tools/database/handler-boundary.test.ts tools/database/preflight.test.ts tools/local-env/config.test.ts tools/local-env/compose-plan.test.ts tools/runtime-activation/scenarios.test.ts tools/runtime-activation/properties.test.ts tools/projection-capacity/*.test.ts tools/value-codec/*.test.ts tools/job-outbox/*.test.ts tools/handler-host/*.test.ts tools/policy-epoch/*.test.ts packages/testkit/src/testkit.test.ts tools/testkit/provenance.test.ts",
+    "test:unit": "node --test tools/toolchain/check-versions.test.mjs tools/architecture/check-workspace.test.ts tools/contracts/*.test.ts tools/ci/*.test.ts tools/database/definitions.test.ts tools/database/handler-boundary.test.ts tools/database/preflight.test.ts tools/local-env/config.test.ts tools/local-env/compose-plan.test.ts tools/runtime-activation/scenarios.test.ts tools/runtime-activation/properties.test.ts tools/projection-capacity/*.test.ts tools/value-codec/*.test.ts tools/job-outbox/*.test.ts tools/handler-host/*.test.ts tools/policy-epoch/*.test.ts packages/testkit/src/testkit.test.ts tools/testkit/provenance.test.ts",
     "test:activation": "node --test tools/runtime-activation/scenarios.test.ts tools/runtime-activation/properties.test.ts",
     "test:projection-capacity": "node --test tools/projection-capacity/*.test.ts",
     "test:value-codec": "node --test tools/value-codec/*.test.ts",
@@ -45,7 +49,7 @@
     "env:down": "node tools/local-env/compose.ts down",
     "env:reset": "node tools/local-env/compose.ts reset",
     "env:smoke": "node tools/local-env/smoke.ts",
-    "verify": "npm run check:toolchain && npm run format:check && npm run lint && npm run typecheck && npm run test:unit && npm run check:architecture && npm run check:contracts && npm run check:testkit-provenance"
+    "verify": "node tools/ci/run.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1109.0",

@@ -68,6 +68,9 @@ void test(
 
         const firstRun = await runDatabaseMigrations(admin);
         assert.equal(firstRun.noOp, false);
+        process.stdout.write(
+          `CI_METADATA postgres.server_version_num=${String(firstRun.serverVersionNum)}\n`,
+        );
         assert.deepEqual(
           firstRun.applied.map(({ fileName }) => fileName),
           ["0001_foundation.sql"],
@@ -79,6 +82,7 @@ void test(
 
         await assertLedger(admin);
         await assertFormalRoles(admin);
+        await assertIntentionalRoleEscalationDetected(admin);
         await assertSchemaBoundaries(admin);
         await exerciseForwardRepair(admin);
         await createPrivilegeProbe(admin);
@@ -226,6 +230,22 @@ async function assertFormalRoles(client: pg.Client): Promise<void> {
       can_temporary: false,
     });
   }
+}
+
+async function assertIntentionalRoleEscalationDetected(client: pg.Client): Promise<void> {
+  await client.query("GRANT migration_owner TO api_runtime");
+  let detected = false;
+  try {
+    await assertFormalRoles(client);
+  } catch (error) {
+    if (!(error instanceof assert.AssertionError)) throw error;
+    detected = true;
+  } finally {
+    await client.query("REVOKE migration_owner FROM api_runtime");
+  }
+  assert.equal(detected, true, "the role gate must detect a runtime-to-owner membership");
+  await assertFormalRoles(client);
+  process.stdout.write("CI_METADATA intentional.role_escalation=blocked\n");
 }
 
 async function assertSchemaBoundaries(client: pg.Client): Promise<void> {
