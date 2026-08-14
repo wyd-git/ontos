@@ -3,7 +3,7 @@
 - 日期：2026-08-15
 - 审查对象：空库迁移、OIDC/HTTP/PostgreSQL 连续链路、Release/Package 故障与恢复、Evidence Manifest、G2-01 范围
 - 方法：Intended → Enforcement Point → Adversarial Execution → Recoverability → Residual Risk
-- 当前结论：**Implementation Review PASS；Independent exact-head execution pending**
+- 结论：**PASS — G2-01 Metadata Gate 可合并，且只能进入 G2-02 任务包**
 
 ## 1. 承重假设与攻击结果
 
@@ -50,15 +50,17 @@ Foundation Exact Scope 仍拒绝 DB-02、`runtime.object_current`、Action 表�
 | 证据不可自封       | 22 gates + nested clean-room artifact     | missing-artifact unit attack                | PASS |
 | 范围不漂移         | Foundation Exact Scope                    | DB-02/Runtime/Action/UI counterexamples     | PASS |
 
-## 3. Independent execution 准入
+## 3. Independent execution 结果
 
-只有同一最终 Head 同时满足以下条件，本审查才能更新为总 PASS：
+实现 Commit `307ba085244b1c949fab5624867c5acecb94c64d` 在与开发工作树分离的全新 Clone 中完成独立执行，结果如下：
 
-1. 全新 Clone 没有 `.env`、`node_modules`、历史 Generated Artifact 或未跟踪文件；
-2. `npm ci` 与 `npm run verify` 从空库完整成功；
-3. `metadata-evidence-manifest.json` 为 `PASS / CLEAN_ROOM_PASS / cleanCheckout=true`，Commit 等于 Clone Head；
-4. GitHub `Foundation Gate` 在远端 clean checkout 使用同一 `npm run verify` 通过；
-5. 运行后 Git 仍 clean，容器和固定 Compose 卷已清理。
+1. 初始 Clone 没有 `.env`、`node_modules`、历史 Generated Artifact 或未跟踪文件；
+2. `npm ci` 锁文件安装通过，从空卷执行 `npm run verify` 得到 22/22 Gate、294 Tests、38,888 ms；
+3. `metadata-evidence-manifest.json` 为 `PASS / CLEAN_ROOM_PASS / cleanCheckout=true`，Commit 与 Clone Head 精确相等；
+4. 总场景为 24 步，PostgreSQL 16.14，Clean-room 历史组合 Hash 在 Rollback/Restart/二次 Migration 前后都为 `sha256:8910a88ffbecad776782d9654086bdf22a8baf98a18dd462da1d5f6c4dc0faed`；
+5. 运行后 Git 仍 clean，项目容器为 0，最后 Reset 只删除 `ontos-g2-local` 的 3 个测试卷。
+
+独立性来自无本机工作树状态的新 Clone 和可重放机器证据，不宣称有另一名人类 Reviewer。最终 PR Head 还必须由 GitHub `Foundation Gate` 在远端 clean checkout 用同一 `npm run verify` 复核；该 Required Check 不通过就不合并。
 
 ## 4. 保留风险
 
@@ -67,4 +69,4 @@ Foundation Exact Scope 仍拒绝 DB-02、`runtime.object_current`、Action 表�
 - Backup/PITR/HA 属于 G2-06/G2-07；
 - DB-02 只能添加 Materialization 结构，不得重写 G2-01 历史身份。
 
-上述风险均有 Owner 和下一 Gate，不要求扩展 G2-01；任一 Independent execution 准入条件失败则必须停在 11/12。
+上述风险均有 Owner 和下一 Gate，不要求扩展 G2-01。独立执行已关闭 11/12 时保留的最后阻断条件；当前结论为 **12/12 PASS**。

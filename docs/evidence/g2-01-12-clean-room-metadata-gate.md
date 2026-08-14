@@ -1,6 +1,6 @@
 # G2-01-12 Clean-room Metadata 总验收记录
 
-- 结论：**PASS（实现预验；最终 exact-head clean checkout 由本记录第 7 节补齐）**
+- 结论：**PASS（G2-01-12 Clean-room Metadata 总验收）**
 - 执行日期：2026-08-15
 - 分支：`agent/g2-01-12-clean-room`
 - 起始 Commit：`314728416c28abedc3d9f514b152186300f8183f`
@@ -58,7 +58,7 @@ Empty DB + DB-00/DB-01 migrations
 3. API 进程重启之后；
 4. 第二次 Migration 之后。
 
-实现预验的组合 Hash 为 `sha256:f965100b02cf906b988d58b8ede930ec9bb5f9e708d521b09e13539b7460f200`，四个时点一致。
+Independent clean checkout 运行的组合 Hash 为 `sha256:8910a88ffbecad776782d9654086bdf22a8baf98a18dd462da1d5f6c4dc0faed`，四个时点一致。每次运行会产生新的不透明实体 ID，所以不要求跨运行 Hash 相同；要求的是同一运行在 Rollback、Restart 和二次 Migration 边界前后不变。
 
 ## 5. 安全与最小权限
 
@@ -74,14 +74,24 @@ Empty DB + DB-00/DB-01 migrations
 
 ## 7. 可复现执行
 
-实现工作树已完成独立总场景预验：
+首次实现工作树预验为 22/22 Gate、294 Tests、36,686 ms，Manifest 因存在未提交变更正确标记 `WORKTREE_PASS`。随后对实现 Commit `307ba085244b1c949fab5624867c5acecb94c64d` 执行了独立全新 Clone：初始没有 `.env`、`node_modules`、`generated` 或未跟踪文件，先执行锁文件安装与固定 Compose 卷 Reset，再使用唯一命令运行完整 Gate：
 
 ```text
-npm run test:metadata-clean-room
-PASS — 1/1 test, 24 scenario steps, PostgreSQL 16.14
+npm ci            PASS — Node 24.18.0 / npm 11.16.0 / 0 vulnerabilities
+npm run env:reset PASS — only ontos-g2-local test volumes removed
+npm run verify    PASS — 22/22 Gate / 294 Tests / 38,888 ms
+npm run env:reset PASS — 0 project containers / 3 project volumes removed
 ```
 
-最终 exact-head 全新 Clone 和 GitHub Required Check 的 Commit、Gate/Test Count、Manifest Qualification 与 Artifact Hash 在合并前回填本节；若不是 `PASS / CLEAN_ROOM_PASS / cleanCheckout=true`，本 Gate 改为 FAIL 且不允许合并。
+Independent Manifest 为 `PASS / CLEAN_ROOM_PASS / cleanCheckout=true`，Commit 等于 Clone Head，PostgreSQL `server_version_num=160014`，Artifact 摘要为：
+
+```text
+metadata-clean-room.json       sha256:2d291f6bbfefde6bdabaa4c92d2116ffd5edd0bf68c5149da5ba53ccca60c643
+metadata-evidence-manifest.json sha256:be23105e188c5dc9814acd43e94f82bcd483c7b9213df2285fd55311dc44c32a
+report.json                     sha256:6765670803d25f3e730107a4b11680e2c5704f544347ec80ae3516a08bcd5c18
+```
+
+运行后 Clone 的 Git 状态仍为 clean。人类可读文档不尝试嵌入自身最终 Commit；合并前的最终 Head 由同一脚本重跑并在生成 Manifest/GitHub Required Check 中绑定，避免自引用 Commit 导致无穷文档提交。
 
 ## 8. 未关闭边界
 
