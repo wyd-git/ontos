@@ -3,8 +3,31 @@
   "gate": "G2-00",
   "scope": {
     "allowedWorkspacePackages": ["packages/contracts", "packages/testkit", "packages/value-codec"],
-    "allowedMigrationFiles": ["migrations/db-00/0001_foundation.sql"],
-    "allowedCreatedTables": ["ontos_migration.schema_migrations"],
+    "allowedMigrationFiles": [
+      "migrations/db-00/0001_foundation.sql",
+      "migrations/db-00/0002_metadata_control_plane.sql"
+    ],
+    "allowedCreatedTables": [
+      "authz.authorization_epochs",
+      "authz.principals",
+      "authz.role_bindings",
+      "meta.artifact_references",
+      "meta.package_installation_changes",
+      "meta.package_installations",
+      "meta.package_revisions",
+      "meta.packages",
+      "meta.projects",
+      "meta.release_channels",
+      "meta.release_pins",
+      "meta.release_serving_heads",
+      "meta.releases",
+      "meta.resource_dependencies",
+      "meta.resource_revisions",
+      "meta.resources",
+      "meta.runtime_activations",
+      "meta.validation_reports",
+      "ontos_migration.schema_migrations"
+    ],
     "forbiddenTrackedPrefixes": ["apps/"],
     "forbiddenUiExtensions": [".html", ".jsx", ".tsx", ".vue", ".svelte"],
     "ignoredPrefixes": ["spikes/g1/"]
@@ -45,6 +68,12 @@
       "path": "docs/architecture/adr/012-policy-epoch-cache-fail-closed.md",
       "acceptedStatus": "Accepted for G2-00-08",
       "evidence": "docs/evidence/g2-00-08-policy-epoch-cache.md"
+    },
+    {
+      "id": "ADR-013",
+      "path": "docs/architecture/adr/013-metadata-release-package-control-plane.md",
+      "acceptedStatus": "Accepted for G2-01-01",
+      "evidence": "docs/evidence/g2-01-01-metadata-control-plane.md"
     }
   ],
   "requiredEvidence": [
@@ -60,7 +89,10 @@
     "docs/evidence/g2-00-10-db-migration-roles.md",
     "docs/evidence/g2-00-11-testkit-fixtures.md",
     "docs/evidence/g2-00-12-ci-supply-chain-gate.md",
-    "docs/evidence/g2-00-13-foundation-integration-gate.md"
+    "docs/evidence/g2-00-13-foundation-integration-gate.md",
+    "docs/evidence/g2-01-01-metadata-control-plane.md",
+    "docs/evidence/g2-01-02-metadata-contracts.md",
+    "docs/evidence/g2-01-03-db-01-migration.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",
@@ -96,11 +128,11 @@
     "calendar": {
       "withdrawnScenario": "G2-01 through G2-05 in six weeks with four to six people and four parallel lanes",
       "planningRangeEngineeringWeeks": {
-        "minimum": 14,
-        "maximum": 22
+        "minimum": 16,
+        "maximum": 25
       },
       "gates": [
-        { "id": "G2-01", "minimumWeeks": 2, "maximumWeeks": 4 },
+        { "id": "G2-01", "minimumWeeks": 4, "maximumWeeks": 7 },
         { "id": "G2-02", "minimumWeeks": 4, "maximumWeeks": 6 },
         { "id": "G2-03", "minimumWeeks": 3, "maximumWeeks": 4 },
         { "id": "G2-04", "minimumWeeks": 3, "maximumWeeks": 4 },

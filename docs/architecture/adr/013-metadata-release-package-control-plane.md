@@ -1,6 +1,7 @@
 # ADR-013：Metadata、Release、Package 与管理授权控制面
 
 - 状态：Accepted for G2-01-01
+- 实现状态：DB-01 Schema/Constraint/Grant 已于 G2-01-03 落地；Repository/API 仍 OPEN
 - 日期：2026-08-14
 - Owner：Tech Lead / Database / Security
 - 决策范围：DB-01 候选表、不可变 Revision/Release/Package 状态、原子 Publish、零成员 Activation、管理 RBAC、锁顺序与向前恢复
@@ -185,4 +186,6 @@ G2-03 才拥有 OIDC Claim Mapping 业务规则、Delegation、Object/Property/L
 
 `tools/runtime-activation/` 已验证 R1/A0 → R2/A1 → R2/A2 与并发 R3 的兼容 seam，并保持历史 Manifest/Plan/Activation 不变。
 
-当前不宣称已经实现 DB-01 表、SQL 约束、数据库角色、Repository、HTTP/OIDC、真实 Package 展开、Object/Property/Link Validator 或生产事务。这些分别由 G2-01-02～11 验证。G2-01-03 若无法让 PostgreSQL 保持本 ADR 的原子性和最小权限，必须停止后续实现并修订本 ADR，不能降低验收。
+`migrations/db-00/0002_metadata_control_plane.sql` 和 `tools/database/postgres.integration.test.ts` 已在 PostgreSQL 16 验证 DB-01 的 18 张表、Owner/Grant、唯一约束、初始/前向状态、Published 事实不可变、无隐式 Worker/Ops 写权、并发 Migration 与故障后向前修复。详细映射见 [G2-01-03 Evidence](../../evidence/g2-01-03-db-01-migration.md)。
+
+当前仍不宣称已实现 Repository、HTTP/OIDC、真实 Package 展开、Object/Property/Link Validator 或 Publish 生产事务。数据库 Trigger 保住行级不变量，不代替 G2-01-04～10 的应用事务与入口证据。

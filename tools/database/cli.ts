@@ -20,8 +20,8 @@ async function main(): Promise<void> {
     const result = await runDatabaseMigrations(client);
     process.stdout.write(
       result.noOp
-        ? `DB-00 migrations: no-op (PostgreSQL ${result.serverVersionNum}).\n`
-        : `DB-00 migrations: applied ${result.applied.map(({ fileName }) => fileName).join(", ")}.\n`,
+        ? `Database migrations: no-op (PostgreSQL ${result.serverVersionNum}).\n`
+        : `Database migrations: applied ${result.applied.map(({ fileName }) => fileName).join(", ")}.\n`,
     );
   } finally {
     await client.end();

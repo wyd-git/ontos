@@ -31,6 +31,12 @@
 
 这是容量情景，不是交付承诺。G2-01 的 4–7 周来自 [任务包红队](../reviews/g2-01-task-pack-red-team.md)，并要求在 G2-01-03 完成真实 PostgreSQL 薄切片后再次校准。每个 Gate 入口重新估算一次；若范围、Owner 或可用时间变化，先更新本矩阵，不删除安全、事务、恢复或性能退出条件来维持日期。
 
+### G2-01-03 后校准（2026-08-14）
+
+- G2-01-01～03 已经过设计、合同和真实 PostgreSQL 三道 Gate，进度为 3/12；DB-01 没有触发 ADR/PRD 重写，18 张表、状态 Trigger 和三类 Runtime Grant 可在 PostgreSQL 16 从空库一次升级。
+- 原定 G2-01 **4–7 工程周整体范围不变**；按当前单通道，G2-01-04～12 剩余工作仍以 **3–6 工程周** 作为容量情景，不是日期承诺。
+- 数据库可行性风险已下降，但最大剩余不确定性仍是 Project/RBAC 原子创建、Revision/Dependency/Compatibility Repository、Publish 行锁/故障注入和真实 Admin HTTP/OIDC；因此不因 Migration Gate 通过就缩短安全或事务步骤。
+
 ## 3. 顺序与停止规则
 
 1. G2-00 已 PASS；G2-01 只按 [Metadata 任务包](g2-01-metadata-task-pack.md) 顺序执行，不直接开始 DB-02、页面或 Action。
