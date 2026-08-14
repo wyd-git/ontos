@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { writeFoundationEvidenceManifest } from "./foundation-evidence.ts";
+import { writeMetadataEvidenceManifest } from "./metadata-evidence.ts";
 
 interface GateDefinition {
   readonly name: string;
@@ -22,6 +23,7 @@ interface GateResult {
   readonly exitCode: number | null;
   readonly startedAt: string | null;
   readonly durationMs: number | null;
+  readonly testCount: number | null;
   readonly outputTail: string;
 }
 
@@ -37,17 +39,34 @@ const gates: readonly GateDefinition[] = [
   { name: "lint", command: "npm", arguments: ["run", "lint"] },
   { name: "typecheck", command: "npm", arguments: ["run", "typecheck"] },
   { name: "unit", command: "npm", arguments: ["run", "test:unit"] },
+  { name: "admin-api-unit", command: "npm", arguments: ["run", "test:admin-api"] },
   { name: "contract-golden-diff", command: "npm", arguments: ["run", "check:contracts"] },
   { name: "architecture-dependency", command: "npm", arguments: ["run", "check:architecture"] },
   { name: "testkit-provenance", command: "npm", arguments: ["run", "check:testkit-provenance"] },
+  { name: "metadata-fixtures", command: "npm", arguments: ["run", "check:metadata-fixtures"] },
+  {
+    name: "metadata-negative-fixtures",
+    command: "npm",
+    arguments: ["run", "check:metadata-negative-fixtures"],
+  },
   { name: "secret-private-key", command: "npm", arguments: ["run", "check:secrets"] },
   {
     name: "foundation-scope-evidence",
     command: "npm",
     arguments: ["run", "check:foundation"],
   },
+  {
+    name: "metadata-scope-evidence",
+    command: "npm",
+    arguments: ["run", "check:metadata-evidence"],
+  },
   { name: "license-sbom-vulnerability", command: "npm", arguments: ["run", "check:supply-chain"] },
   { name: "postgres-integration", command: "npm", arguments: ["run", "test:database"] },
+  {
+    name: "admin-api-oidc-postgres",
+    command: "npm",
+    arguments: ["run", "test:admin-api:postgres"],
+  },
   {
     name: "production-boundary-up",
     command: "npm",
@@ -121,15 +140,27 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
   const completedAt = new Date();
   const artifacts = await describeArtifacts(outputDirectory);
   const artifactCounts = await readArtifactCounts(outputDirectory);
-  const postgresOutput = stepResults.find(
-    ({ name }) => name === "postgres-integration",
-  )?.outputTail;
+  const postgresOutput = stepResults
+    .filter(({ name }) => ["postgres-integration", "admin-api-oidc-postgres"].includes(name))
+    .map(({ outputTail }) => outputTail)
+    .join("\n");
   const serverVersion = /CI_METADATA postgres\.server_version_num=(\d+)/u.exec(
     postgresOutput ?? "",
   )?.[1];
   const fixtureCatalog: unknown = JSON.parse(
     await readFile(join(repositoryRoot, "packages/testkit/fixtures/provenance.json"), "utf8"),
   );
+  const metadataFixtureArtifact = await readOptionalJson(
+    join(outputDirectory, "metadata-fixtures.json"),
+  );
+  const negativeFixtureArtifact = await readOptionalJson(
+    join(outputDirectory, "metadata-negative-fixtures.json"),
+  );
+  const migrationPaths = await trackedPaths(repositoryRoot, ["migrations"]);
+  const contractPaths = await trackedPaths(repositoryRoot, [
+    "packages/contracts",
+    "tools/contracts",
+  ]);
   const report: Readonly<Record<string, unknown>> & {
     readonly status: string;
     readonly commit: string;
@@ -153,14 +184,42 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
     inputs: {
       packageLockSha256: await sha256File(join(repositoryRoot, "package-lock.json")),
       testkitFixtureDigest: fixtureDigest(fixtureCatalog),
+      metadataFixtureDigest: stringProperty(metadataFixtureArtifact, "fixtureDigest"),
+      compatibilityVectorSha256: stringProperty(
+        metadataFixtureArtifact,
+        "compatibilityVectorSha256",
+      ),
+      negativeFixtureEvidenceSha256: stringProperty(negativeFixtureArtifact, "evidenceSha256"),
+      migrationSha256: await fingerprintPaths(repositoryRoot, migrationPaths),
+      contractSha256: await fingerprintPaths(repositoryRoot, contractPaths),
     },
     steps: stepResults,
+    testCount: stepResults.reduce((sum, step) => sum + (step.testCount ?? 0), 0),
     artifacts,
     artifactCounts,
     failedGate: stepResults.find(({ status }) => status === "FAIL")?.name ?? null,
   };
-  await writeFoundationEvidenceManifest(outputDirectory, report);
-  const finalReport = { ...report, artifacts: await describeArtifacts(outputDirectory) };
+  let evidenceFailure: string | null = null;
+  try {
+    await writeFoundationEvidenceManifest(outputDirectory, report);
+  } catch (error) {
+    await writeUnavailableEvidenceManifest(outputDirectory, "G2-00", commit, error);
+    evidenceFailure = "foundation-evidence-manifest";
+    failure ??= new Error("Foundation evidence manifest could not be completed.");
+  }
+  try {
+    await writeMetadataEvidenceManifest(outputDirectory, report);
+  } catch (error) {
+    await writeUnavailableEvidenceManifest(outputDirectory, "G2-01", commit, error);
+    evidenceFailure ??= "metadata-evidence-manifest";
+    failure ??= new Error("Metadata evidence manifest could not be completed.");
+  }
+  const finalReport = {
+    ...report,
+    status: failure === null ? "PASS" : "FAIL",
+    failedGate: report.failedGate ?? evidenceFailure,
+    artifacts: await describeArtifacts(outputDirectory),
+  };
   const summary = renderSummary(finalReport);
   await writeFile(
     join(outputDirectory, "report.json"),
@@ -185,6 +244,7 @@ async function executeGate(gate: GateDefinition, cwd: string): Promise<GateResul
       exitCode: result.exitCode,
       startedAt: startedAt.toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
+      testCount: parseTestCount(result.output),
       outputTail: redactOutput(result.output),
     };
   } catch (error) {
@@ -195,6 +255,7 @@ async function executeGate(gate: GateDefinition, cwd: string): Promise<GateResul
       exitCode: null,
       startedAt: startedAt.toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
+      testCount: null,
       outputTail: redactOutput(String(error)),
     };
   }
@@ -208,6 +269,7 @@ function skipped(gate: GateDefinition): GateResult {
     exitCode: null,
     startedAt: null,
     durationMs: null,
+    testCount: null,
     outputTail: "Skipped because an earlier gate failed.",
   };
 }
@@ -287,9 +349,16 @@ async function readArtifactCounts(outputDirectory: string): Promise<{
   readonly licenses: { readonly packages: number | null };
   readonly sbom: { readonly components: number | null; readonly dependencies: number | null };
   readonly vulnerabilities: { readonly findings: number | null };
+  readonly metadataFixtures: {
+    readonly packages: number | null;
+    readonly compatibilityCases: number | null;
+  };
+  readonly negativeFixtures: { readonly cases: number | null };
 }> {
   const secret = await readOptionalJson(join(outputDirectory, "secret-scan.json"));
   const supply = await readOptionalJson(join(outputDirectory, "supply-chain-artifacts.json"));
+  const metadata = await readOptionalJson(join(outputDirectory, "metadata-fixtures.json"));
+  const negative = await readOptionalJson(join(outputDirectory, "metadata-negative-fixtures.json"));
   const counts = recordProperty(supply, "counts");
   return {
     secrets: {
@@ -302,6 +371,11 @@ async function readArtifactCounts(outputDirectory: string): Promise<{
       dependencies: numberProperty(counts, "sbomDependencies"),
     },
     vulnerabilities: { findings: numberProperty(counts, "vulnerabilities") },
+    metadataFixtures: {
+      packages: numberProperty(metadata, "fixtureCount"),
+      compatibilityCases: numberProperty(metadata, "compatibilityCaseCount"),
+    },
+    negativeFixtures: { cases: numberProperty(negative, "caseCount") },
   };
 }
 
@@ -328,6 +402,19 @@ function arrayLength(value: unknown, key: string): number | null {
   return Array.isArray(candidate) ? candidate.length : null;
 }
 
+function stringProperty(value: unknown, key: string): string | null {
+  const candidate = recordProperty(value, key);
+  return typeof candidate === "string" ? candidate : null;
+}
+
+export function parseTestCount(output: string): number | null {
+  const matches = [...output.matchAll(/(?:^|\n)ℹ tests (\d+)(?:\n|$)/gu)];
+  const value = matches.at(-1)?.[1];
+  if (value === undefined) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 function fixtureDigest(candidate: unknown): string | null {
   if (
     typeof candidate === "object" &&
@@ -349,6 +436,58 @@ async function sha256File(path: string): Promise<string> {
     .digest("hex");
 }
 
+async function trackedPaths(
+  repositoryRoot: string,
+  prefixes: readonly string[],
+): Promise<string[]> {
+  const result = await runCommand(
+    "git",
+    ["ls-files", "-z", "--", ...prefixes],
+    repositoryRoot,
+    false,
+  );
+  if (result.exitCode !== 0) throw new Error(`git ls-files failed for ${prefixes.join(", ")}.`);
+  return result.output.split("\0").filter(Boolean).sort();
+}
+
+async function fingerprintPaths(repositoryRoot: string, paths: readonly string[]): Promise<string> {
+  const hash = createHash("sha256");
+  for (const path of paths) {
+    hash
+      .update(path)
+      .update("\0")
+      .update(await readFile(join(repositoryRoot, path)))
+      .update("\0");
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
+async function writeUnavailableEvidenceManifest(
+  outputDirectory: string,
+  gate: "G2-00" | "G2-01",
+  commit: string,
+  error: unknown,
+): Promise<void> {
+  const name = gate === "G2-00" ? "foundation" : "metadata";
+  await writeFile(
+    join(outputDirectory, `${name}-evidence-manifest.json`),
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        gate,
+        status: "FAIL",
+        qualification: "FAIL",
+        commit,
+        cleanCheckout: false,
+        reason: "Acceptance artifact unavailable because a prior gate failed.",
+        diagnostic: redactOutput(String(error)),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
 function renderSummary(report: {
   readonly status: string;
   readonly commit: string;
@@ -359,10 +498,11 @@ function renderSummary(report: {
   const rows = report.steps
     .map(
       (step) =>
-        `| ${step.name} | ${step.status} | ${step.durationMs === null ? "-" : `${String(step.durationMs)} ms`} |`,
+        `| ${step.name} | ${step.status} | ${step.testCount === null ? "-" : String(step.testCount)} | ${step.durationMs === null ? "-" : `${String(step.durationMs)} ms`} |`,
     )
     .join("\n");
-  return `# Foundation Gate: ${report.status}\n\n- Commit: \`${report.commit}\`\n- Duration: ${String(report.durationMs)} ms\n- Failed gate: ${report.failedGate ?? "none"}\n\n| Gate | Status | Duration |\n| --- | --- | ---: |\n${rows}\n`;
+  const testCount = report.steps.reduce((sum, step) => sum + (step.testCount ?? 0), 0);
+  return `# Foundation + Metadata Gate: ${report.status}\n\n- Commit: \`${report.commit}\`\n- Tests: ${String(testCount)}\n- Duration: ${String(report.durationMs)} ms\n- Failed gate: ${report.failedGate ?? "none"}\n\n| Gate | Status | Tests | Duration |\n| --- | --- | ---: | ---: |\n${rows}\n`;
 }
 
 if (

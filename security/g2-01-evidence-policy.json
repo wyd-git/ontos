@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-01",
+  "requiredEvidence": [
+    "docs/evidence/g2-01-01-metadata-control-plane.md",
+    "docs/evidence/g2-01-02-metadata-contracts.md",
+    "docs/evidence/g2-01-03-db-01-migration.md",
+    "docs/evidence/g2-01-04-project-rbac-epoch.md",
+    "docs/evidence/g2-01-05-resource-revision-lifecycle.md",
+    "docs/evidence/g2-01-06-definition-validation-dependency-graph.md",
+    "docs/evidence/g2-01-07-compatibility-engine.md",
+    "docs/evidence/g2-01-08-release-lifecycle.md",
+    "docs/evidence/g2-01-09-package-lifecycle.md",
+    "docs/evidence/g2-01-10-admin-api.md",
+    "docs/evidence/g2-01-11-ci-testkit-metadata-evidence.md"
+  ],
+  "protectedFoundationEvidence": {
+    "docs/evidence/g2-00-01-toolchain-boundaries.md": "sha256:965062e363bd804144890ffcf41e18e60a590a28adbf5c8bc516443b4fddae03",
+    "docs/evidence/g2-00-02-local-production-boundaries.md": "sha256:cb584712f8979149962a4a413a8b8181ab47ab1515df88a9889e967243d07147",
+    "docs/evidence/g2-00-03-runtime-activation-serving-head.md": "sha256:f5f2257f6b928fa3c49165ee722e8cc02d2c77036ec0030f2bc77a4407ccdc4e",
+    "docs/evidence/g2-00-04-shared-projection-index-capacity.md": "sha256:93f0962caf1c05ca9ddfbb8f928569e69739c6882edcd972d37d63afa8aa2f84",
+    "docs/evidence/g2-00-05-public-value-codec.md": "sha256:e37817fd2aba90064928cad4c6e05569d453e531763a4d7c058d11be84014ba9",
+    "docs/evidence/g2-00-06-postgresql-job-lease-outbox.md": "sha256:e8b368f26e5167b72b51f61848986cd5d2ff88a6dfde34b666992eaabfecb374",
+    "docs/evidence/g2-00-07-trusted-handler-host.md": "sha256:0c7d569206388d6c4aa8adcc261fb1056ff14bc02f145cdfa250ac0958b99dbb",
+    "docs/evidence/g2-00-08-policy-epoch-cache.md": "sha256:6a23351fbef02a332857afc32f28e123f8c3b0a60962dbf08f1bc482e635d7cf",
+    "docs/evidence/g2-00-09-foundation-contracts.md": "sha256:fcba14cd0458aab7f51ceef1ef3f0c90a8df37ac7bfb2f7d9cacd8b89ba9447d",
+    "docs/evidence/g2-00-10-db-migration-roles.md": "sha256:5d7122324ca94a5889aba8bb16d0f302ef7266c54b19117ab801721b548003b1",
+    "docs/evidence/g2-00-11-testkit-fixtures.md": "sha256:e878df24efc1e4025c1db03d6c552c7be219f1d68403e965a62c5607c5724571",
+    "docs/evidence/g2-00-12-ci-supply-chain-gate.md": "sha256:979c1d88681c2a468c628a5ec007c4cb8f2c3aa27c360e77e1a2973839170329",
+    "docs/evidence/g2-00-13-foundation-integration-gate.md": "sha256:b453f8add053c3c021de3c85ccbfc27fc676574e5403f0809bdd52d7d645dbe1"
+  },
+  "metadataFixtures": {
+    "paths": [
+      "packages/testkit/fixtures/metadata-packages/commerce.metadata.v1.json",
+      "packages/testkit/fixtures/metadata-packages/work-management.metadata.v1.json"
+    ],
+    "compatibilityVector": "packages/testkit/fixtures/vectors/package-compatibility.v1.json"
+  },
+  "negativeFixtureIds": [
+    "breaking_upgrade",
+    "dependency_cycle",
+    "partial_publish",
+    "published_update",
+    "role_overreach",
+    "secret_material",
+    "unknown_resource_field"
+  ],
+  "requiredGates": [
+    "lockfile-install",
+    "toolchain",
+    "format",
+    "lint",
+    "typecheck",
+    "unit",
+    "admin-api-unit",
+    "contract-golden-diff",
+    "architecture-dependency",
+    "testkit-provenance",
+    "metadata-fixtures",
+    "metadata-negative-fixtures",
+    "secret-private-key",
+    "foundation-scope-evidence",
+    "metadata-scope-evidence",
+    "license-sbom-vulnerability",
+    "postgres-integration",
+    "admin-api-oidc-postgres",
+    "production-boundary-up",
+    "production-boundary-smoke",
+    "production-boundary-down"
+  ],
+  "owner": "wyd-git",
+  "residualRisks": [
+    {
+      "id": "RISK-G2-01-01",
+      "risk": "OIDC discovery and JWKS rotation remain external single-region operational dependencies.",
+      "owner": "Platform / Security (accountable: wyd-git)",
+      "nextGate": "G2-06 and G2-07"
+    },
+    {
+      "id": "RISK-G2-01-02",
+      "risk": "Stable Principal IDs are supported but administrator-facing discovery and invitation UX are not implemented.",
+      "owner": "Identity / Product (accountable: wyd-git)",
+      "nextGate": "G2-05"
+    },
+    {
+      "id": "RISK-G2-01-03",
+      "risk": "Production backup, point-in-time restore, alerting and high availability are outside the Metadata Gate.",
+      "owner": "Platform / Database (accountable: wyd-git)",
+      "nextGate": "G2-06 and G2-07"
+    },
+    {
+      "id": "RISK-G2-01-04",
+      "risk": "DB-02 must preserve immutable Revision, Release, Package and Channel identities while adding materialization.",
+      "owner": "Runtime / Database (accountable: wyd-git)",
+      "nextGate": "G2-02"
+    }
+  ]
+}

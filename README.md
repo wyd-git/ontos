@@ -7,9 +7,9 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 - G1 技术可行性验证：**PASS**；
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
 - G2-00 Foundation：**PASS，13/13 已合并**；
-- G2-01 Metadata：**G2-01-01～10 已实现，进度 10/12**；
-- 正式产品实现：**Metadata/Package 控制面已具备真实 OIDC、受限 HTTP 入口、最小 RBAC、PostgreSQL Repository、Release 原子发布和进程重启恢复**；
-- 下一工作项：**G2-01-11 统一 CI、Testkit 与 Metadata Evidence**。
+- G2-01 Metadata：**G2-01-01～11 已实现，进度 11/12**；
+- 正式产品实现：**Metadata/Package 控制面已具备真实 OIDC、受限 HTTP 入口、最小 RBAC、PostgreSQL Repository、Release 原子发布、进程重启恢复和统一可审计 Gate**；
+- 下一工作项：**G2-01-12 clean-room Metadata 总验收**。
 
 ## 权威文档
 

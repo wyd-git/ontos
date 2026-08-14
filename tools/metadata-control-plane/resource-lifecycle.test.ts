@@ -43,6 +43,7 @@ void test("direct Resource creation rejects deferred families and unknown conten
       }),
     "INVALID_INPUT",
   );
+  // G2_NEGATIVE:unknown_resource_field
 });
 
 void test("Resource and Revision lifecycle transitions are forward-only", () => {

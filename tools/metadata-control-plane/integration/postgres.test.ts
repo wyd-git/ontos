@@ -728,6 +728,7 @@ void test(
         }),
         isApplicationError("INVALID_STATE"),
       );
+      // G2_NEGATIVE:published_update
       await assert.rejects(
         pool.query(
           `UPDATE meta.resource_revisions

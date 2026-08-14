@@ -18,6 +18,7 @@ void test("blocks reconstructed private keys and tokens without returning their 
     ],
   );
   assert.equal(JSON.stringify(findings).includes(token), false);
+  // G2_NEGATIVE:secret_material
 });
 
 void test("allows only the exact SHA-256 allowlisted public sample value", () => {

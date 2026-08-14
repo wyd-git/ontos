@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "sourcePath": "spikes/g1/packages/commerce/package.json",
+    "sourceSha256": "12cebc3d1ae3e25ab3bd8ef70cf3b020481652a3ba74e6fb1db4342eb11ee08c",
+    "transform": "metadata-only-g2-01"
+  },
+  "manifest": {
+    "schemaVersion": 1,
+    "packageApiName": "CommerceMetadata",
+    "version": "1.0.0",
+    "namespace": "fixture.commerce",
+    "kernelContractVersion": "metadata-1",
+    "resourceEntries": [
+      {
+        "namespace": "fixture.commerce",
+        "apiName": "Order",
+        "family": "object_type",
+        "resourceId": "10000000-0000-4000-8000-000000000001",
+        "revisionId": "10000000-0000-4000-8000-000000000011",
+        "contentDigest": "sha256:d579c077be2beab7b54feadfc037794d1e14f6db629f79f6a60b02a02015bc98"
+      }
+    ],
+    "artifactDigests": [],
+    "installInputs": [
+      {
+        "apiName": "environment",
+        "displayName": "Environment",
+        "description": "Non-secret deployment label.",
+        "required": true
+      }
+    ],
+    "manifestDigest": "sha256:017bd78df22e97f7639f0cbcc2ba5aee3a14764072151dda3583034292b7021e"
+  },
+  "resources": [
+    {
+      "resourceId": "10000000-0000-4000-8000-000000000001",
+      "revisionId": "10000000-0000-4000-8000-000000000011",
+      "content": {
+        "schemaVersion": 1,
+        "apiName": "Order",
+        "displayName": "Order",
+        "description": "Order metadata-only G2-01 fixture.",
+        "primaryKeyPropertyApiName": "orderId",
+        "titlePropertyApiName": "orderId",
+        "defaultSearchPropertyApiNames": [],
+        "defaultSort": [
+          {
+            "propertyApiName": "orderId",
+            "direction": "asc"
+          }
+        ],
+        "defaultClassification": "internal",
+        "properties": [
+          {
+            "schemaVersion": 1,
+            "apiName": "orderId",
+            "displayName": "orderId",
+            "description": "orderId fixture property.",
+            "valueType": "string",
+            "caseSensitive": true,
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": true,
+            "filterable": true,
+            "sortable": true,
+            "searchable": true,
+            "classification": "internal"
+          },
+          {
+            "schemaVersion": 1,
+            "apiName": "status",
+            "displayName": "status",
+            "description": "status fixture property.",
+            "valueType": "enum",
+            "enumValues": ["DRAFT", "CONFIRMED", "SHIPPED", "CANCELLED"],
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": false,
+            "filterable": true,
+            "sortable": true,
+            "searchable": false,
+            "classification": "internal"
+          },
+          {
+            "schemaVersion": 1,
+            "apiName": "total",
+            "displayName": "total",
+            "description": "total fixture property.",
+            "valueType": "decimal",
+            "decimalPrecision": 18,
+            "decimalScale": 2,
+            "nullable": false,
+            "writeMode": "source_only",
+            "unique": false,
+            "filterable": true,
+            "sortable": true,
+            "searchable": false,
+            "classification": "internal"
+          }
+        ]
+      }
+    }
+  ],
+  "installInputBindings": [{ "apiName": "environment", "value": "test" }]
+}

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-01",
+  "cases": [
+    {
+      "id": "unknown_resource_field",
+      "requirement": "Unknown Resource content fields fail closed.",
+      "source": "tools/metadata-control-plane/resource-lifecycle.test.ts",
+      "marker": "G2_NEGATIVE:unknown_resource_field",
+      "execution": "unit"
+    },
+    {
+      "id": "dependency_cycle",
+      "requirement": "Cyclic Resource dependencies cannot produce a publish order.",
+      "source": "tools/metadata-control-plane/definition-validation.test.ts",
+      "marker": "G2_NEGATIVE:dependency_cycle",
+      "execution": "unit"
+    },
+    {
+      "id": "published_update",
+      "requirement": "A Published Revision cannot be edited in place.",
+      "source": "tools/metadata-control-plane/integration/postgres.test.ts",
+      "marker": "G2_NEGATIVE:published_update",
+      "execution": "postgres-integration"
+    },
+    {
+      "id": "role_overreach",
+      "requirement": "A Resource role can narrow but cannot expand Project privilege.",
+      "source": "tools/metadata-control-plane/domain-authorization.test.ts",
+      "marker": "G2_NEGATIVE:role_overreach",
+      "execution": "unit"
+    },
+    {
+      "id": "partial_publish",
+      "requirement": "Injected publication faults leave no partial Published world.",
+      "source": "tools/metadata-control-plane/integration/release-postgres.test.ts",
+      "marker": "G2_NEGATIVE:partial_publish",
+      "execution": "postgres-integration"
+    },
+    {
+      "id": "breaking_upgrade",
+      "requirement": "A breaking Package upgrade is blocked without creating a Release.",
+      "source": "tools/metadata-control-plane/integration/package-postgres.test.ts",
+      "marker": "G2_NEGATIVE:breaking_upgrade",
+      "execution": "postgres-integration"
+    },
+    {
+      "id": "secret_material",
+      "requirement": "Private keys and access tokens are rejected and redacted.",
+      "source": "tools/ci/secret-scan.test.ts",
+      "marker": "G2_NEGATIVE:secret_material",
+      "execution": "unit"
+    }
+  ]
+}
