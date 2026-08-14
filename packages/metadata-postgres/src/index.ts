@@ -20,6 +20,7 @@ import type {
   PrincipalDirectory,
   PrincipalRecord,
   ProjectCreation,
+  ProjectReadResult,
   ProjectRecord,
   ProjectRepository,
   ResourceCreation,
@@ -32,6 +33,7 @@ import type {
   RevisionListCursor,
   RevisionScopeRecord,
   RoleBindingRecord,
+  RoleBindingListResult,
   RoleBindingReplacement,
   RoleBindingRepository,
   VerifiedFoundationIdentity,
@@ -97,6 +99,15 @@ interface BindingRow {
 
 interface EpochRow {
   readonly epoch: string;
+}
+
+interface BindingListRow extends EpochRow {
+  readonly binding_id: string | null;
+  readonly project_id: string;
+  readonly principal_id: string | null;
+  readonly resource_id: string | null;
+  readonly role: ManagementRole | null;
+  readonly state: "active" | null;
 }
 
 interface AuthorizationRow extends EpochRow {
@@ -236,6 +247,82 @@ export class PostgresMetadataControlPlane
         ),
       });
     });
+  }
+
+  async getProjectWithEpoch(projectId: string): Promise<ProjectReadResult> {
+    try {
+      const result = await this.#pool.query<ProjectRow & EpochRow>(
+        `SELECT project.project_id, project.api_name, project.display_name,
+                project.state, project.created_at, epoch.epoch::text
+         FROM meta.projects AS project
+         JOIN authz.authorization_epochs AS epoch ON epoch.project_id = project.project_id
+         WHERE project.project_id = $1`,
+        [projectId],
+      );
+      const row = requireRow(result.rows[0], "Project does not exist.", "NOT_FOUND");
+      return Object.freeze({ project: projectRecord(row), authorizationEpoch: BigInt(row.epoch) });
+    } catch (error) {
+      throw mapStorageError(error);
+    }
+  }
+
+  async listRoleBindings(projectId: string): Promise<RoleBindingListResult> {
+    try {
+      const result = await this.#pool.query<BindingListRow>(
+        `SELECT binding.binding_id,
+                epoch.project_id,
+                binding.principal_id,
+                binding.resource_id,
+                binding.role,
+                binding.state,
+                epoch.epoch::text
+         FROM authz.authorization_epochs AS epoch
+         LEFT JOIN authz.role_bindings AS binding
+           ON binding.project_id = epoch.project_id
+          AND binding.state = 'active'
+         WHERE epoch.project_id = $1
+         ORDER BY binding.principal_id, binding.resource_id NULLS FIRST, binding.binding_id
+         LIMIT 1001`,
+        [projectId],
+      );
+      const first = requireRow(
+        result.rows[0],
+        "Project authorization state does not exist.",
+        "NOT_FOUND",
+      );
+      if (result.rows.length > 1000) {
+        throw new MetadataApplicationError(
+          "INVALID_STATE",
+          "Project has more active Role Bindings than the G2-01 response bound permits.",
+        );
+      }
+      const bindings = result.rows.flatMap((row) => {
+        if (
+          row.binding_id === null ||
+          row.principal_id === null ||
+          row.role === null ||
+          row.state === null
+        ) {
+          return [];
+        }
+        return [
+          bindingRecord({
+            binding_id: row.binding_id,
+            project_id: row.project_id,
+            principal_id: row.principal_id,
+            resource_id: row.resource_id,
+            role: row.role,
+            state: row.state,
+          }),
+        ];
+      });
+      return Object.freeze({
+        items: Object.freeze(bindings),
+        authorizationEpoch: BigInt(first.epoch),
+      });
+    } catch (error) {
+      throw mapStorageError(error);
+    }
   }
 
   async replaceRoleBinding(input: {

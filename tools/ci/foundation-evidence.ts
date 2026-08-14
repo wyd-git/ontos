@@ -58,6 +58,7 @@ export interface FoundationPolicy {
     readonly allowedMigrationFiles: readonly string[];
     readonly allowedCreatedTables: readonly string[];
     readonly forbiddenTrackedPrefixes: readonly string[];
+    readonly allowedTrackedPrefixExceptions: readonly string[];
     readonly forbiddenUiExtensions: readonly string[];
     readonly ignoredPrefixes: readonly string[];
   };
@@ -109,7 +110,10 @@ export function evaluateFoundationSnapshot(
 
   for (const path of snapshot.trackedFiles) {
     if (policy.scope.ignoredPrefixes.some((prefix) => path.startsWith(prefix))) continue;
-    if (policy.scope.forbiddenTrackedPrefixes.some((prefix) => path.startsWith(prefix))) {
+    if (
+      policy.scope.forbiddenTrackedPrefixes.some((prefix) => path.startsWith(prefix)) &&
+      !policy.scope.allowedTrackedPrefixExceptions.some((prefix) => path.startsWith(prefix))
+    ) {
       violations.push(`Foundation scope forbids tracked path ${path}.`);
     }
     if (policy.scope.forbiddenUiExtensions.includes(extname(path).toLowerCase())) {
@@ -238,7 +242,7 @@ async function checkFoundation(repositoryRoot: string): Promise<void> {
   );
   if (violations.length > 0) throw new Error(violations.join(" "));
   process.stdout.write(
-    `foundation acceptance: PASS (${String(snapshot.workspacePackages.length)} packages, ${String(snapshot.migrationFiles.length)} tracked DB migrations, ${String(policy.requiredDecisions.length)} accepted ADRs, ${String(policy.requiredEvidence.length)} evidence records, no business app/UI)\n`,
+    `foundation acceptance: PASS (${String(snapshot.workspacePackages.length)} registered packages, ${String(snapshot.migrationFiles.length)} tracked DB migrations, ${String(policy.requiredDecisions.length)} accepted ADRs, ${String(policy.requiredEvidence.length)} evidence records, only registered application prefixes and no UI)\n`,
   );
 }
 
@@ -352,6 +356,7 @@ function assertPolicy(value: unknown): asserts value is FoundationPolicy {
     !isStringArray(value.scope.allowedMigrationFiles) ||
     !isStringArray(value.scope.allowedCreatedTables) ||
     !isStringArray(value.scope.forbiddenTrackedPrefixes) ||
+    !isStringArray(value.scope.allowedTrackedPrefixExceptions) ||
     !isStringArray(value.scope.forbiddenUiExtensions) ||
     !isStringArray(value.scope.ignoredPrefixes) ||
     !Array.isArray(value.requiredDecisions) ||

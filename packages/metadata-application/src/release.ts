@@ -67,6 +67,7 @@ export interface ReleaseRollbackResult {
 
 export interface ReleaseLifecycleRepository {
   readReleaseScope(releaseId: string): Promise<{ readonly projectId: string }>;
+  getRelease(releaseId: string): Promise<ReleaseRecord>;
   createReleaseDraft(input: {
     readonly projectId: string;
     readonly targetChannelName: string;
@@ -120,6 +121,17 @@ export class ReleaseLifecycleApplicationService {
       ...command,
       createdByPrincipalId: identity.principalId,
     });
+  }
+
+  async getRelease(
+    identityInput: VerifiedFoundationIdentity,
+    commandInput: unknown,
+  ): Promise<ReleaseRecord> {
+    const { releaseId } = parseReleaseIdentifierCommand(commandInput);
+    const identity = await this.#resolveIdentity(identityInput);
+    const scope = await this.#releases.readReleaseScope(releaseId);
+    await this.#requirePermission(identity, scope.projectId, "metadata.read");
+    return this.#releases.getRelease(releaseId);
   }
 
   async validateRelease(
@@ -223,7 +235,7 @@ export class ReleaseLifecycleApplicationService {
   async #requirePermission(
     identity: ResolvedFoundationIdentity,
     projectId: string,
-    permission: "metadata.edit" | "release.publish",
+    permission: "metadata.read" | "metadata.edit" | "release.publish",
   ): Promise<void> {
     if (!(await this.#authorizer.authorize(identity, { projectId, permission }))) {
       throw new MetadataApplicationError("FORBIDDEN", "Management permission was denied.");

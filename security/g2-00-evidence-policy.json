@@ -3,6 +3,7 @@
   "gate": "G2-00",
   "scope": {
     "allowedWorkspacePackages": [
+      "apps/api",
       "packages/contracts",
       "packages/metadata-application",
       "packages/metadata-domain",
@@ -40,6 +41,7 @@
       "ontos_migration.schema_migrations"
     ],
     "forbiddenTrackedPrefixes": ["apps/"],
+    "allowedTrackedPrefixExceptions": ["apps/api/"],
     "forbiddenUiExtensions": [".html", ".jsx", ".tsx", ".vue", ".svelte"],
     "ignoredPrefixes": ["spikes/g1/"]
   },
@@ -109,7 +111,8 @@
     "docs/evidence/g2-01-06-definition-validation-dependency-graph.md",
     "docs/evidence/g2-01-07-compatibility-engine.md",
     "docs/evidence/g2-01-08-release-lifecycle.md",
-    "docs/evidence/g2-01-09-package-lifecycle.md"
+    "docs/evidence/g2-01-09-package-lifecycle.md",
+    "docs/evidence/g2-01-10-admin-api.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

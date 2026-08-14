@@ -171,6 +171,21 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
     }
   }
 
+  async getRelease(releaseId: string): Promise<ReleaseRecord> {
+    return this.#transaction(async (client) => {
+      const result = await client.query<ReleaseRow>(releaseSelect(false), [releaseId]);
+      const release = requireRow(result.rows[0], "Release does not exist.", "NOT_FOUND");
+      const record = releaseRecord(release, await readPins(client, releaseId));
+      if (record.manifest.manifestDigest !== record.manifestDigest) {
+        throw new MetadataApplicationError(
+          "STORAGE_FAILURE",
+          "Release Manifest differs from its immutable Digest.",
+        );
+      }
+      return record;
+    });
+  }
+
   async createReleaseDraft(input: {
     readonly projectId: string;
     readonly targetChannelName: string;

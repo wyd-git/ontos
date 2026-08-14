@@ -16,6 +16,7 @@ const policy: FoundationPolicy = {
     allowedMigrationFiles: ["migrations/db-00/0001_foundation.sql"],
     allowedCreatedTables: ["ontos_migration.schema_migrations"],
     forbiddenTrackedPrefixes: ["apps/"],
+    allowedTrackedPrefixExceptions: [],
     forbiddenUiExtensions: [".tsx"],
     ignoredPrefixes: ["spikes/g1/"],
   },
@@ -52,6 +53,29 @@ const policy: FoundationPolicy = {
 
 void test("accepts the exact Foundation-only repository snapshot", () => {
   assert.deepEqual(evaluateFoundationSnapshot(validSnapshot(), policy), []);
+});
+
+void test("permits only an explicitly registered application prefix", () => {
+  const scopedPolicy: FoundationPolicy = {
+    ...policy,
+    scope: {
+      ...policy.scope,
+      allowedWorkspacePackages: ["apps/api", "packages/contracts"],
+      allowedTrackedPrefixExceptions: ["apps/api/"],
+    },
+  };
+  const snapshot = validSnapshot();
+  const scoped: FoundationRepositorySnapshot = {
+    ...snapshot,
+    trackedFiles: [...snapshot.trackedFiles, "apps/api/package.json", "apps/api/src/main.ts"],
+    workspacePackages: ["apps/api", ...snapshot.workspacePackages],
+  };
+  assert.deepEqual(evaluateFoundationSnapshot(scoped, scopedPolicy), []);
+  const violations = evaluateFoundationSnapshot(
+    { ...scoped, trackedFiles: [...scoped.trackedFiles, "apps/web/src/main.ts"] },
+    scopedPolicy,
+  );
+  assert.ok(violations.some((value) => value.includes("apps/web/src/main.ts")));
 });
 
 void test("rejects business code, UI, extra DB scope and non-accepted evidence", () => {

@@ -1,0 +1,16 @@
+{
+  "name": "@ontos/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "app"
+  },
+  "dependencies": {
+    "@ontos/contracts": "0.0.0",
+    "@ontos/metadata-application": "0.0.0",
+    "@ontos/metadata-postgres": "0.0.0",
+    "jose": "6.2.8",
+    "pg": "8.23.0"
+  }
+}
