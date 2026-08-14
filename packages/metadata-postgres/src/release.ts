@@ -46,6 +46,7 @@ export type ReleasePublishFaultPoint =
   | "after_revisions"
   | "after_release"
   | "after_channel"
+  | "after_installations"
   | "after_project"
   | "after_epoch";
 
@@ -115,6 +116,27 @@ interface ReportRow {
   readonly validator_version: string;
   readonly valid: boolean;
   readonly issues: unknown;
+}
+
+interface PackagePublicationRow {
+  readonly change_id: string;
+  readonly installation_id: string;
+  readonly package_id: string;
+  readonly target_package_revision_id: string;
+  readonly target_release_id: string;
+  readonly change_state: "pending" | "active" | "superseded" | "failed";
+  readonly operation: "install" | "upgrade" | "rollback";
+  readonly previous_package_revision_id: string | null;
+  readonly previous_release_id: string | null;
+  readonly request_digest: string;
+  readonly input_bindings_digest: string;
+  readonly compatibility_report: unknown;
+  readonly installation_project_id: string;
+  readonly installation_package_id: string;
+  readonly active_package_revision_id: string | null;
+  readonly active_release_id: string | null;
+  readonly installation_control_sequence: string;
+  readonly target_manifest_digest: string;
 }
 
 const zeroDigest = `sha256:${"0".repeat(64)}` as const;
@@ -304,7 +326,10 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
       }
 
       await assertPublisherOwner(client, release.project_id, input.publishedByPrincipalId);
-      if (release.state === "published") return readPublishedBinding(client, release, control);
+      if (release.state === "published") {
+        await assertPackagePublicationApplied(client, release.release_id);
+        return readPublishedBinding(client, release, control);
+      }
       if (release.state !== "ready") {
         throw new MetadataApplicationError("INVALID_STATE", "Release is not Ready.");
       }
@@ -327,6 +352,8 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
       }
 
       const pins = await readPins(client, release.release_id, true);
+      const packagePublication = await readPackagePublication(client, release.release_id, true);
+      assertPendingPackagePublication(packagePublication, release.project_id);
       const manifest = manifestFromFacts(release, pins);
       if (manifest.manifestDigest !== release.manifest_digest) {
         throw new MetadataApplicationError(
@@ -362,6 +389,7 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
         channel,
         METADATA_RELEASE_VALIDATOR_VERSION,
         control.publication_sequence,
+        packagePublication,
       );
       if (currentEvaluation.contextDigest !== stagedContext || !currentEvaluation.report.valid) {
         throw new MetadataApplicationError(
@@ -478,6 +506,68 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
         }
       }
       this.#faultInjector("after_channel");
+
+      if (packagePublication !== null) {
+        const installationResult = await client.query(
+          `UPDATE meta.package_installations
+           SET active_package_revision_id = $2,
+               active_release_id = $3,
+               control_sequence = control_sequence + 1,
+               changed_at = clock_timestamp()
+           WHERE installation_id = $1
+             AND control_sequence = $4
+             AND active_package_revision_id IS NOT DISTINCT FROM $5::uuid
+             AND active_release_id IS NOT DISTINCT FROM $6::uuid`,
+          [
+            packagePublication.installation_id,
+            packagePublication.target_package_revision_id,
+            release.release_id,
+            packagePublication.installation_control_sequence,
+            packagePublication.previous_package_revision_id,
+            packagePublication.previous_release_id,
+          ],
+        );
+        if (installationResult.rowCount !== 1) {
+          throw new MetadataApplicationError(
+            "CONCURRENT_MODIFICATION",
+            "The Package Installation pointer changed after Stage.",
+          );
+        }
+        if (packagePublication.previous_package_revision_id !== null) {
+          const previousChangeResult = await client.query(
+            `UPDATE meta.package_installation_changes
+             SET state = 'superseded', changed_at = clock_timestamp()
+             WHERE installation_id = $1
+               AND target_package_revision_id = $2
+               AND target_release_id = $3
+               AND state = 'active'`,
+            [
+              packagePublication.installation_id,
+              packagePublication.previous_package_revision_id,
+              packagePublication.previous_release_id,
+            ],
+          );
+          if (previousChangeResult.rowCount !== 1) {
+            throw new MetadataApplicationError(
+              "CONCURRENT_MODIFICATION",
+              "The previous active Package Change no longer matches the Installation pointer.",
+            );
+          }
+        }
+        const changeResult = await client.query(
+          `UPDATE meta.package_installation_changes
+           SET state = 'active', changed_at = clock_timestamp()
+           WHERE change_id = $1 AND state = 'pending'`,
+          [packagePublication.change_id],
+        );
+        if (changeResult.rowCount !== 1) {
+          throw new MetadataApplicationError(
+            "CONCURRENT_MODIFICATION",
+            "The Package Change is no longer Pending.",
+          );
+        }
+      }
+      this.#faultInjector("after_installations");
 
       const projectResult = await client.query<{ readonly publication_sequence: string }>(
         `UPDATE meta.projects
@@ -755,6 +845,8 @@ async function lockAndEvaluateRelease(
     );
   }
   const pins = await readPins(client, release.release_id);
+  const packagePublication = await readPackagePublication(client, release.release_id, false);
+  assertPendingPackagePublication(packagePublication, release.project_id);
   const manifest = manifestFromFacts(release, pins);
   if (manifest.manifestDigest !== release.manifest_digest) {
     throw new MetadataApplicationError(
@@ -769,6 +861,7 @@ async function lockAndEvaluateRelease(
     channel,
     validatorVersion,
     control.publication_sequence,
+    packagePublication,
   );
 }
 
@@ -779,6 +872,7 @@ async function evaluateReleaseFacts(
   channel: ChannelRow | null,
   validatorVersion: string,
   projectPublicationSequence: string,
+  packagePublication: PackagePublicationRow | null,
 ): Promise<EvaluatedRelease> {
   const dependencies = await readDependencies(
     client,
@@ -824,6 +918,27 @@ async function evaluateReleaseFacts(
       contentDigest,
     })),
     compatibility: gate.compatibility,
+    packagePublication:
+      packagePublication === null
+        ? null
+        : {
+            changeId: packagePublication.change_id,
+            installationId: packagePublication.installation_id,
+            packageId: packagePublication.package_id,
+            targetPackageRevisionId: packagePublication.target_package_revision_id,
+            targetReleaseId: packagePublication.target_release_id,
+            state: packagePublication.change_state,
+            operation: packagePublication.operation,
+            previousPackageRevisionId: packagePublication.previous_package_revision_id,
+            previousReleaseId: packagePublication.previous_release_id,
+            requestDigest: packagePublication.request_digest,
+            inputBindingsDigest: packagePublication.input_bindings_digest,
+            compatibilityReport: packagePublication.compatibility_report,
+            installationControlSequence: packagePublication.installation_control_sequence,
+            activePackageRevisionId: packagePublication.active_package_revision_id,
+            activeReleaseId: packagePublication.active_release_id,
+            targetManifestDigest: packagePublication.target_manifest_digest,
+          },
   });
   const compatibility = parseCompatibilityReport(
     buildCompatibilityReport({
@@ -982,6 +1097,98 @@ async function readChannel(
     [projectId, channelName],
   );
   return result.rows[0] ?? null;
+}
+
+async function readPackagePublication(
+  client: pg.PoolClient,
+  releaseId: string,
+  lock: boolean,
+): Promise<PackagePublicationRow | null> {
+  const result = await client.query<PackagePublicationRow>(
+    `SELECT change.change_id,
+            change.installation_id,
+            change.package_id,
+            change.target_package_revision_id,
+            change.target_release_id,
+            change.state AS change_state,
+            change.operation,
+            change.previous_package_revision_id,
+            change.previous_release_id,
+            change.request_digest,
+            change.input_bindings_digest,
+            change.compatibility_report,
+            installation.project_id AS installation_project_id,
+            installation.package_id AS installation_package_id,
+            installation.active_package_revision_id,
+            installation.active_release_id,
+            installation.control_sequence::text AS installation_control_sequence,
+            revision.manifest_digest AS target_manifest_digest
+     FROM meta.package_installation_changes AS change
+     JOIN meta.package_installations AS installation
+       ON installation.installation_id = change.installation_id
+      AND installation.project_id = change.project_id
+      AND installation.package_id = change.package_id
+     JOIN meta.package_revisions AS revision
+       ON revision.package_revision_id = change.target_package_revision_id
+      AND revision.package_id = change.package_id
+     WHERE change.target_release_id = $1${lock ? " FOR UPDATE OF change, installation" : ""}`,
+    [releaseId],
+  );
+  if (result.rows.length > 1) {
+    throw new MetadataApplicationError(
+      "STORAGE_FAILURE",
+      "Release is bound to more than one Package Change.",
+    );
+  }
+  return result.rows[0] ?? null;
+}
+
+function assertPendingPackagePublication(
+  publication: PackagePublicationRow | null,
+  projectId: string,
+): void {
+  if (publication === null) return;
+  if (
+    publication.change_state !== "pending" ||
+    publication.target_release_id.length === 0 ||
+    publication.installation_project_id !== projectId ||
+    publication.installation_package_id !== publication.package_id ||
+    publication.active_package_revision_id !== publication.previous_package_revision_id ||
+    publication.active_release_id !== publication.previous_release_id
+  ) {
+    throw new MetadataApplicationError(
+      "CONCURRENT_MODIFICATION",
+      "Package Installation facts no longer match the Pending Release Change.",
+    );
+  }
+  const report = parseCompatibilityReport(publication.compatibility_report);
+  if (
+    report.outcome !== "compatible" ||
+    report.candidateDigest !== publication.target_manifest_digest
+  ) {
+    throw new MetadataApplicationError(
+      "INVALID_STATE",
+      "Package Change has no compatible report for its target Manifest.",
+    );
+  }
+}
+
+async function assertPackagePublicationApplied(
+  client: pg.PoolClient,
+  releaseId: string,
+): Promise<void> {
+  const publication = await readPackagePublication(client, releaseId, true);
+  if (publication === null) return;
+  if (
+    publication.change_state !== "active" ||
+    publication.active_package_revision_id !== publication.target_package_revision_id ||
+    publication.active_release_id !== releaseId
+  ) {
+    throw new MetadataApplicationError(
+      "STORAGE_FAILURE",
+      "Published Release has an incomplete Package activation.",
+    );
+  }
 }
 
 async function readPins(

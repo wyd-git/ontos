@@ -37,6 +37,22 @@ export {
   assertReleaseStateTransition,
   evaluateReleaseGate,
 } from "./release.ts";
+export {
+  METADATA_PACKAGE_KERNEL_CONTRACT_VERSION,
+  METADATA_PACKAGE_VALIDATOR_VERSION,
+  PackageDomainError,
+  assertPackageCandidateIntegrity,
+  preparePackageCandidate,
+} from "./package.ts";
+export type {
+  CanonicalTextDigester,
+  PackageDomainErrorCode,
+  PackageInstallInputBinding,
+  PackageIntegrityResult,
+  PreparedPackageCandidate,
+  PreparedPackageDependency,
+  PreparedPackageResource,
+} from "./package.ts";
 export type {
   ReleaseBaselinePin,
   ReleaseGateEvaluation,

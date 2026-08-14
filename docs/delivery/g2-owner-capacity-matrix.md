@@ -55,6 +55,12 @@
 - 七个真实 PostgreSQL SQL 边界故障全部回滚，旧 Channel/Serving Head、Project Sequence、Authorization Epoch 和 Revision 状态保持完整；Release 原子 Publish 风险在 metadata-only 范围内关闭。
 - 剩余 4 个工作项的最大不确定性转为 Package 展开与三 Pointer 同事务切换、真实 Admin HTTP/OIDC、第二领域 Fixture 以及最终 clean-room Gate；不因 Release PASS 提前宣称 Package 或产品入口完成。
 
+### G2-01-09 后检查点（2026-08-15）
+
+- G2-01-01～09 进度为 9/12；Package 预检、安装输入、Revision/Installation/Pending Change、兼容升级、新 Release 回滚和最终 Publish 激活已进入正式实现。
+- 五个 Package 准备故障点和八个 Release Publish 故障点在真实 PostgreSQL 16 中全部回滚；不同 Namespace 共存、资源归属冲突、版本复用和伪造已校验输入均有负测。
+- 剩余 3 项的最大不确定性集中在真实 OIDC/HTTP 边界、统一 CI/Testkit Evidence 以及 clean-room 总验收；仍不提前引入 DB-02、UI、SDK 或业务 Runtime。
+
 ## 3. 顺序与停止规则
 
 1. G2-00 已 PASS；G2-01 只按 [Metadata 任务包](g2-01-metadata-task-pack.md) 顺序执行，不直接开始 DB-02、页面或 Action。

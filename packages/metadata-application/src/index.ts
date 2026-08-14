@@ -28,6 +28,17 @@ import {
   type ResourceState,
 } from "@ontos/metadata-domain";
 
+export {
+  PackageLifecycleApplicationService,
+  type PackageChangeOperation,
+  type PackageChangeRecord,
+  type PackageChangeResult,
+  type PackageChangeState,
+  type PackageLifecycleApplicationServiceOptions,
+  type PackageLifecycleRepository,
+  type PackageValidationResult,
+} from "./package.ts";
+
 export type MetadataApplicationErrorCode =
   | "ALREADY_EXISTS"
   | "CONCURRENT_MODIFICATION"
