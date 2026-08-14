@@ -12,7 +12,8 @@
     "docs/evidence/g2-01-08-release-lifecycle.md",
     "docs/evidence/g2-01-09-package-lifecycle.md",
     "docs/evidence/g2-01-10-admin-api.md",
-    "docs/evidence/g2-01-11-ci-testkit-metadata-evidence.md"
+    "docs/evidence/g2-01-11-ci-testkit-metadata-evidence.md",
+    "docs/evidence/g2-01-12-clean-room-metadata-gate.md"
   ],
   "protectedFoundationEvidence": {
     "docs/evidence/g2-00-01-toolchain-boundaries.md": "sha256:965062e363bd804144890ffcf41e18e60a590a28adbf5c8bc516443b4fddae03",
@@ -64,6 +65,7 @@
     "license-sbom-vulnerability",
     "postgres-integration",
     "admin-api-oidc-postgres",
+    "metadata-clean-room",
     "production-boundary-up",
     "production-boundary-smoke",
     "production-boundary-down"

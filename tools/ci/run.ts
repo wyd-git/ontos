@@ -68,6 +68,11 @@ const gates: readonly GateDefinition[] = [
     arguments: ["run", "test:admin-api:postgres"],
   },
   {
+    name: "metadata-clean-room",
+    command: "npm",
+    arguments: ["run", "test:metadata-clean-room"],
+  },
+  {
     name: "production-boundary-up",
     command: "npm",
     arguments: ["run", "env:up"],
@@ -156,6 +161,9 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
   const negativeFixtureArtifact = await readOptionalJson(
     join(outputDirectory, "metadata-negative-fixtures.json"),
   );
+  const metadataCleanRoomArtifact = await readOptionalJson(
+    join(outputDirectory, "metadata-clean-room.json"),
+  );
   const migrationPaths = await trackedPaths(repositoryRoot, ["migrations"]);
   const contractPaths = await trackedPaths(repositoryRoot, [
     "packages/contracts",
@@ -190,6 +198,13 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
         "compatibilityVectorSha256",
       ),
       negativeFixtureEvidenceSha256: stringProperty(negativeFixtureArtifact, "evidenceSha256"),
+      metadataCleanRoomCombinedSha256: stringProperty(
+        recordProperty(
+          recordProperty(metadataCleanRoomArtifact, "immutableHashes"),
+          "beforeRollback",
+        ),
+        "combined",
+      ),
       migrationSha256: await fingerprintPaths(repositoryRoot, migrationPaths),
       contractSha256: await fingerprintPaths(repositoryRoot, contractPaths),
     },
@@ -354,11 +369,16 @@ async function readArtifactCounts(outputDirectory: string): Promise<{
     readonly compatibilityCases: number | null;
   };
   readonly negativeFixtures: { readonly cases: number | null };
+  readonly metadataCleanRoom: {
+    readonly scenarioSteps: number | null;
+    readonly status: string | null;
+  };
 }> {
   const secret = await readOptionalJson(join(outputDirectory, "secret-scan.json"));
   const supply = await readOptionalJson(join(outputDirectory, "supply-chain-artifacts.json"));
   const metadata = await readOptionalJson(join(outputDirectory, "metadata-fixtures.json"));
   const negative = await readOptionalJson(join(outputDirectory, "metadata-negative-fixtures.json"));
+  const cleanRoom = await readOptionalJson(join(outputDirectory, "metadata-clean-room.json"));
   const counts = recordProperty(supply, "counts");
   return {
     secrets: {
@@ -376,6 +396,10 @@ async function readArtifactCounts(outputDirectory: string): Promise<{
       compatibilityCases: numberProperty(metadata, "compatibilityCaseCount"),
     },
     negativeFixtures: { cases: numberProperty(negative, "caseCount") },
+    metadataCleanRoom: {
+      scenarioSteps: numberProperty(cleanRoom, "scenarioStepCount"),
+      status: stringProperty(cleanRoom, "status"),
+    },
   };
 }
 

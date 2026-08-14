@@ -41,7 +41,7 @@ G2-00-13 在同一入口追加 `foundation-scope-evidence`，由 `security/g2-00
 
 运行结束还生成 `foundation-evidence-manifest.json`，记录 Commit、Clean/Dirty、环境、命令、每个 Gate 结果、Artifact/Fixture Digest、Scope、Owner 和风险。只有全部 Gate/Acceptance PASS 且 `dirty=false` 才标记 `CLEAN_ROOM_PASS`；普通开发工作树不会被包装成 clean-room 证据。
 
-G2-01 在不改名远端 Required Check `Foundation Gate` 的前提下追加 `metadata-evidence-manifest.json`。`security/g2-01-evidence-policy.json` 固定 G2-01-01～11 Evidence、两 Package、七类负向 Fixture、21 个必过 Gate、Owner/风险，并记录 13 份 G2-00 历史 Evidence 的精确 SHA-256。历史 Foundation 文档发生任何字节变化都直接阻断 G2-01，而不是把新结论建立在可修改的旧声明上。
+G2-01 在不改名远端 Required Check `Foundation Gate` 的前提下追加 `metadata-evidence-manifest.json`。`security/g2-01-evidence-policy.json` 固定 G2-01-01～12 Evidence、两 Package、七类负向 Fixture、22 个必过 Gate、Owner/风险，并记录 13 份 G2-00 历史 Evidence 的精确 SHA-256。历史 Foundation 文档发生任何字节变化都直接阻断 G2-01，而不是把新结论建立在可修改的旧声明上。`metadata-clean-room` 还必须生成独立 Artifact，绑定 24 步真实 HTTP 总场景和 Rollback/重启/二次 Migration 前后的历史 Hash；缺失 Artifact 时 Manifest fail closed。
 
 ## 3. Secret 与私钥策略
 

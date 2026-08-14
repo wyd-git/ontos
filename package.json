@@ -49,6 +49,7 @@
     "test:database:unit": "node --test tools/database/definitions.test.ts tools/database/handler-boundary.test.ts tools/database/preflight.test.ts",
     "test:database": "node --test --test-concurrency=1 tools/database/postgres.integration.test.ts tools/metadata-control-plane/integration/postgres.test.ts tools/metadata-control-plane/integration/release-postgres.test.ts tools/metadata-control-plane/integration/package-postgres.test.ts",
     "test:admin-api:postgres": "node --test tools/admin-api/integration/postgres-http.test.ts",
+    "test:metadata-clean-room": "node --test tools/metadata-clean-room/postgres-http-clean-room.test.ts",
     "db:migrate": "node tools/database/cli.ts",
     "test:value-codec:postgres": "node tools/value-codec/postgres-fixture.ts",
     "env:up": "node tools/local-env/compose.ts up",
