@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "repository": "wyd-git/ontos",
+  "branch": "main",
+  "requiredStatusChecks": {
+    "strict": true,
+    "contexts": ["Foundation Gate"]
+  },
+  "enforceAdmins": true,
+  "requirePullRequest": true,
+  "requiredApprovingReviewCount": 0,
+  "bypassActors": [],
+  "allowForcePushes": false,
+  "allowDeletions": false
+}

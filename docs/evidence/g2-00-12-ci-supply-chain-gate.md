@@ -13,9 +13,9 @@
 
 | WWA 声明                                 | 实现证据                                            | 本地执行证据                                                      | 结果    |
 | ---------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------- | ------- |
-| 全部必跑项                               | 单一 `tools/ci/run.ts`，15 个顺序 Gate              | 15/15 PASS，32.473 秒                                             | PASS    |
-| Secret、License Manifest、SBOM、漏洞策略 | 两个 Scanner/Generator 与三个机器 Policy            | 249 个跟踪文本文件、135 个外部包、138 个 SBOM Component、0 漏洞   | PASS    |
-| 四类故意失败 Fixture                     | Contract、Architecture、Role、Secret Negative Tests | 196 Unit 全绿；真实 Role Escalation 输出 `blocked`                | PASS    |
+| 全部必跑项                               | 单一 `tools/ci/run.ts`，15 个顺序 Gate              | 15/15 PASS，32.472 秒                                             | PASS    |
+| Secret、License Manifest、SBOM、漏洞策略 | 两个 Scanner/Generator 与三个机器 Policy            | 252 个跟踪文本文件、135 个外部包、138 个 SBOM Component、0 漏洞   | PASS    |
+| 四类故意失败 Fixture                     | Contract、Architecture、Role、Secret Negative Tests | 200 Unit 全绿；真实 Role Escalation 输出 `blocked`                | PASS    |
 | 本地/CI 同脚本                           | `npm run verify` 是本地和 Workflow 唯一入口         | Workflow 不维护第二套 Gate 命令                                   | PASS    |
 | 机器报告和摘要                           | `report.json`、`summary.md`、六个子 Artifact        | Commit/Dirty、版本、PostgreSQL、Fixture/Lock Hash、逐步耗时均存在 | PASS    |
 | 分支保护与紧急绕过审计                   | Strict Required Check 与无常驻 Bypass 设计          | Protection 和 Ruleset API 均因当前私有仓库套餐返回 HTTP 403       | BLOCKED |
@@ -28,15 +28,15 @@ npm run verify
 Foundation Gate                 PASS
 lockfile-install                PASS
 format / lint / typecheck       PASS
-unit                            PASS — 196/196
+unit                            PASS — 200/200
 contract-golden-diff            PASS — 11 Foundation / 16 Stable Error / 30 Golden
 architecture-dependency         PASS — 3 Packages / 20 Source Files
 testkit-provenance              PASS — 47 Inputs / 6 Groups / sha256:dff360...aa1
-secret-private-key              PASS — 249 Tracked Text Files / 0 Findings
+secret-private-key              PASS — 252 Tracked Text Files / 0 Findings
 license-sbom-vulnerability      PASS — 135 Packages / 138 Components / 0 Vulnerabilities
 postgres-integration            PASS — server_version_num 160014 / Role Escalation Blocked
 production-boundary up/smoke/down PASS — PostgreSQL / OIDC / S3 / OTEL
-total                           32.473 seconds
+total                           32.472 seconds
 ```
 
 Environment Down 删除本项目容器和 Network，保留项目 Volume；没有使用 `env:reset` 或删除个人数据。
@@ -64,7 +64,7 @@ licenses.json
 npm-audit.json
   942b11243cc1c7ce965a9e284a3afe5aa5821741a4da260d47b4c2d27915aa61
 secret-scan.json
-  58b8f06c52108a21dba4f107ee8455740138f900ecd57e79b147ae880217c677
+  c083da9d8296282696d684deded38574ad2787be49d73d64617b4b6028bed343
 vulnerability-report.json
   10f65c94439f9acefa54710fd3abf0c7028bb34318111c1ba8f41d20e31e4e5b
 ```
@@ -93,6 +93,8 @@ CycloneDX 文档包含随机 Serial/Timestamp，因此只把每次运行摘要�
 2026-08-14 先后以 GitHub API 读取 Main Branch Protection 和 Repository Ruleset，两者均返回 HTTP 403：`Upgrade to GitHub Pro or make this repository public to enable this feature.`。GitHub 官方功能说明同样标明：GitHub Free 只对公开仓库提供 Protected Branch/Ruleset；私有仓库需 GitHub Pro、Team 或 Enterprise Cloud。
 
 因此 PR #14 保持 Draft 且不合并，G2-00-12 不标记完成，G2-00-13 不启动。推荐由 Repository Owner 升级 GitHub Pro 以保持仓库私有；若要转公开，必须作为独立的信息公开决策批准，不在本 Gate 中自动执行。
+
+为避免套餐开通后手工配错，`security/main-branch-protection.json` 已冻结唯一目标，`npm run github-protection:apply` 使用 GitHub API 应用，`npm run github-protection:verify` 独立复查。4 个单元测试覆盖正常配置、非 Strict、Admin 未保护、常驻 Bypass、Force/Delete 和 Check 名漂移。
 
 ## 8. Red-Team 与剩余条件
 

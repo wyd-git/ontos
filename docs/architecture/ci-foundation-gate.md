@@ -88,6 +88,8 @@ Foundation 当前 Allowlist：`0BSD`、`Apache-2.0`、`BSD-2-Clause`、`BSD-3-Cl
 - Workflow 的唯一执行命令为 `npm run verify`；Artifact Upload 使用 `always()`；
 - Main Branch Protection 要求 `Foundation Gate` 且分支必须最新，禁止 Force Push/Delete，Admin 也受保护。
 
+目标配置由 `security/main-branch-protection.json` 机器冻结；套餐开通后由 Repository Owner 执行 `npm run github-protection:apply`，再用 `npm run github-protection:verify` 独立读取复查。脚本要求 PR、Strict `Foundation Gate`、Admin Enforced、无常驻 Bypass、禁止 Force Push/Delete；任一字段漂移都非零退出。
+
 紧急情况不配置常驻 Bypass Actor。若确需绕过，Repository Owner 必须临时修改保护，GitHub Security Log 记录操作者与时间；随后立即恢复，并在 `docs/evidence/emergency-bypass/` 提交 Incident、原因、受影响 Commit、执行人、批准人、恢复时间和补跑结果。没有这两层记录的绕过视为未授权变更。
 
 ## 7. 官方依据
