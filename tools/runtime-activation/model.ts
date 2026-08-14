@@ -55,6 +55,10 @@ export interface RuntimePolicy {
 }
 
 export interface ReleasePin {
+  /**
+   * A Runtime Member Plan pin. This is intentionally narrower than the
+   * Metadata Resource Revision pins stored by a Release Manifest.
+   */
   memberKey: string;
   resourceRevisionId: string;
   schemaHash: string;
@@ -324,7 +328,6 @@ export class RuntimeActivationModel {
 
   registerRelease(input: RegisterReleaseInput): void {
     assertUnusedId(this.#state.releases, input.id, "Release");
-    if (input.pins.length === 0) fail("INVALID_STATE", "A Release needs at least one pin.");
     if (input.rollbackOf !== undefined) {
       const source = requireRecord(this.#state.releases, input.rollbackOf, "Release");
       if (source.state === "COLLECTED") {
