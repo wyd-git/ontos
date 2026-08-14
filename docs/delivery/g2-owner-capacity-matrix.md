@@ -49,6 +49,12 @@
 - 第一次失败后依赖状态变化无法重试的报告身份缺口，已通过 `validation_context_digest` 向前迁移关闭；跨 Project 引用按 Missing 同形失败，不读取或锁定外部 Project 的图。
 - Compatibility 的下游 Pin 影响与条件阻断已由 G2-01-07 关闭；剩余 5 个工作项的主要风险收敛到 Release 原子 Publish、Package 展开事务、真实 Admin HTTP/OIDC 与最终 clean-room Gate；整体 **4–7 工程周**容量情景仍不转换为日期承诺。
 
+### G2-01-08 后检查点（2026-08-15）
+
+- G2-01-01～08 进度为 8/12；服务器 Release Gate、Manifest、Stage CAS、零成员 Activation、短事务 Publish、并发冲突、幂等重试和向前 Rollback 已进入正式实现。
+- 七个真实 PostgreSQL SQL 边界故障全部回滚，旧 Channel/Serving Head、Project Sequence、Authorization Epoch 和 Revision 状态保持完整；Release 原子 Publish 风险在 metadata-only 范围内关闭。
+- 剩余 4 个工作项的最大不确定性转为 Package 展开与三 Pointer 同事务切换、真实 Admin HTTP/OIDC、第二领域 Fixture 以及最终 clean-room Gate；不因 Release PASS 提前宣称 Package 或产品入口完成。
+
 ## 3. 顺序与停止规则
 
 1. G2-00 已 PASS；G2-01 只按 [Metadata 任务包](g2-01-metadata-task-pack.md) 顺序执行，不直接开始 DB-02、页面或 Action。

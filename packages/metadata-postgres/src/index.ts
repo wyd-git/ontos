@@ -1797,3 +1797,9 @@ function postgreSqlErrorCode(value: unknown): string | null {
   if (typeof value !== "object" || value === null || !("code" in value)) return null;
   return typeof value.code === "string" ? value.code : null;
 }
+
+export {
+  PostgresReleaseStore,
+  type PostgresReleaseStoreOptions,
+  type ReleasePublishFaultPoint,
+} from "./release.ts";
