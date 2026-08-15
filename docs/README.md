@@ -7,7 +7,8 @@
 1. [Ontology Kernel PRD](product/ontology-kernel-prd.md)：产品能力、范围、语义和最终验收。
 2. [G2 生产实现蓝图](product/ontology-kernel-implementation-blueprint.md)：从 PRD 到工程的实现约束。
 3. [G2 蓝图红队审查](reviews/g2-blueprint-red-team.md)：承重假设、验证、Kill Criteria 和 Conditional Go 结论。
-4. [G2-02 Materialization 任务包](delivery/g2-02-materialization-task-pack.md)：当前唯一获准开始的业务 Gate，覆盖受管 CSV、Mapping、Job/Lease、Generation、Base/Current、Staging/Cutover、Index/Capacity 与 GC；目前只放行 G2-02-01。
+4. [G2-02 Materialization 任务包](delivery/g2-02-materialization-task-pack.md)：当前唯一获准实现的业务 Gate，覆盖受管 CSV、Mapping、Job/Lease、Generation、Base/Current、Staging/Cutover、Index/Capacity 与 GC；G2-02-01 已 PASS，下一顺序任务是 G2-02-02。
+   - [ADR-014 Materialization 事务/DDL/Overlay](architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md)、[专项红队](reviews/adr-014-materialization-architecture-red-team.md)与 [G2-02-01 Evidence](evidence/g2-02-01-materialization-architecture.md)：逻辑 DB-02 边界、全局锁/CAS、隔离 DDL Executor、Kill/Replay 与 zero-overlay Seam。
 5. [G2-02 任务包红队](reviews/g2-02-task-pack-red-team.md)：Dynamic DDL、零成员 A0 前向兼容、Kill/Resume、100k/1m 与 Overlay Seam 的 Kill Criteria。
 6. [G2-01 Metadata 任务包](delivery/g2-01-metadata-task-pack.md)：已完成的 DB-01、Metadata/Release/Package Store、最小管理授权和 Admin API Gate。
 7. [G2-01 任务包红队](reviews/g2-01-task-pack-red-team.md)：零成员 Activation、Package/Release 原子性、渐进冻结、授权边界和单通道工期的 Kill Criteria。

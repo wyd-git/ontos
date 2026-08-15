@@ -238,6 +238,8 @@ export const LOCK_ORDER = [
   "RELEASE",
   "RELEASE_PINS",
   "SNAPSHOT_GROUP",
+  "OBJECT_TYPE_CUTOVER",
+  "GENERATION_INVENTORY",
   "SERVING_HEADS",
 ] as const;
 
@@ -253,7 +255,10 @@ export const PUBLISH_LOCK_PLAN: readonly LockDomain[] = [
 
 export const SNAPSHOT_CUTOVER_LOCK_PLAN: readonly LockDomain[] = [
   "PROJECT_CONTROL",
+  "RELEASE_CHANNEL",
   "SNAPSHOT_GROUP",
+  "OBJECT_TYPE_CUTOVER",
+  "GENERATION_INVENTORY",
   "SERVING_HEADS",
 ];
 

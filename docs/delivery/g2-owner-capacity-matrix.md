@@ -74,9 +74,15 @@
 - G2-02-03 完成 `R1/A0 → R2/A1` Migration 与最小 Lease/Checkpoint Smoke、G2-02-06 完成 10k Object/100k Link 薄切片后，各用实测吞吐与返工重新估算一次。
 - 当前只放行 G2-02-01 的 ADR/状态 Harness/PostgreSQL DDL Spike；若 DDL 必须给 API/Worker Owner 权限或首成员必须改写 A0，立即停止，不进入 DB-02 业务表。
 
+### G2-02-01 后检查点（2026-08-15）
+
+- G2-02-01 已完成 [ADR-014](../architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md)、[Evidence](../evidence/g2-02-01-materialization-architecture.md)与[专项红队](../reviews/adr-014-materialization-architecture-red-team.md)；15 项状态/边界测试和真实 PostgreSQL 16 DDL Spike 已证明代表性 Index Recipe、API/Worker/Ops 非 Owner、Kill/Replay、A0 前向兼容和 zero-overlay fail-closed。
+- Dynamic DDL 的可行性停止条件未触发，但正式 Plan 不可变、Inventory Scanner/Revision、全部 Recipe、真实 Cutover 行锁和生产 Secret/Network 隔离仍是后续非可选 Gate；不能用本 Spike 宣称 DB-02 已落库。
+- G2-02 整体 **7–11 工程周单通道容量情景暂不缩短**。G2-02-02 可以开始；下一次正式重估仍按原计划在 G2-02-03 的真实 `R1/A0 → R2/A1` Migration 薄切片后执行。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前不得跳过 01 直接开始 DB-02、Query、页面或 Action。
+1. G2-00、G2-01 与 G2-02-01 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-02，不得跳到 DB-02、Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

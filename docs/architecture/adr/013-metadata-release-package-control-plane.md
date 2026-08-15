@@ -1,7 +1,7 @@
 # ADR-013：Metadata、Release、Package 与管理授权控制面
 
 - 状态：Accepted for G2-01-01
-- 实现状态：G2-01-03～12 已完成 DB-01、Project/RBAC、Resource Revision、Definition/Dependency/Compatibility、Release/Package Lifecycle、Admin HTTP/OIDC、统一 Gate 与 clean-room 总验收；DB-02 Generation/Snapshot 仍由 G2-02 拥有
+- 实现状态：G2-01-03～12 已完成 DB-01、Project/RBAC、Resource Revision、Definition/Dependency/Compatibility、Release/Package Lifecycle、Admin HTTP/OIDC、统一 Gate 与 clean-room 总验收；G2-02-01 已用 ADR-014 扩展锁合同，DB-02 Generation/Snapshot 正式表仍由后续 G2-02 任务拥有
 - 日期：2026-08-14
 - Owner：Tech Lead / Database / Security
 - 决策范围：DB-01 候选表、不可变 Revision/Release/Package 状态、原子 Publish、零成员 Activation、管理 RBAC、锁顺序与向前恢复
@@ -127,10 +127,12 @@ PROJECT_CONTROL
   → RELEASE
   → RELEASE_PINS
   → SNAPSHOT_GROUP
+  → OBJECT_TYPE_CUTOVER
+  → GENERATION_INVENTORY
   → SERVING_HEADS
 ```
 
-Publish 使用 Project、Channel、Release、Pins、Serving Heads；DB-02 Snapshot Cutover 使用 Project、Snapshot Group、Serving Heads。两者可以跳过不需要的锁，但禁止逆序或重复取得低等级锁。Project `publication_sequence`/控制 CAS 处理 Publish 与 Refresh 的计划陈旧；锁处理提交期间的并发写。
+Publish 使用 Project、Channel、Release、Pins、Serving Heads；DB-02 Snapshot Cutover 使用 Project、Channel、Snapshot Group、按稳定键排序的 Object Type、Generation Inventory、Serving Heads。Cutover 必须锁 Channel，因为 Refresh 会在目标 Release 仍为活动 Channel 时同步移动它；旧的三锁计划遗漏该写集合，现由 ADR-014 修正。事务可以跳过不需要的锁，但禁止逆序或重复取得低等级锁。Project `publication_sequence`/控制 CAS 处理 Publish 与 Refresh 的计划陈旧；`inventory_revision`/`state_revision` 分别保护物理库存和 GC 引用快照；锁处理提交期间的并发写。
 
 状态 Harness 对 Publish 的 Release、Serving Head、Channel、Package、Epoch 边界逐一注入失败，并证明调用者持有的已提交状态未改变。G2-01-08/09 的真实 PostgreSQL 16 Integration 已分别覆盖 Release Publish 和 Package Prepare/Publish 事务的全部故障注入点；连接中断与长时间容量仍由最终运维 Gate 持续验证。
 

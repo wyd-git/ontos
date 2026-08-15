@@ -80,6 +80,8 @@ void test("lock plans share one monotonic order and reject inversion", () => {
     "RELEASE",
     "RELEASE_PINS",
     "SNAPSHOT_GROUP",
+    "OBJECT_TYPE_CUTOVER",
+    "GENERATION_INVENTORY",
     "SERVING_HEADS",
   ]);
   assert.doesNotThrow(() => assertLockPlan(PUBLISH_LOCK_PLAN));
