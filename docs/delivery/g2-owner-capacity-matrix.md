@@ -1,6 +1,6 @@
 # G2 Owner、容量与顺序矩阵
 
-- 状态：Active for G2-01 planning
+- 状态：Active for G2-02 planning
 - Accountable Owner：`wyd-git`
 - 实际有效并行度：1 条工程通道
 - 实现支持：Codex，在 Repository Owner 的范围与合并批准下工作
@@ -23,11 +23,11 @@
 | 顺序 | Gate                  |   单通道规划范围 | 主要不确定性                                            |
 | ---: | --------------------- | ---------------: | ------------------------------------------------------- |
 |    1 | G2-01 Metadata        |       4–7 工程周 | Revision/Release 事务、兼容性、Package 与真实 Admin API |
-|    2 | G2-02 Materialization |       4–6 工程周 | 100k/1m、Staging/Cutover、Overlay、容量实测             |
+|    2 | G2-02 Materialization |      7–11 工程周 | DDL 隔离、Kill/Resume、100k/1m、Cutover、容量实测       |
 |    3 | G2-03 Query + Policy  |       3–4 工程周 | HTTP/SDK/Harness 同策略、Cursor 与遍历                  |
 |    4 | G2-04 Action          |       3–4 工程周 | Preflight、锁、原子事务、Outbox 故障注入                |
 |    5 | G2-05 Portability     |       2–4 工程周 | 两 Package、最小 UI、Function、SDK、回归                |
-|      | **合计**              | **16–25 工程周** | 不含等待外部审查、需求变更或基础设施采购                |
+|      | **合计**              | **19–30 工程周** | 不含等待外部审查、需求变更或基础设施采购                |
 
 这是容量情景，不是交付承诺。G2-01 的 4–7 周来自 [任务包红队](../reviews/g2-01-task-pack-red-team.md)，并要求在 G2-01-03 完成真实 PostgreSQL 薄切片后再次校准。每个 Gate 入口重新估算一次；若范围、Owner 或可用时间变化，先更新本矩阵，不删除安全、事务、恢复或性能退出条件来维持日期。
 
@@ -61,9 +61,22 @@
 - 五个 Package 准备故障点和八个 Release Publish 故障点在真实 PostgreSQL 16 中全部回滚；不同 Namespace 共存、资源归属冲突、版本复用和伪造已校验输入均有负测。
 - 剩余 3 项的最大不确定性集中在真实 OIDC/HTTP 边界、统一 CI/Testkit Evidence 以及 clean-room 总验收；仍不提前引入 DB-02、UI、SDK 或业务 Runtime。
 
+### G2-01 最终检查点（2026-08-15）
+
+- G2-01-01～12 已全部完成；真实 OIDC/Admin HTTP、Metadata/Package PostgreSQL Store、Release/Package 原子事务、统一 22 Gate、进程重启与独立 clean-room 验收均 PASS。
+- 该结果关闭了 Metadata 业务 Gate，但不把自动化执行速度外推为 G2-02 的生产工期；Materialization 新增 S3、独立 Worker、长 Job 恢复、动态 DDL、100k/1m 性能与 GC 风险。
+- G2-01 的历史规划保留用于审计，不再作为待完成容量；当前唯一活动规划转为 G2-02。
+
+### G2-02 入口重估（2026-08-15）
+
+- [G2-02 任务包](g2-02-materialization-task-pack.md)拆为 14 个顺序工作项；[任务包红队](../reviews/g2-02-task-pack-red-team.md)识别 Dynamic DDL 最小权限、R1/A0 前向兼容、Job Fencing/Kill-Resume、100k/1m 正式约束成本和 Overlay 延后证据为承重风险。
+- 原 4–6 工程周未计入独立 DDL Executor 与完整进程恢复矩阵，调整为 **7–11 工程周单通道规划范围**；这不是日期承诺，也不能用于删减安全、原子性或容量 Gate。
+- G2-02-03 完成 `R1/A0 → R2/A1` Migration 与最小 Lease/Checkpoint Smoke、G2-02-06 完成 10k Object/100k Link 薄切片后，各用实测吞吐与返工重新估算一次。
+- 当前只放行 G2-02-01 的 ADR/状态 Harness/PostgreSQL DDL Spike；若 DDL 必须给 API/Worker Owner 权限或首成员必须改写 A0，立即停止，不进入 DB-02 业务表。
+
 ## 3. 顺序与停止规则
 
-1. G2-00 已 PASS；G2-01 只按 [Metadata 任务包](g2-01-metadata-task-pack.md) 顺序执行，不直接开始 DB-02、页面或 Action。
+1. G2-00、G2-01 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前不得跳过 01 直接开始 DB-02、Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。
