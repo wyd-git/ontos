@@ -17,6 +17,8 @@ import {
 } from "@ontos/materialization-application";
 import type pg from "pg";
 
+export * from "./base.ts";
+
 interface SessionRow extends pg.QueryResultRow {
   readonly projectId: string;
   readonly sessionId: string;

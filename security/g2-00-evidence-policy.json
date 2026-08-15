@@ -25,7 +25,8 @@
       "migrations/db-00/0007_materialization_control_facts.sql",
       "migrations/db-00/0008_materialization_shared_projection.sql",
       "migrations/db-00/0009_materialization_operations.sql",
-      "migrations/db-00/0010_managed_csv_ingress.sql"
+      "migrations/db-00/0010_managed_csv_ingress.sql",
+      "migrations/db-00/0011_object_identity_base_staging.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -56,8 +57,12 @@
       "ops.materialization_attempts",
       "ops.materialization_checkpoints",
       "ops.materialization_error_samples",
+      "ops.materialization_generation_stage_batches",
+      "ops.materialization_generation_stages",
       "ops.materialization_jobs",
       "ops.materialization_staged_batches",
+      "ops.link_base_staging",
+      "ops.object_base_staging",
       "runtime.capacity_approvals",
       "runtime.compatibility_certificates",
       "runtime.dataset_snapshots",
@@ -136,6 +141,12 @@
       "path": "docs/architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md",
       "acceptedStatus": "Accepted for G2-02-01",
       "evidence": "docs/evidence/g2-02-01-materialization-architecture.md"
+    },
+    {
+      "id": "ADR-015",
+      "path": "docs/architecture/adr/015-permanent-object-identity-attempt-owned-base.md",
+      "acceptedStatus": "Accepted for G2-02-06",
+      "evidence": "docs/evidence/g2-02-06-object-identity-base.md"
     }
   ],
   "requiredEvidence": [
@@ -167,7 +178,9 @@
     "docs/evidence/g2-02-01-materialization-architecture.md",
     "docs/evidence/g2-02-02-materialization-contracts.md",
     "docs/evidence/g2-02-03-db02-migrations.md",
-    "docs/evidence/g2-02-04-managed-csv-ingress.md"
+    "docs/evidence/g2-02-04-managed-csv-ingress.md",
+    "docs/evidence/g2-02-05-deterministic-mapping.md",
+    "docs/evidence/g2-02-06-object-identity-base.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

@@ -95,9 +95,19 @@
 - 该结果只证明 Mapping 的确定性和内存形状，不包含永久 RID、PostgreSQL Base/COPY/WAL/Index、Dangling Link 或 Worker Kill/Resume；因此剩余 **6–10 工程周**容量情景不缩短。
 - 当前只放行 G2-02-06 永久 Object Identity 与不可变 Object/Link Base。完成 10k Object/100k Link 真实 PostgreSQL 薄切片后，再按 COPY 吞吐、WAL、Heap、Index、重启重放和实际返工强制重估。
 
+### G2-02-06 后检查点（2026-08-15）
+
+- G2-02-06 已完成永久 Object Identity、批量 Resolve/Create、Attempt-owned Object/Link Base Staging、类型化 Link Endpoint、Fencing 和整代原子提升。当前进度为 **6/14**。
+- 真实 Ubuntu 24 / x86_64 / 8C16G / PostgreSQL 16.14 薄切片处理 10k Object + 100k Link，使用 2 + 20 个 5,000 行批次；Object 路径另包含一次失败 Attempt 的完整 10k 重放。
+- Scan/Mapping/Base 主阶段约 45.31 秒，逻辑吞吐 2,428 rows/s；Node 峰值 RSS 约 290.8 MiB，WAL 约 226.2 MiB，失败+成功 Staging 共约 80.9 MiB。Worker/API 连接池重启前后 Base Digest 一致。
+- 按当前阶段线性外推 100k Object + 1m Link 约 7 分 33 秒，为 30 分钟基线保留了加入 Current/Quality/Index 的余量。这不是最终 SLO PASS；G2-02-09 和 14 仍必须跑完 100k/1m 与真实 HTTP/S3/Worker/Cutover。
+- 本项的实际返工主要是 Link 端点类型绑定、Attempt 级 Digest 幂等、不可变 Trigger 下的前向回填、公开 Error Cause 脱敏和真实 CSV-to-Base 容量接缝；都已在本 Gate 关闭。
+- 容量不再是当前最大未知，但剩余 8 项仍包含 Current/质量、真实 Worker、Index、Cutover、GC、HTTP/CI 和 clean-room；剩余单通道容量情景调整为 **5–9 工程周**，不是上线日期承诺。
+- 当前只放行 G2-02-07 Staging Current、质量报告与最小血缘；不得跳到 Query/UI，也不得让 API 直读 Base 伪装成已可服务。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01 与 G2-02-01～05 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-06，不得跳到 Current、Cutover、Query、页面或 Action。
+1. G2-00、G2-01 与 G2-02-01～06 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-07，不得跳到 Worker、Cutover、Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。
