@@ -78,6 +78,16 @@ const gates: readonly GateDefinition[] = [
   },
   { name: "postgres-integration", command: "npm", arguments: ["run", "test:database"] },
   {
+    name: "projection-ddl-production-postgres",
+    command: "npm",
+    arguments: ["run", "test:projection-ddl:production:postgres"],
+  },
+  {
+    name: "projection-capacity-postgres-smoke",
+    command: "npm",
+    arguments: ["run", "test:projection-capacity:postgres:smoke"],
+  },
+  {
     name: "materialization-worker-postgres",
     command: "npm",
     arguments: ["run", "test:materialization-worker:postgres"],

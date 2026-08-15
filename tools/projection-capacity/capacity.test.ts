@@ -277,6 +277,31 @@ void test("post-Staging observed bytes override a lower G1 estimate before cutov
   assert.equal(report.reservedBytes, (observedMeasuredBytes * 15_000n) / 10_000n);
 });
 
+void test("project catalog bytes are a conservative lower bound after the Build", () => {
+  const serving = servingCohort("catalog-floor");
+  const baseline = evaluateCapacity({
+    projectId: capacityProjectId,
+    at: 10,
+    measurementComplete: true,
+    generations: serving.generations,
+    releaseServingSets: [serving.servingSet],
+  });
+  const actual = baseline.reservedBytes + 64n * MIB;
+  const rescanned = evaluateCapacity({
+    projectId: capacityProjectId,
+    at: 11,
+    measurementComplete: true,
+    observedProjectPhysicalBytes: actual,
+    generations: serving.generations,
+    releaseServingSets: [serving.servingSet],
+  });
+
+  assert.equal(rescanned.measuredBytes >= actual, true);
+  assert.equal(rescanned.reservedBytes >= actual, true);
+  assert.equal(rescanned.unattributedPhysicalBytes > 0n, true);
+  assert.equal(rescanned.bytesByClassification.ORPHAN >= rescanned.unattributedPhysicalBytes, true);
+});
+
 void test("investigation Holds require governance metadata and a current review", () => {
   const generation = required(fullProjectionCohort("held")[0]);
   assertCapacityError(

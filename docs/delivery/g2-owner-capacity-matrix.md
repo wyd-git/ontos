@@ -113,9 +113,17 @@
 - 该结果降低恢复协议不确定性，但 Dynamic Index 全 Recipe/Inventory、容量硬准入、Certificate、真实 Group Cutover、GC、Admin HTTP 和 clean-room 仍有 6 项。剩余单通道容量情景保持 **4–7 工程周**，不是上线日期承诺。
 - 当前只放行 G2-02-09 Index Plan、容量准入与受信 DDL 执行；`worker:start` 在 09～11 的生产 Stage 组合完成前继续 fail closed，不得用测试 Adapter 启动生产调度。
 
+### G2-02-09 后检查点（2026-08-16）
+
+- G2-02-09 已 PASS，当前进度为 **9/14**；Published Object Type/Release Pin 绑定、Index Plan/Admission、生产容量 Loader/Scanner、隔离 DDL Executor 与连续 Migration 0014 已进入正式实现。
+- 真实 Ubuntu 24 / x86_64 / 8C16G / PostgreSQL 16.14 以空数据层完成 100k Object + 1m Link；核心构建约 21m06s，Project 实测 2,826,518,528 bytes，150% Peak 4,239,777,792 bytes，未触发 30 分钟/12 GiB 停止条件。
+- 可行性复审发现并关闭了伪 Retained Release、测试注入 Capacity Snapshot、Published Property 漂移、Unique 跨 Generation 冲突与 Pending Index 假完整等缺口；没有放宽租约、容量或权限上限。
+- 剩余 5 项仍包含 Certificate、真实 Group Cutover/Refresh、GC/Drop、Admin HTTP/Testkit 和 clean-room；剩余单通道容量情景保持 **3～6 工程周**，不是上线日期承诺。
+- 当前只放行 G2-02-10 Runtime Member Plan 与受信兼容证书；不得跳到 Cutover、GC、Query 或 UI。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01 与 G2-02-01～08 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-09，不得跳到 Certificate、Cutover、Query、页面或 Action。
+1. G2-00、G2-01 与 G2-02-01～09 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-10，不得跳到 Cutover、GC、Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

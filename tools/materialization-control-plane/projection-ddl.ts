@@ -109,7 +109,7 @@ const canonicalUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const indexNamePattern = /^ok_oc_bt_[0-9a-f]{10}_[0-9a-f]{8}_[0-9a-f]{12}$/u;
 const propertyKeyPattern = /^[a-z][a-z0-9_]{0,62}$/u;
-const signaturePattern = /^[0-9a-f]{64}$/u;
+const signaturePattern = /^sha256:[0-9a-f]{64}$/u;
 const digestPattern = /^sha256:[0-9a-f]{64}$/u;
 const executorAdvisoryNamespace = 737_217_202;
 const signatureCommentPrefix = "ontos:index-signature:";

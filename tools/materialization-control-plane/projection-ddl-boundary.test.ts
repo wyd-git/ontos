@@ -14,7 +14,7 @@ void test("API and Worker source cannot import the DDL Executor or its dedicated
   for (const file of files) {
     const contents = await readFile(file, "utf8");
     assert.equal(
-      /ONTOS_PROJECTION_DDL_DATABASE_URL|materialization-control-plane\/projection-ddl|projection-ddl-cli/u.test(
+      /ONTOS_PROJECTION_DDL_DATABASE_URL|materialization-control-plane\/projection-ddl|projection-ddl-cli|executeProjectionDdlRequest|parseProjectionDdlRequestId/u.test(
         contents,
       ),
       false,

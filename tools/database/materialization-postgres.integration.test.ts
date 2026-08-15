@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
-import { tmpdir } from "node:os";
+import { arch, cpus, freemem, platform, tmpdir, totalmem } from "node:os";
 import { promisify } from "node:util";
 
 import {
@@ -13,12 +13,15 @@ import {
   parseArtifactDigest,
   parseCanonicalInstant,
   parseOntosId,
+  type ArtifactDigest,
 } from "@ontos/contracts";
 import {
+  IndexPlanAdmissionService,
   MaterializationBaseError,
   MaterializationBaseService,
   MaterializationQualityError,
   MaterializationQualityService,
+  ProjectionCapacityAdmissionService,
   RowCountConfirmationService,
   provenanceTemplatesFromPlan,
   type BaseBatchReceipt,
@@ -26,12 +29,19 @@ import {
 import {
   compileMapping,
   executeManagedCsvMapping,
+  type CapacityReport,
   type MappingAcceptedLinkRow,
   type MappingAcceptedObjectRow,
+  type ReleaseIndexPlanInput,
 } from "@ontos/materialization-domain";
 import {
+  executeProjectionDdlRequest,
+  PostgresIndexPlanAdmissionRepository,
   PostgresMaterializationBaseRepository,
   PostgresMaterializationQualityRepository,
+  PostgresProjectionCapacityAdmissionRepository,
+  scanAndRecordProjectPhysicalInventory,
+  type ProjectPhysicalInventoryMeasurement,
 } from "@ontos/materialization-postgres";
 import { canonicalizePrimaryKey } from "@ontos/value-codec";
 import pg from "pg";
@@ -51,11 +61,31 @@ const postgresImage = resolvePostgresTestImage();
 const database = "ontos_db02_upgrade";
 const adminPassword = "local-only-db02-admin-secret";
 const runtimePassword = "local-only-db02-runtime-secret";
-const capacityMode = process.env.ONTOS_G2_02_06_CAPACITY === "1";
+const projectionDdlPassword = "local-only-g20209-capacity-ddl-secret";
+const capacityS3Image =
+  "chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d";
+const baseCapacityMode = process.env.ONTOS_G2_02_06_CAPACITY === "1";
+const projectionCapacityMode = process.env.ONTOS_G2_02_09_CAPACITY === "1";
+const projectionCapacitySmokeMode =
+  projectionCapacityMode && process.env.ONTOS_G2_02_09_CAPACITY_SMOKE === "1";
+const capacityMode = baseCapacityMode || projectionCapacityMode;
+const materializationLeaseSeconds = 300;
 const qualityObjectRows = 1_000;
 const capacityMetrics = {
-  objectRows: capacityMode ? 10_000 : 2,
-  linkRows: capacityMode ? 100_000 : 1,
+  objectRows: projectionCapacityMode
+    ? projectionCapacitySmokeMode
+      ? 1_000
+      : 100_000
+    : baseCapacityMode
+      ? 10_000
+      : 2,
+  linkRows: projectionCapacityMode
+    ? projectionCapacitySmokeMode
+      ? 10_000
+      : 1_000_000
+    : baseCapacityMode
+      ? 100_000
+      : 1,
   objectBatches: 0,
   linkBatches: 0,
   objectMilliseconds: 0,
@@ -64,6 +94,7 @@ const capacityMetrics = {
   walStart: "",
   identityProbeRows: 0,
 };
+let projectionBuildStartedAt: bigint | undefined;
 
 const ids = {
   principal: "10000000-0000-4000-8000-000000000001",
@@ -132,6 +163,7 @@ const ids = {
   linkReport: "10000000-0000-4000-8000-00000000200c",
   linkGeneration: "10000000-0000-4000-8000-00000000200d",
   linkAttempt: "10000000-0000-4000-8000-00000000200e",
+  projectionLinkQualityReport: "10000000-0000-4000-8000-00000000200f",
   qualityGroup: "30000000-0000-4000-8000-000000000001",
   qualityObjectSnapshot: "30000000-0000-4000-8000-000000000002",
   qualityObjectFile: "30000000-0000-4000-8000-000000000003",
@@ -199,9 +231,28 @@ const digests = {
   activation0: digestOf("c"),
 } as const;
 
+interface ProjectionBenchmarkPlan {
+  readonly indexPlanId: string;
+  readonly planDigest: ArtifactDigest;
+  readonly releasePlanDigest: ArtifactDigest;
+  readonly secondaryIndexUnits: number;
+  readonly indexCount: number;
+  readonly initialMeasurement: ProjectPhysicalInventoryMeasurement;
+  inventoryRevision: bigint;
+  prebuildReport?: CapacityReport;
+}
+
+let activeProjectionPlan: ProjectionBenchmarkPlan | undefined;
+
+function runtimeObjectIndexPlanDigest(): ArtifactDigest {
+  return activeProjectionPlan?.planDigest ?? parseArtifactDigest(digests.indexPlan);
+}
+
 void test(
-  "G2-02-03 upgrades A0 safely and enforces DB-02 facts, fencing and least privilege",
-  { timeout: capacityMode ? 600_000 : 240_000 },
+  projectionCapacityMode
+    ? "G2-02-09 validates Projection indexes and capacity on real materialized data"
+    : "G2-02-03 upgrades A0 safely and enforces DB-02 facts, fencing and least privilege",
+  { timeout: projectionCapacityMode ? 2_400_000 : capacityMode ? 600_000 : 240_000 },
   async () => {
     const containerName = `ontos-db02-${process.pid}-${randomUUID().slice(0, 8)}`;
     const prefix6 = await migrationPrefixDirectory(6);
@@ -215,8 +266,9 @@ void test(
       `POSTGRES_PASSWORD=${adminPassword}`,
       "--env",
       `POSTGRES_DB=${database}`,
-      "--tmpfs",
-      "/var/lib/postgresql/data:rw,noexec,nosuid,size=1g",
+      ...(projectionCapacityMode
+        ? []
+        : ["--tmpfs", "/var/lib/postgresql/data:rw,noexec,nosuid,size=1g"]),
       "--publish",
       "127.0.0.1::5432",
       postgresImage,
@@ -249,7 +301,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13],
+          [7, 8, 9, 10, 11, 12, 13, 14],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -270,14 +322,50 @@ void test(
         password: runtimePassword,
       };
       const opsConfig = { ...adminConfig, user: "g20203_ops_login", password: runtimePassword };
+      const ddlConfig = {
+        ...adminConfig,
+        user: "g20209_capacity_ddl_login",
+        password: projectionDdlPassword,
+      };
 
-      await withClient(adminConfig, async (admin) => {
-        await prepareRuntimeFacts(admin);
-      });
+      const projectionPlan = await withClient(adminConfig, (admin) =>
+        prepareRuntimeFacts(
+          admin,
+          projectionCapacityMode
+            ? () => prepareProjectionIndexPlan(admin, apiConfig, worker1Config)
+            : undefined,
+        ),
+      );
+      if (projectionCapacityMode) {
+        assert.ok(projectionPlan);
+        await prepareProjectionCapacityPrebuild(
+          adminConfig,
+          apiConfig,
+          worker1Config,
+          projectionPlan,
+        );
+        projectionBuildStartedAt = process.hrtime.bigint();
+      }
       await exercisePermanentIdentityAndObjectBase(adminConfig, worker1Config, worker2Config);
-      await withClient(adminConfig, prepareLinkRuntimeFacts);
-      await exerciseLinkBase(adminConfig, apiConfig, worker1Config);
+      if (!projectionCapacityMode) await withClient(adminConfig, prepareLinkRuntimeFacts);
+      if (projectionCapacityMode) await makeLinkJobAvailable(adminConfig);
+      const qualityCurrentMilliseconds = await exerciseLinkBase(
+        adminConfig,
+        apiConfig,
+        worker1Config,
+      );
       await exerciseQualityCurrentAndRequiredDangling(adminConfig, apiConfig, worker2Config);
+      if (projectionCapacityMode) {
+        assert.ok(projectionPlan);
+        await exerciseProjectionCapacityPostbuild(
+          adminConfig,
+          worker1Config,
+          ddlConfig,
+          projectionPlan,
+          containerName,
+          required(qualityCurrentMilliseconds),
+        );
+      }
       await exerciseManagedCsvIngressDatabase(apiConfig, worker1Config, opsConfig);
       await withClient(apiConfig, async (api) => {
         await issueCertificateAndPublishA1(api);
@@ -440,7 +528,10 @@ async function createPublishedResource(
   );
 }
 
-async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
+async function prepareRuntimeFacts(
+  client: pg.Client,
+  prepareIndexPlan?: () => Promise<ProjectionBenchmarkPlan>,
+): Promise<ProjectionBenchmarkPlan | undefined> {
   await createPublishedResource(client, {
     resourceId: ids.schemaResource,
     revisionId: ids.schemaRevision,
@@ -459,6 +550,29 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     contentDigest: digests.mapping,
     content: capacityObjectMappingDefinition(),
   });
+  if (projectionCapacityMode) {
+    await prepareLinkTypeFacts(client);
+    const linkSchema = qualityLinkSchemaDefinition();
+    const linkMapping = qualityLinkMappingDefinition();
+    await createPublishedResource(client, {
+      resourceId: ids.linkSchemaResource,
+      revisionId: ids.linkSchemaRevision,
+      reportId: ids.linkSchemaValidation,
+      family: "snapshot_schema",
+      apiName: "ProjectionLinkCsvSchema",
+      contentDigest: definitionDigest(linkSchema),
+      content: linkSchema,
+    });
+    await createPublishedResource(client, {
+      resourceId: ids.linkMappingResource,
+      revisionId: ids.linkMappingRevision,
+      reportId: ids.linkMappingValidation,
+      family: "mapping",
+      apiName: "ProjectionLinkCsvMapping",
+      contentDigest: definitionDigest(linkMapping),
+      content: linkMapping,
+    });
+  }
   await client.query(
     `INSERT INTO meta.projects (project_id, api_name, display_name)
      VALUES ($1, 'Db02OtherProject', 'DB-02 Other Project')`,
@@ -507,18 +621,46 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     [ids.release2],
   );
 
+  const projectionPlan = await prepareIndexPlan?.();
+  activeProjectionPlan = projectionPlan;
+  const objectIndexPlanId = projectionPlan?.indexPlanId ?? ids.indexPlan;
+  const objectIndexPlanDigest = projectionPlan?.planDigest ?? digests.indexPlan;
+
   await client.query(
     `INSERT INTO runtime.snapshot_groups
        (project_id, snapshot_group_id, group_key) VALUES ($1, $2, 'orders')`,
     [ids.project, ids.snapshotGroup],
   );
-  await client.query(
-    `INSERT INTO runtime.index_plans
-       (project_id, index_plan_id, target_resource_id, target_revision_id,
-        plan_digest, entry_count, compiler_version)
-     VALUES ($1, $2, $3, $4, $5, 0, 'index-plan-g2-02-v1')`,
-    [ids.project, ids.indexPlan, ids.objectResource, ids.objectRevision, digests.indexPlan],
-  );
+  if (projectionPlan === undefined) {
+    await client.query(
+      `INSERT INTO runtime.index_plans
+         (project_id, index_plan_id, target_resource_id, target_revision_id,
+          plan_digest, entry_count, compiler_version)
+       VALUES ($1, $2, $3, $4, $5, 0, 'index-plan-g2-02-v1')`,
+      [
+        ids.project,
+        objectIndexPlanId,
+        ids.objectResource,
+        ids.objectRevision,
+        objectIndexPlanDigest,
+      ],
+    );
+  }
+  if (projectionCapacityMode) {
+    await client.query(
+      `INSERT INTO runtime.index_plans
+         (project_id, index_plan_id, target_resource_id, target_revision_id,
+          plan_digest, entry_count, compiler_version)
+       VALUES ($1, $2, $3, $4, $5, 0, 'index-plan-g2-02-v1')`,
+      [
+        ids.project,
+        ids.linkIndexPlan,
+        ids.linkResource,
+        ids.linkRevision,
+        sha256Digest("link-index-plan"),
+      ],
+    );
+  }
 
   const runtimePlanDigest = materializationDigest("RuntimeMemberPlan", {
     schemaVersion: 1,
@@ -534,7 +676,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
         snapshotSchemaRevisionId: ids.schemaRevision,
         mappingRevisionId: ids.mappingRevision,
         snapshotGroupId: ids.snapshotGroup,
-        indexPlanDigest: digests.indexPlan,
+        indexPlanDigest: objectIndexPlanDigest,
       },
     ],
     planDigest: digestOf("0"),
@@ -564,7 +706,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
       ids.mappingResource,
       ids.mappingRevision,
       ids.snapshotGroup,
-      digests.indexPlan,
+      objectIndexPlanDigest,
     ],
   );
   await client.query("COMMIT");
@@ -574,12 +716,20 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
   );
   assert.equal(dbDigest.rows[0]?.digest, runtimePlanDigest);
 
+  const objectSourceBytes = capacityMode
+    ? capacityObjectSourceBytes(capacityMetrics.objectRows)
+    : 0n;
   await client.query("BEGIN");
   await client.query(
     `INSERT INTO runtime.snapshot_group_versions
        (project_id, snapshot_group_id, group_version, member_count, group_digest)
-     VALUES ($1, $2, 1, 1, $3)`,
-    [ids.project, ids.snapshotGroup, digests.group],
+     VALUES ($1, $2, 1, $3, $4)`,
+    [
+      ids.project,
+      ids.snapshotGroup,
+      projectionCapacityMode ? 2 : 1,
+      projectionCapacityMode ? sha256Digest("g2-02-09-object-link-group") : digests.group,
+    ],
   );
   await client.query(
     `INSERT INTO runtime.dataset_snapshots (
@@ -590,7 +740,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
        content_digest, byte_count, row_count, file_count, snapshot_digest
      ) VALUES (
        $1, $2, $3, 1, 'object:Order', 'object', $4, $5, $6, $7, $8, $9,
-       $10, $11, 0, $12, 1, $13
+       $10, $11, $12, $13, 1, $14
      )`,
     [
       ids.project,
@@ -604,6 +754,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
       ids.mappingRevision,
       runtimePlanDigest,
       digests.snapshotContent,
+      objectSourceBytes.toString(),
       capacityMetrics.objectRows,
       digests.snapshot,
     ],
@@ -612,7 +763,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     `INSERT INTO runtime.snapshot_files (
        project_id, snapshot_id, file_id, managed_artifact_id, object_version,
        ordinal, content_digest, byte_count, row_count, source_label, scan_status
-     ) VALUES ($1, $2, $3, $4, 'version-1', 0, $5, 0, $6,
+     ) VALUES ($1, $2, $3, $4, 'version-1', 0, $5, $6, $7,
                'DB-02 migration fixture', 'complete')`,
     [
       ids.project,
@@ -620,6 +771,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
       ids.snapshotFile,
       ids.managedArtifact,
       digests.snapshotContent,
+      objectSourceBytes.toString(),
       capacityMetrics.objectRows,
     ],
   );
@@ -630,6 +782,62 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
      ) VALUES ($1, $2, 1, 'object:Order', 'object', $3, $4, $5)`,
     [ids.project, ids.snapshotGroup, ids.snapshot, ids.objectResource, ids.objectRevision],
   );
+  if (projectionCapacityMode) {
+    const linkContentDigest = sha256Digest("link-snapshot-content");
+    const linkSourceBytes = capacityLinkSourceBytes(capacityMetrics.linkRows);
+    const linkRuntimePlanDigest = sha256Digest("g2-02-09-link-runtime-plan");
+    await client.query(
+      `INSERT INTO runtime.dataset_snapshots (
+         project_id, snapshot_id, snapshot_group_id, group_version,
+         member_key, member_kind, target_resource_id, target_revision_id,
+         snapshot_schema_resource_id, snapshot_schema_revision_id,
+         mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+         content_digest, byte_count, row_count, file_count, snapshot_digest
+       ) VALUES (
+         $1, $2, $3, 1, 'link:OrderRelation', 'link', $4, $5, $6, $7, $8, $9,
+         $10, $11, $12, $13, 1, $14
+       )`,
+      [
+        ids.project,
+        ids.linkSnapshot,
+        ids.snapshotGroup,
+        ids.linkResource,
+        ids.linkRevision,
+        ids.linkSchemaResource,
+        ids.linkSchemaRevision,
+        ids.linkMappingResource,
+        ids.linkMappingRevision,
+        linkRuntimePlanDigest,
+        linkContentDigest,
+        linkSourceBytes.toString(),
+        capacityMetrics.linkRows,
+        sha256Digest("link-snapshot"),
+      ],
+    );
+    await client.query(
+      `INSERT INTO runtime.snapshot_files (
+         project_id, snapshot_id, file_id, managed_artifact_id, object_version,
+         ordinal, content_digest, byte_count, row_count, source_label, scan_status
+       ) VALUES ($1, $2, $3, $4, 'link-version-1', 0, $5, $6, $7,
+                 'G2-02-09 Link capacity fixture', 'complete')`,
+      [
+        ids.project,
+        ids.linkSnapshot,
+        ids.linkSnapshotFile,
+        ids.linkManagedArtifact,
+        linkContentDigest,
+        linkSourceBytes.toString(),
+        capacityMetrics.linkRows,
+      ],
+    );
+    await client.query(
+      `INSERT INTO runtime.snapshot_group_members (
+         project_id, snapshot_group_id, group_version, member_key, member_kind,
+         snapshot_id, target_resource_id, target_revision_id
+       ) VALUES ($1, $2, 1, 'link:OrderRelation', 'link', $3, $4, $5)`,
+      [ids.project, ids.snapshotGroup, ids.linkSnapshot, ids.linkResource, ids.linkRevision],
+    );
+  }
   await client.query("COMMIT");
 
   for (const state of ["validated", "materializing", "ready"] as const) {
@@ -642,8 +850,8 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     await client.query(
       `UPDATE runtime.dataset_snapshots
        SET state = $3, changed_at = clock_timestamp()
-       WHERE project_id = $1 AND snapshot_id = $2`,
-      [ids.project, ids.snapshot, state],
+       WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = 1`,
+      [ids.project, ids.snapshotGroup, state],
     );
   }
 
@@ -675,9 +883,44 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
       ids.mappingResource,
       ids.mappingRevision,
       runtimePlanDigest,
-      digests.indexPlan,
+      objectIndexPlanDigest,
     ],
   );
+  if (projectionCapacityMode) {
+    await client.query(
+      `INSERT INTO ops.materialization_jobs
+         (project_id, job_id, snapshot_group_id, group_version, idempotency_key, input_digest,
+          available_at)
+       VALUES ($1, $2, $3, 1, 'g2-02-09-link-base-job-0001', $4,
+               clock_timestamp() + interval '1 day')`,
+      [ids.project, ids.linkJob, ids.snapshotGroup, sha256Digest("link-job")],
+    );
+    await client.query(
+      `INSERT INTO runtime.generations (
+         project_id, generation_id, member_key, member_kind,
+         target_resource_id, target_revision_id, snapshot_id, snapshot_group_id, group_version,
+         snapshot_schema_resource_id, snapshot_schema_revision_id,
+         mapping_resource_id, mapping_revision_id, runtime_plan_digest, index_plan_digest
+       ) VALUES (
+         $1, $2, 'link:OrderRelation', 'link', $3, $4, $5, $6, 1,
+         $7, $8, $9, $10, $11, $12
+       )`,
+      [
+        ids.project,
+        ids.linkGeneration,
+        ids.linkResource,
+        ids.linkRevision,
+        ids.linkSnapshot,
+        ids.snapshotGroup,
+        ids.linkSchemaResource,
+        ids.linkSchemaRevision,
+        ids.linkMappingResource,
+        ids.linkMappingRevision,
+        sha256Digest("g2-02-09-link-runtime-plan"),
+        sha256Digest("link-index-plan"),
+      ],
+    );
+  }
   const empty = await client.query<{ readonly objects: number; readonly links: number }>(
     `SELECT
        (SELECT count(*)::integer FROM runtime.object_current WHERE generation_id = $1) AS objects,
@@ -685,6 +928,657 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     [ids.generation],
   );
   assert.deepEqual(empty.rows[0], { objects: 0, links: 0 });
+  return projectionPlan;
+}
+
+async function prepareProjectionIndexPlan(
+  admin: pg.Client,
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+): Promise<ProjectionBenchmarkPlan> {
+  await admin.query(
+    `INSERT INTO runtime.project_runtime_inventories
+       (project_id, state_revision, inventory_revision, measurement_complete)
+     VALUES ($1::uuid, 1, 1, false)`,
+    [ids.project],
+  );
+  const crypto = projectionCapacityCrypto();
+  const workerPool = new pg.Pool(workerConfig);
+  let initialMeasurement: ProjectPhysicalInventoryMeasurement;
+  try {
+    initialMeasurement = await scanAndRecordProjectPhysicalInventory(workerPool, crypto, {
+      projectId: ids.project,
+      expectedInventoryRevision: 1n,
+    });
+  } finally {
+    await workerPool.end();
+  }
+
+  const apiPool = new pg.Pool(apiConfig);
+  try {
+    const staged = await new IndexPlanAdmissionService({
+      repository: new PostgresIndexPlanAdmissionRepository(apiPool),
+      crypto,
+    }).stageReleasePlan({ plan: projectionBenchmarkIndexPlan(), at: Date.now() });
+    assert.equal(staged.persistedPlans.length, 1);
+    assert.equal(staged.compiled.objectTypes.length, 1);
+    assert.equal(staged.compiled.indexes.length, 3);
+    assert.equal(staged.compiled.secondaryIndexUnits, 7);
+    const persisted = required(staged.persistedPlans[0]);
+    const objectPlan = required(staged.compiled.objectTypes[0]);
+    assert.equal(persisted.planDigest, objectPlan.planDigest);
+    assert.equal(persisted.reused, false);
+    return {
+      indexPlanId: persisted.indexPlanId,
+      planDigest: persisted.planDigest,
+      releasePlanDigest: staged.compiled.planDigest,
+      secondaryIndexUnits: objectPlan.secondaryIndexUnits,
+      indexCount: objectPlan.indexes.length,
+      initialMeasurement,
+      inventoryRevision: initialMeasurement.inventoryRevision,
+    };
+  } finally {
+    await apiPool.end();
+  }
+}
+
+function projectionBenchmarkIndexPlan(): ReleaseIndexPlanInput {
+  return {
+    projectId: ids.project,
+    releaseId: ids.release2,
+    evidenceCatalog: ["query:order-id", "query:display-filter", "query:display-search"],
+    objectTypes: [
+      {
+        resourceId: ids.objectResource,
+        revisionId: ids.objectRevision,
+        properties: [
+          { propertyId: "orderId", type: "string", primaryKey: true, unique: true },
+          {
+            propertyId: "displayName",
+            type: "string",
+            filterable: true,
+            sortable: true,
+            searchable: true,
+          },
+        ],
+        indexes: [
+          {
+            kind: "btree",
+            keys: [{ propertyId: "orderId" }],
+            unique: true,
+            evidenceRefs: ["query:order-id"],
+          },
+          {
+            kind: "btree",
+            keys: [{ propertyId: "displayName" }],
+            evidenceRefs: ["query:display-filter"],
+          },
+          {
+            kind: "gin_trigram",
+            propertyId: "displayName",
+            evidenceRefs: ["query:display-search"],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function projectionCapacityCrypto() {
+  return Object.freeze({ randomId: randomUUID, digestCanonicalText: sha256Artifact });
+}
+
+async function prepareProjectionCapacityPrebuild(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+  plan: ProjectionBenchmarkPlan,
+): Promise<void> {
+  const workerPool = new pg.Pool(workerConfig);
+  try {
+    await persistProjectionSourceForecasts(workerPool);
+    const measurement = await scanAndRecordProjectPhysicalInventory(
+      workerPool,
+      projectionCapacityCrypto(),
+      { projectId: ids.project, expectedInventoryRevision: plan.inventoryRevision },
+    );
+    plan.inventoryRevision = measurement.inventoryRevision;
+  } finally {
+    await workerPool.end();
+  }
+
+  const apiPool = new pg.Pool(apiConfig);
+  try {
+    const restaged = await new IndexPlanAdmissionService({
+      repository: new PostgresIndexPlanAdmissionRepository(apiPool),
+      crypto: projectionCapacityCrypto(),
+    }).stageReleasePlan({ plan: projectionBenchmarkIndexPlan(), at: Date.now() });
+    assert.equal(required(restaged.persistedPlans[0]).indexPlanId, plan.indexPlanId);
+    assert.equal(required(restaged.persistedPlans[0]).reused, true);
+    assert.equal(restaged.compiled.planDigest, plan.releasePlanDigest);
+  } finally {
+    await apiPool.end();
+  }
+
+  const admissionPool = new pg.Pool(workerConfig);
+  try {
+    // PREBUILD deliberately uses the adapter's production loader. The scoped benchmark loader
+    // below remains only for POSTBUILD because later regression fixtures add unrelated Generations.
+    const repository = new PostgresProjectionCapacityAdmissionRepository(admissionPool);
+    plan.prebuildReport = await new ProjectionCapacityAdmissionService({
+      repository,
+      crypto: projectionCapacityCrypto(),
+    }).admit({ projectId: ids.project, generationId: ids.generation, phase: "PREBUILD" });
+    assert.equal(plan.prebuildReport.accepted, true);
+    assert.equal(plan.prebuildReport.peakReservedBytes < 12n * 1024n ** 3n, true);
+    const postbuildShape = await repository.readCapacityAdmissionSnapshot({
+      projectId: ids.project,
+      generationId: ids.generation,
+      phase: "POSTBUILD",
+    });
+    assert.equal(postbuildShape.inventoryRevision, plan.inventoryRevision);
+    assert.equal(postbuildShape.input.generations.length, 2);
+    assert.equal(postbuildShape.physicalMeasurementDigest !== undefined, true);
+  } finally {
+    await admissionPool.end();
+  }
+
+  await withClient(adminConfig, async (admin) => {
+    const facts = await admin.query<{
+      readonly generationCount: number;
+      readonly forecastCount: number;
+      readonly admissionCount: number;
+    }>(
+      `SELECT
+         (SELECT count(*)::integer FROM runtime.generations
+           WHERE project_id = $1 AND generation_id IN ($2::uuid, $3::uuid)) AS "generationCount",
+         (SELECT count(*)::integer FROM runtime.source_forecasts
+           WHERE project_id = $1 AND generation_id IN ($2::uuid, $3::uuid)) AS "forecastCount",
+         (SELECT count(*)::integer FROM runtime.capacity_admissions
+           WHERE project_id = $1 AND generation_id = $2::uuid AND phase = 'PREBUILD') AS "admissionCount"`,
+      [ids.project, ids.generation, ids.linkGeneration],
+    );
+    assert.deepEqual(facts.rows[0], {
+      generationCount: 2,
+      forecastCount: 2,
+      admissionCount: 1,
+    });
+  });
+}
+
+async function persistProjectionSourceForecasts(pool: pg.Pool): Promise<void> {
+  const forecasts = [
+    {
+      generationId: ids.generation,
+      objectRows: BigInt(capacityMetrics.objectRows),
+      linkRows: 0n,
+      sourceBytes: capacityObjectSourceBytes(capacityMetrics.objectRows),
+      projectedMeasuredBytes: 132_124_672n,
+    },
+    {
+      generationId: ids.linkGeneration,
+      objectRows: 0n,
+      linkRows: BigInt(capacityMetrics.linkRows),
+      sourceBytes: capacityLinkSourceBytes(capacityMetrics.linkRows),
+      projectedMeasuredBytes: 389_017_600n,
+    },
+  ] as const;
+  for (const forecast of forecasts) {
+    const digest = sha256Artifact(
+      canonicalizeContractForDigest({
+        schemaVersion: 1,
+        contractVersion: "projection-source-forecast-v1",
+        projectId: ids.project,
+        generationId: forecast.generationId,
+        objectRows: forecast.objectRows.toString(),
+        linkRows: forecast.linkRows.toString(),
+        sourceBytes: forecast.sourceBytes.toString(),
+        projectedMeasuredBytes: forecast.projectedMeasuredBytes.toString(),
+        scannerVersion: "g2-02-09-benchmark-v1",
+      }),
+    );
+    await pool.query(
+      `INSERT INTO runtime.source_forecasts (
+         project_id, generation_id, forecast_id, object_row_count, link_row_count,
+         source_bytes, projected_measured_bytes, scanner_version, forecast_digest
+       ) VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)`,
+      [
+        ids.project,
+        forecast.generationId,
+        randomUUID(),
+        forecast.objectRows.toString(),
+        forecast.linkRows.toString(),
+        forecast.sourceBytes.toString(),
+        forecast.projectedMeasuredBytes.toString(),
+        "g2-02-09-benchmark-v1",
+        digest,
+      ],
+    );
+  }
+}
+
+async function loadProjectionCapacitySnapshot(
+  pool: pg.Pool,
+  plan: ProjectionBenchmarkPlan,
+  phase: "PREBUILD" | "POSTBUILD",
+) {
+  const inventory = await pool.query<{
+    readonly inventoryRevision: string;
+    readonly measurementComplete: boolean;
+    readonly totalRelationBytes: string;
+    readonly measurementDigest: string;
+  }>(
+    `SELECT inventory.inventory_revision::text AS "inventoryRevision",
+            inventory.measurement_complete AND NOT EXISTS (
+              SELECT 1 FROM runtime.index_inventory AS index_inventory
+              WHERE index_inventory.project_id = inventory.project_id
+                AND index_inventory.state IN ('planned', 'building', 'failed')
+            ) AS "measurementComplete",
+            measurement.total_relation_bytes::text AS "totalRelationBytes",
+            measurement.measurement_digest AS "measurementDigest"
+     FROM runtime.project_runtime_inventories AS inventory
+     JOIN runtime.project_physical_measurements AS measurement
+       ON measurement.project_id = inventory.project_id
+      AND measurement.inventory_revision = inventory.inventory_revision
+     WHERE inventory.project_id = $1::uuid`,
+    [ids.project],
+  );
+  const inventoryRow = required(inventory.rows[0]);
+  const generations = await pool.query<{
+    readonly generationId: string;
+    readonly memberKind: "object" | "link";
+    readonly resourceId: string;
+    readonly state: "building" | "ready" | "active" | "retired" | "failed";
+    readonly createdAt: string;
+    readonly objectRows: string;
+    readonly linkRows: string;
+    readonly projectedMeasuredBytes: string;
+    readonly forecastDigest: string;
+  }>(
+    `SELECT generation.generation_id AS "generationId",
+            generation.member_kind AS "memberKind",
+            generation.target_resource_id AS "resourceId", generation.state,
+            (extract(epoch FROM generation.created_at) * 1000)::bigint::text AS "createdAt",
+            forecast.object_row_count::text AS "objectRows",
+            forecast.link_row_count::text AS "linkRows",
+            forecast.projected_measured_bytes::text AS "projectedMeasuredBytes",
+            forecast.forecast_digest AS "forecastDigest"
+     FROM runtime.generations AS generation
+     JOIN runtime.source_forecasts AS forecast
+       ON forecast.project_id = generation.project_id
+      AND forecast.generation_id = generation.generation_id
+     WHERE generation.project_id = $1::uuid
+       AND generation.generation_id IN ($2::uuid, $3::uuid)
+     ORDER BY generation.generation_id`,
+    [ids.project, ids.generation, ids.linkGeneration],
+  );
+  assert.equal(generations.rows.length, 2);
+  const sourceForecast = required(
+    generations.rows.find((generation) => generation.generationId === ids.generation),
+  );
+  const at = Date.now();
+  return Object.freeze({
+    input: Object.freeze({
+      projectId: ids.project,
+      at,
+      measurementComplete: inventoryRow.measurementComplete,
+      observedProjectPhysicalBytes: BigInt(inventoryRow.totalRelationBytes),
+      generations: Object.freeze(
+        generations.rows.map((generation) =>
+          Object.freeze({
+            id: generation.generationId,
+            projectId: ids.project,
+            state: projectionCapacityGenerationState(generation.state),
+            createdAt: Number(generation.createdAt),
+            leftServingAt: null,
+            derivedRecentSuccessful:
+              generation.state === "ready" ||
+              generation.state === "active" ||
+              generation.state === "retired",
+            objectTypes:
+              generation.memberKind === "object"
+                ? Object.freeze([
+                    Object.freeze({
+                      resourceId: generation.resourceId,
+                      rows: BigInt(generation.objectRows),
+                      secondaryIndexUnitsPerRow: BigInt(plan.secondaryIndexUnits),
+                    }),
+                  ])
+                : Object.freeze([]),
+            linkRows: BigInt(generation.linkRows),
+            forecastMeasuredBytes: BigInt(generation.projectedMeasuredBytes),
+            roots: Object.freeze([]),
+          }),
+        ),
+      ),
+      releaseServingSets: Object.freeze([]),
+    }),
+    inventoryRevision: BigInt(inventoryRow.inventoryRevision),
+    indexPlanDigest: plan.planDigest,
+    sourceForecastDigest: parseArtifactDigest(sourceForecast.forecastDigest),
+    ...(phase === "POSTBUILD"
+      ? { physicalMeasurementDigest: parseArtifactDigest(inventoryRow.measurementDigest) }
+      : {}),
+  });
+}
+
+function projectionCapacityGenerationState(
+  state: "building" | "ready" | "active" | "retired" | "failed",
+): "STAGING" | "READY" | "FAILED_STAGING" {
+  if (state === "building") return "STAGING";
+  if (state === "failed") return "FAILED_STAGING";
+  return "READY";
+}
+
+function capacityObjectSourceBytes(rowCount: number): bigint {
+  let bytes = BigInt(Buffer.byteLength("orderId,displayName\n"));
+  for (let index = 1; index <= rowCount; index += 1) {
+    const digits = BigInt(String(index).length);
+    bytes += 14n + 2n * digits;
+  }
+  return bytes;
+}
+
+function capacityLinkSourceBytes(rowCount: number): bigint {
+  let bytes = BigInt(Buffer.byteLength("sourceOrderId,targetOrderId\n"));
+  for (let index = 0; index < rowCount; index += 1) {
+    const [source, target] = capacityLinkEndpoints(index);
+    bytes += 14n + BigInt(String(source).length + String(target).length);
+  }
+  return bytes;
+}
+
+async function exerciseProjectionCapacityPostbuild(
+  adminConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+  ddlConfig: pg.ClientConfig,
+  plan: ProjectionBenchmarkPlan,
+  containerName: string,
+  qualityCurrentMilliseconds: number,
+): Promise<void> {
+  await withClient(adminConfig, async (admin) => {
+    const current = await admin.query<{
+      readonly count: string;
+      readonly endpointTypesBound: boolean;
+    }>(
+      `SELECT count(*)::text AS count,
+              bool_and(source_object_type_resource_id = $3::uuid
+                       AND target_object_type_resource_id = $3::uuid)
+                AS "endpointTypesBound"
+       FROM runtime.link_current
+       WHERE project_id = $1::uuid AND generation_id = $2::uuid`,
+      [ids.project, ids.linkGeneration, ids.objectResource],
+    );
+    assert.equal(current.rows[0]?.count, String(capacityMetrics.linkRows));
+    assert.equal(current.rows[0]?.endpointTypesBound, true);
+  });
+
+  const requests = await withClient(workerConfig, async (worker) => {
+    const entries = await worker.query<{ readonly entryKey: string }>(
+      `SELECT entry_key AS "entryKey"
+       FROM runtime.index_plan_entries
+       WHERE project_id = $1::uuid AND index_plan_id = $2::uuid
+       ORDER BY ordinal`,
+      [ids.project, plan.indexPlanId],
+    );
+    const queued: string[] = [];
+    for (const entry of entries.rows) {
+      const requestId = randomUUID();
+      const result = await worker.query<{ readonly state: string }>(
+        `SELECT state FROM ops.request_projection_index_build($1::uuid, $2::uuid, $3, $4::uuid)`,
+        [ids.project, plan.indexPlanId, entry.entryKey, requestId],
+      );
+      assert.equal(result.rows[0]?.state, "APPROVED");
+      queued.push(requestId);
+    }
+    return queued;
+  });
+  assert.equal(requests.length, plan.indexCount);
+
+  const ddlResults: Array<{
+    readonly indexName: string;
+    readonly observedBytes: string;
+    readonly milliseconds: number;
+  }> = [];
+  for (const requestId of requests) {
+    const startedAt = process.hrtime.bigint();
+    const result = await withClient(ddlConfig, (ddl) =>
+      executeProjectionDdlRequest(ddl, requestId),
+    );
+    ddlResults.push({
+      indexName: result.indexName,
+      observedBytes: result.observedBytes.toString(),
+      milliseconds: Math.round(elapsedMilliseconds(startedAt)),
+    });
+  }
+
+  const workerPool = new pg.Pool(workerConfig);
+  let measurement: ProjectPhysicalInventoryMeasurement;
+  let postbuildReport: CapacityReport;
+  try {
+    measurement = await scanAndRecordProjectPhysicalInventory(
+      workerPool,
+      projectionCapacityCrypto(),
+      { projectId: ids.project, expectedInventoryRevision: plan.inventoryRevision },
+    );
+    plan.inventoryRevision = measurement.inventoryRevision;
+    const repository = new PostgresProjectionCapacityAdmissionRepository(workerPool, (input) =>
+      loadProjectionCapacitySnapshot(workerPool, plan, input.phase),
+    );
+    postbuildReport = await new ProjectionCapacityAdmissionService({
+      repository,
+      crypto: projectionCapacityCrypto(),
+    }).admit({ projectId: ids.project, generationId: ids.generation, phase: "POSTBUILD" });
+  } finally {
+    await workerPool.end();
+  }
+  samplePeakRss();
+
+  assert.equal(postbuildReport.accepted, true);
+  assert.equal(postbuildReport.observedProjectPhysicalBytes, measurement.totalRelationBytes);
+  assert.equal(postbuildReport.measuredBytes >= measurement.totalRelationBytes, true);
+  assert.equal(postbuildReport.peakReservedBytes < 12n * 1024n ** 3n, true);
+  const buildMilliseconds = elapsedMilliseconds(required(projectionBuildStartedAt));
+  assert.equal(buildMilliseconds < 30 * 60 * 1_000, true);
+
+  const metrics = await readProjectionBenchmarkMetrics(
+    adminConfig,
+    plan,
+    measurement,
+    containerName,
+  );
+  process.stdout.write(
+    `CI_G2_02_09_PROJECTION_CAPACITY ${JSON.stringify({
+      schemaVersion: 1,
+      workload: { objectRows: capacityMetrics.objectRows, linkRows: capacityMetrics.linkRows },
+      build: {
+        state: "cold-empty-postgresql-container-and-data-layer",
+        milliseconds: Math.round(buildMilliseconds),
+        qualityCurrentMilliseconds: Math.round(qualityCurrentMilliseconds),
+        ddlResults,
+      },
+      query: metrics.query,
+      hardware: metrics.hardware,
+      versions: metrics.versions,
+      configuration: metrics.configuration,
+      bytes: {
+        wal: metrics.walBytes,
+        projectHeap: measurement.heapBytes.toString(),
+        projectIndex: measurement.indexBytes.toString(),
+        projectToast: measurement.toastBytes.toString(),
+        projectActual: measurement.totalRelationBytes.toString(),
+        capacityMeasuredLowerBound: postbuildReport.measuredBytes.toString(),
+        capacityReserved: postbuildReport.reservedBytes.toString(),
+        capacityPeak: postbuildReport.peakReservedBytes.toString(),
+        objectCurrentHeap: metrics.objectCurrentHeapBytes,
+        objectCurrentIndexes: metrics.objectCurrentIndexBytes,
+        linkCurrentHeap: metrics.linkCurrentHeapBytes,
+        linkCurrentIndexes: metrics.linkCurrentIndexBytes,
+        dynamicIndexes: metrics.dynamicIndexBytes,
+      },
+      memory: {
+        peakNodeRssBytes: capacityMetrics.peakRssBytes,
+        postgresContainerAtCompletionBytes: metrics.postgresContainerMemoryBytes,
+        hostTotalBytes: totalmem(),
+        hostFreeAtCompletionBytes: freemem(),
+      },
+      inventory: {
+        revision: plan.inventoryRevision.toString(),
+        relationCount: measurement.relationCount,
+        measurementDigest: measurement.measurementDigest,
+        prebuildPeakBytes: required(plan.prebuildReport).peakReservedBytes.toString(),
+        lowerBoundCoversActual: postbuildReport.measuredBytes >= measurement.totalRelationBytes,
+      },
+    })}\n`,
+  );
+}
+
+async function readProjectionBenchmarkMetrics(
+  adminConfig: pg.ClientConfig,
+  plan: ProjectionBenchmarkPlan,
+  measurement: ProjectPhysicalInventoryMeasurement,
+  containerName: string,
+) {
+  const databaseMetrics = await withClient(adminConfig, async (admin) => {
+    const result = await admin.query<{
+      readonly serverVersion: string;
+      readonly walBytes: string;
+      readonly objectRows: string;
+      readonly linkRows: string;
+      readonly objectCurrentHeapBytes: string;
+      readonly objectCurrentIndexBytes: string;
+      readonly linkCurrentHeapBytes: string;
+      readonly linkCurrentIndexBytes: string;
+      readonly dynamicIndexBytes: string;
+      readonly configuration: Record<string, string>;
+    }>(
+      `SELECT current_setting('server_version') AS "serverVersion",
+              pg_wal_lsn_diff(pg_current_wal_lsn(), $1::pg_lsn)::bigint::text AS "walBytes",
+              (SELECT count(*)::text FROM runtime.object_current
+                WHERE project_id = $2::uuid AND generation_id = $3::uuid) AS "objectRows",
+              (SELECT count(*)::text FROM runtime.link_current
+                WHERE project_id = $2::uuid AND generation_id = $4::uuid) AS "linkRows",
+              pg_relation_size('runtime.object_current')::text AS "objectCurrentHeapBytes",
+              pg_indexes_size('runtime.object_current')::text AS "objectCurrentIndexBytes",
+              pg_relation_size('runtime.link_current')::text AS "linkCurrentHeapBytes",
+              pg_indexes_size('runtime.link_current')::text AS "linkCurrentIndexBytes",
+              COALESCE((SELECT sum(observed_bytes) FROM runtime.index_inventory
+                WHERE project_id = $2::uuid AND state = 'ready'), 0)::text AS "dynamicIndexBytes",
+              jsonb_build_object(
+                'shared_buffers', current_setting('shared_buffers'),
+                'work_mem', current_setting('work_mem'),
+                'maintenance_work_mem', current_setting('maintenance_work_mem'),
+                'effective_cache_size', current_setting('effective_cache_size'),
+                'max_wal_size', current_setting('max_wal_size'),
+                'checkpoint_timeout', current_setting('checkpoint_timeout'),
+                'effective_io_concurrency', current_setting('effective_io_concurrency'),
+                'random_page_cost', current_setting('random_page_cost'),
+                'synchronous_commit', current_setting('synchronous_commit')
+              ) AS configuration`,
+      [capacityMetrics.walStart, ids.project, ids.generation, ids.linkGeneration],
+    );
+    const row = required(result.rows[0]);
+    assert.equal(row.objectRows, String(capacityMetrics.objectRows));
+    assert.equal(row.linkRows, String(capacityMetrics.linkRows));
+    const query = await measureProjectionLookup(admin, plan);
+    return { ...row, query };
+  });
+  assert.equal(measurement.totalRelationBytes > 0n, true);
+  const containerMemory = parseDockerMemoryUsage(
+    (
+      await execFileAsync("docker", [
+        "stats",
+        "--no-stream",
+        "--format",
+        "{{.MemUsage}}",
+        containerName,
+      ])
+    ).stdout,
+  );
+  return {
+    ...databaseMetrics,
+    postgresContainerMemoryBytes: containerMemory,
+    hardware: {
+      platform: platform(),
+      arch: arch(),
+      logicalCpuCount: cpus().length,
+      totalMemoryBytes: totalmem(),
+    },
+    versions: {
+      node: process.version,
+      postgres: databaseMetrics.serverVersion,
+      s3: {
+        implementation: "SeaweedFS",
+        version: "4.41",
+        image: capacityS3Image,
+        exercised: false,
+      },
+      duckdb: {
+        version: null,
+        exercised: false,
+        reason: "DuckDB is not a G2-02-09 production runtime dependency",
+      },
+    },
+  };
+}
+
+async function measureProjectionLookup(admin: pg.Client, plan: ProjectionBenchmarkPlan) {
+  const index = await admin.query<{ readonly indexName: string }>(
+    `SELECT index_name AS "indexName"
+     FROM runtime.index_plan_entries
+     WHERE project_id = $1::uuid AND index_plan_id = $2::uuid AND recipe = 'BTREE_TEXT'`,
+    [ids.project, plan.indexPlanId],
+  );
+  const indexName = required(index.rows[0]).indexName;
+  const sql = `EXPLAIN (ANALYZE, COSTS OFF, FORMAT JSON)
+    SELECT object_rid
+    FROM runtime.object_current
+    WHERE project_id = $1::uuid
+      AND object_type_resource_id = $2::uuid
+      AND object_type_revision_id = $3::uuid
+      AND lifecycle_state = 'active'
+      AND (properties #>> '{values,displayName,value}'::text[]) COLLATE "C" = $4
+    ORDER BY (properties #>> '{values,displayName,value}'::text[]) COLLATE "C",
+             canonical_primary_key COLLATE "C"
+    LIMIT 1`;
+  await admin.query("BEGIN");
+  try {
+    await admin.query("SET LOCAL enable_seqscan = off");
+    const execute = async () => {
+      const startedAt = process.hrtime.bigint();
+      const explained = await admin.query<{ readonly "QUERY PLAN": unknown }>(sql, [
+        ids.project,
+        ids.objectResource,
+        ids.objectRevision,
+        `Order ${String(capacityMetrics.objectRows - 1)}`,
+      ]);
+      const text = JSON.stringify(explained.rows[0]?.["QUERY PLAN"]);
+      assert.equal(text.includes(indexName), true);
+      return Math.round(elapsedMilliseconds(startedAt) * 1_000) / 1_000;
+    };
+    const firstMilliseconds = await execute();
+    const hotMilliseconds = await execute();
+    return {
+      firstState: "first-execution-after-cold-build-without-host-cache-drop",
+      hotState: "same-index-second-execution",
+      indexName,
+      firstMilliseconds,
+      hotMilliseconds,
+    };
+  } finally {
+    await admin.query("ROLLBACK");
+  }
+}
+
+function parseDockerMemoryUsage(value: string): number {
+  const token = value.trim().split(/\s+/u)[0] ?? "";
+  const match = /^(\d+(?:\.\d+)?)(B|KiB|MiB|GiB)$/u.exec(token);
+  if (match === null) throw new Error(`Unexpected Docker memory value: ${value}`);
+  const amount = Number(match[1]);
+  const multiplier = { B: 1, KiB: 1024, MiB: 1024 ** 2, GiB: 1024 ** 3 }[
+    match[2] as "B" | "KiB" | "MiB" | "GiB"
+  ];
+  return Math.round(amount * multiplier);
 }
 
 async function exercisePermanentIdentityAndObjectBase(
@@ -710,8 +1604,8 @@ async function exercisePermanentIdentityAndObjectBase(
       readonly fencing_token: string;
     }>(
       `SELECT job_id, fencing_token::text
-       FROM ops.claim_materialization_job_v2($1, $2, 300)`,
-      [ids.worker1, ids.baseAttempt1],
+       FROM ops.claim_materialization_job_v2($1, $2, $3)`,
+      [ids.worker1, ids.baseAttempt1, materializationLeaseSeconds],
     );
     assert.equal(result.rows[0]?.job_id, ids.job);
     return result.rows[0];
@@ -770,13 +1664,22 @@ async function exercisePermanentIdentityAndObjectBase(
       readonly fencing_token: string;
     }>(
       `SELECT job_id, fencing_token::text
-       FROM ops.claim_materialization_job_v2($1, $2, 300)`,
-      [ids.worker2, ids.baseAttempt2],
+       FROM ops.claim_materialization_job_v2($1, $2, $3)`,
+      [ids.worker2, ids.baseAttempt2, materializationLeaseSeconds],
     );
     assert.equal(result.rows[0]?.job_id, ids.job);
     return result.rows[0];
   });
   assert.ok(secondClaim);
+  await using objectHeartbeat = projectionCapacityMode
+    ? startCapacityHeartbeat(worker2Config, {
+        projectId: ids.project,
+        jobId: ids.job,
+        attemptId: ids.baseAttempt2,
+        workerInstanceId: ids.worker2,
+        fencingToken: secondClaim.fencing_token,
+      })
+    : null;
 
   const stalePool = new pg.Pool(worker1Config);
   try {
@@ -854,6 +1757,7 @@ async function exercisePermanentIdentityAndObjectBase(
   }
 
   await exerciseObjectQuality(adminConfig, worker2Config, BigInt(secondClaim.fencing_token));
+  await objectHeartbeat?.stop();
 
   await withClient(adminConfig, async (admin) => {
     const state = await admin.query<{
@@ -1660,7 +2564,7 @@ async function prepareQualityObjectVersion(
       ids.mappingResource,
       ids.mappingRevision,
       runtimePlanDigest,
-      digests.indexPlan,
+      runtimeObjectIndexPlanDigest(),
     ],
   );
 }
@@ -1875,24 +2779,26 @@ function currentCanonicalInstant() {
 async function prepareQualityCurrentFacts(client: pg.Client): Promise<void> {
   const linkSchema = qualityLinkSchemaDefinition();
   const linkMapping = qualityLinkMappingDefinition();
-  await createPublishedResource(client, {
-    resourceId: ids.linkSchemaResource,
-    revisionId: ids.linkSchemaRevision,
-    reportId: ids.linkSchemaValidation,
-    family: "snapshot_schema",
-    apiName: "QualityLinkCsvSchema",
-    contentDigest: definitionDigest(linkSchema),
-    content: linkSchema,
-  });
-  await createPublishedResource(client, {
-    resourceId: ids.linkMappingResource,
-    revisionId: ids.linkMappingRevision,
-    reportId: ids.linkMappingValidation,
-    family: "mapping",
-    apiName: "QualityLinkCsvMapping",
-    contentDigest: definitionDigest(linkMapping),
-    content: linkMapping,
-  });
+  if (!projectionCapacityMode) {
+    await createPublishedResource(client, {
+      resourceId: ids.linkSchemaResource,
+      revisionId: ids.linkSchemaRevision,
+      reportId: ids.linkSchemaValidation,
+      family: "snapshot_schema",
+      apiName: "QualityLinkCsvSchema",
+      contentDigest: definitionDigest(linkSchema),
+      content: linkSchema,
+    });
+    await createPublishedResource(client, {
+      resourceId: ids.linkMappingResource,
+      revisionId: ids.linkMappingRevision,
+      reportId: ids.linkMappingValidation,
+      family: "mapping",
+      apiName: "QualityLinkCsvMapping",
+      contentDigest: definitionDigest(linkMapping),
+      content: linkMapping,
+    });
+  }
   const linkIndexDigest = sha256Digest("quality-link-index-plan");
   const runtimePlanDigest = sha256Digest("quality-object-link-runtime-plan");
   const objectContentDigest = sha256Digest("quality-object-snapshot-content");
@@ -2037,7 +2943,7 @@ async function prepareQualityCurrentFacts(client: pg.Client): Promise<void> {
       ids.mappingResource,
       ids.mappingRevision,
       runtimePlanDigest,
-      digests.indexPlan,
+      runtimeObjectIndexPlanDigest(),
       ids.qualityLinkGeneration,
       ids.linkResource,
       ids.linkRevision,
@@ -2152,7 +3058,7 @@ async function assertConcurrentIdentityResolution(
   }
 }
 
-async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
+async function prepareLinkTypeFacts(client: pg.Client): Promise<void> {
   const linkDefinition = {
     schemaVersion: 1,
     apiName: "OrderRelation",
@@ -2217,7 +3123,10 @@ async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
       [ids.linkRevision, state],
     );
   }
+}
 
+async function prepareLinkRuntimeFacts(client: pg.Client, deferJob = false): Promise<void> {
+  await prepareLinkTypeFacts(client);
   const indexDigest = sha256Digest("link-index-plan");
   const groupDigest = sha256Digest("link-snapshot-group");
   const contentDigest = sha256Digest("link-snapshot-content");
@@ -2226,6 +3135,8 @@ async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
   const jobDigest = sha256Digest("link-job");
   const reportDigest = sha256Digest("link-report");
   const generationDigest = sha256Digest("link-generation");
+  const linkSourceBytes = capacityMode ? capacityLinkSourceBytes(capacityMetrics.linkRows) : 64n;
+  const linkSourceRows = capacityMode ? capacityMetrics.linkRows : 2;
   await client.query(
     `INSERT INTO runtime.index_plans
        (project_id, index_plan_id, target_resource_id, target_revision_id,
@@ -2255,7 +3166,7 @@ async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
        content_digest, byte_count, row_count, file_count, snapshot_digest
      ) VALUES (
        $1, $2, $3, 1, 'link:OrderRelation', 'link', $4, $5, $6, $7, $8, $9,
-       $10, $11, 64, 2, 1, $12
+       $10, $11, $12, $13, 1, $14
      )`,
     [
       ids.project,
@@ -2269,6 +3180,8 @@ async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
       ids.mappingRevision,
       runtimePlanDigest,
       contentDigest,
+      linkSourceBytes.toString(),
+      linkSourceRows,
       snapshotDigest,
     ],
   );
@@ -2276,9 +3189,17 @@ async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
     `INSERT INTO runtime.snapshot_files (
        project_id, snapshot_id, file_id, managed_artifact_id, object_version,
        ordinal, content_digest, byte_count, row_count, source_label, scan_status
-     ) VALUES ($1, $2, $3, $4, 'link-version-1', 0, $5, 64, 2,
+     ) VALUES ($1, $2, $3, $4, 'link-version-1', 0, $5, $6, $7,
                'DB-02 Link Base fixture', 'complete')`,
-    [ids.project, ids.linkSnapshot, ids.linkSnapshotFile, ids.linkManagedArtifact, contentDigest],
+    [
+      ids.project,
+      ids.linkSnapshot,
+      ids.linkSnapshotFile,
+      ids.linkManagedArtifact,
+      contentDigest,
+      linkSourceBytes.toString(),
+      linkSourceRows,
+    ],
   );
   await client.query(
     `INSERT INTO runtime.snapshot_group_members (
@@ -2290,18 +3211,25 @@ async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
   await client.query("COMMIT");
   await client.query(
     `INSERT INTO ops.materialization_jobs
-       (project_id, job_id, snapshot_group_id, group_version, idempotency_key, input_digest)
-     VALUES ($1, $2, $3, 1, 'db02-link-base-job-0001', $4)`,
-    [ids.project, ids.linkJob, ids.linkSnapshotGroup, jobDigest],
+       (project_id, job_id, snapshot_group_id, group_version, idempotency_key, input_digest,
+        available_at)
+     VALUES ($1, $2, $3, 1, 'db02-link-base-job-0001', $4,
+             CASE WHEN $5::boolean
+               THEN clock_timestamp() + interval '1 day'
+               ELSE clock_timestamp()
+             END)`,
+    [ids.project, ids.linkJob, ids.linkSnapshotGroup, jobDigest, deferJob],
   );
-  await client.query(
-    `INSERT INTO runtime.materialization_reports (
-       project_id, report_id, snapshot_group_id, group_version, job_id, outcome,
-       total_rows, accepted_rows, rejected_rows, validator_version, report_digest
-     ) VALUES ($1, $2, $3, 1, $4, 'passed', 1, 1, 0,
-               'materialization-g2-02-v1', $5)`,
-    [ids.project, ids.linkReport, ids.linkSnapshotGroup, ids.linkJob, reportDigest],
-  );
+  if (!projectionCapacityMode) {
+    await client.query(
+      `INSERT INTO runtime.materialization_reports (
+         project_id, report_id, snapshot_group_id, group_version, job_id, outcome,
+         total_rows, accepted_rows, rejected_rows, validator_version, report_digest
+       ) VALUES ($1, $2, $3, 1, $4, 'passed', 1, 1, 0,
+                 'materialization-g2-02-v1', $5)`,
+      [ids.project, ids.linkReport, ids.linkSnapshotGroup, ids.linkJob, reportDigest],
+    );
+  }
   await client.query(
     `INSERT INTO runtime.generations (
        project_id, generation_id, member_key, member_kind,
@@ -2326,28 +3254,49 @@ async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
       ids.mappingRevision,
       runtimePlanDigest,
       indexDigest,
-      ids.linkReport,
-      reportDigest,
-      generationDigest,
+      projectionCapacityMode ? null : ids.linkReport,
+      projectionCapacityMode ? null : reportDigest,
+      projectionCapacityMode ? null : generationDigest,
     ],
   );
+}
+
+async function makeLinkJobAvailable(adminConfig: pg.ClientConfig): Promise<void> {
+  await withClient(adminConfig, async (admin) => {
+    const result = await admin.query(
+      `UPDATE ops.materialization_jobs
+       SET available_at = clock_timestamp(), updated_at = clock_timestamp()
+       WHERE project_id = $1 AND job_id = $2 AND state = 'queued'`,
+      [ids.project, ids.linkJob],
+    );
+    assert.equal(result.rowCount, 1);
+  });
 }
 
 async function exerciseLinkBase(
   adminConfig: pg.ClientConfig,
   apiConfig: pg.ClientConfig,
   workerConfig: pg.ClientConfig,
-): Promise<void> {
+): Promise<number | undefined> {
   const linkStartedAt = process.hrtime.bigint();
   const claim = await withClient(workerConfig, async (worker) => {
     const result = await worker.query<{ readonly fencing_token: string }>(
       `SELECT fencing_token::text
-       FROM ops.claim_materialization_job_v2($1, $2, 300)`,
-      [ids.worker1, ids.linkAttempt],
+       FROM ops.claim_materialization_job_v2($1, $2, $3)`,
+      [ids.worker1, ids.linkAttempt, materializationLeaseSeconds],
     );
     return result.rows[0];
   });
   assert.ok(claim);
+  await using linkHeartbeat = projectionCapacityMode
+    ? startCapacityHeartbeat(workerConfig, {
+        projectId: ids.project,
+        jobId: ids.linkJob,
+        attemptId: ids.linkAttempt,
+        workerInstanceId: ids.worker1,
+        fencingToken: claim.fencing_token,
+      })
+    : null;
   const pool = new pg.Pool(workerConfig);
   const batchReceipts = await (async (): Promise<readonly BaseBatchReceipt[]> => {
     try {
@@ -2428,6 +3377,27 @@ async function exerciseLinkBase(
   await restartedApiPool.end();
   assert.deepEqual(afterApiRestart.rows, beforeApiRestart.rows);
   assert.equal(await withClient(adminConfig, baseContentDigest), digestBeforeRestart);
+  let qualityCurrentMilliseconds: number | undefined;
+  if (projectionCapacityMode) {
+    const qualityCurrentStartedAt = process.hrtime.bigint();
+    const qualityPool = new pg.Pool(workerConfig);
+    try {
+      const result = await postgresQualityService(
+        qualityPool,
+        [ids.projectionLinkQualityReport],
+        [],
+      ).build({
+        scope: linkScope(BigInt(claim.fencing_token)),
+        generationId: ids.linkGeneration,
+        provenanceTemplates: [],
+      });
+      assert.equal(result.outcome, "passed");
+    } finally {
+      await qualityPool.end();
+    }
+    qualityCurrentMilliseconds = elapsedMilliseconds(qualityCurrentStartedAt);
+  }
+  await linkHeartbeat?.stop();
 
   await withClient(adminConfig, async (admin) => {
     const state = await admin.query<{
@@ -2472,6 +3442,7 @@ async function exerciseLinkBase(
   capacityMetrics.linkMilliseconds = elapsedMilliseconds(linkStartedAt);
   samplePeakRss();
   if (capacityMode) await reportBaseCapacity(adminConfig, digestBeforeRestart);
+  return qualityCurrentMilliseconds;
 }
 
 async function stageLinkRows(
@@ -3013,6 +3984,62 @@ function samplePeakRss(): void {
 
 function elapsedMilliseconds(startedAt: bigint): number {
   return Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+}
+
+interface CapacityHeartbeat {
+  stop(): Promise<void>;
+  [Symbol.asyncDispose](): Promise<void>;
+}
+
+function startCapacityHeartbeat(
+  config: pg.ClientConfig,
+  lease: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly attemptId: string;
+    readonly workerInstanceId: string;
+    readonly fencingToken: string;
+  },
+): CapacityHeartbeat {
+  let stopped = false;
+  let timer: NodeJS.Timeout | undefined;
+  let pending = Promise.resolve();
+  let failure: unknown;
+  const tick = (): void => {
+    pending = withClient(config, (client) =>
+      client
+        .query(`SELECT ops.heartbeat_materialization_job($1, $2, $3, $4, $5, $6)`, [
+          lease.projectId,
+          lease.jobId,
+          lease.attemptId,
+          lease.workerInstanceId,
+          lease.fencingToken,
+          materializationLeaseSeconds,
+        ])
+        .then(() => undefined),
+    )
+      .catch((error: unknown) => {
+        failure = error;
+        stopped = true;
+      })
+      .finally(() => {
+        if (!stopped) timer = setTimeout(tick, 60_000);
+      });
+  };
+  timer = setTimeout(tick, 60_000);
+  const stop = async (): Promise<void> => {
+    if (!stopped) {
+      stopped = true;
+      if (timer !== undefined) clearTimeout(timer);
+    }
+    await pending;
+    if (failure !== undefined) {
+      throw failure instanceof Error
+        ? failure
+        : new Error("Capacity heartbeat failed with a non-Error value.", { cause: failure });
+    }
+  };
+  return Object.freeze({ stop, [Symbol.asyncDispose]: stop });
 }
 
 async function issueCertificateAndPublishA1(client: pg.Client): Promise<void> {
@@ -3816,11 +4843,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 13);
+  assert.equal(left.applied.length + right.applied.length, 14);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 13)).length, 13);
+    assert.equal((await migrationLedger(client, 14)).length, 14);
   });
 }
 
@@ -3833,6 +4860,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
     [11, "ops.materialization_generation_stages"],
     [12, "runtime.materialization_quality_bindings"],
     [13, "ops.materialization_job_error_samples"],
+    [14, "ops.projection_ddl_requests"],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -3961,6 +4989,13 @@ async function createRuntimeLogins(client: pg.Client): Promise<void> {
     GRANT api_runtime TO g20203_api_login;
     GRANT worker_runtime TO g20203_worker1_login, g20203_worker2_login;
     GRANT read_only_ops TO g20203_ops_login;`);
+  if (projectionCapacityMode) {
+    await client.query(`
+      CREATE ROLE g20209_capacity_ddl_login LOGIN PASSWORD '${projectionDdlPassword}'
+        NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+      GRANT migration_owner TO g20209_capacity_ddl_login;
+      GRANT CONNECT ON DATABASE ${database} TO g20209_capacity_ddl_login;`);
+  }
 }
 
 async function assertFailedTransaction(
@@ -4020,7 +5055,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(13);
+  const directory = await migrationPrefixDirectory(14);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);
@@ -4084,6 +5119,11 @@ async function docker(arguments_: readonly string[], ignoreFailure = false): Pro
   } catch (error) {
     if (!ignoreFailure) throw error;
   }
+}
+
+function required<T>(value: T | undefined): T {
+  if (value === undefined) throw new Error("Required integration fixture value is missing.");
+  return value;
 }
 
 function isPostgreSqlError(value: unknown): value is { readonly code: string } {

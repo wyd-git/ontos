@@ -7,10 +7,11 @@
 1. [Ontology Kernel PRD](product/ontology-kernel-prd.md)：产品能力、范围、语义和最终验收。
 2. [G2 生产实现蓝图](product/ontology-kernel-implementation-blueprint.md)：从 PRD 到工程的实现约束。
 3. [G2 蓝图红队审查](reviews/g2-blueprint-red-team.md)：承重假设、验证、Kill Criteria 和 Conditional Go 结论。
-4. [G2-02 Materialization 任务包](delivery/g2-02-materialization-task-pack.md)：当前唯一获准实现的业务 Gate，覆盖受管 CSV、Mapping、Job/Lease、Generation、Base/Current、Staging/Cutover、Index/Capacity 与 GC；G2-02-01～08 已 PASS，下一顺序任务是 G2-02-09。
+4. [G2-02 Materialization 任务包](delivery/g2-02-materialization-task-pack.md)：当前唯一获准实现的业务 Gate，覆盖受管 CSV、Mapping、Job/Lease、Generation、Base/Current、Staging/Cutover、Index/Capacity 与 GC；G2-02-01～09 已 PASS，下一顺序任务是 G2-02-10。
    - [ADR-014 Materialization 事务/DDL/Overlay](architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md)、[专项红队](reviews/adr-014-materialization-architecture-red-team.md)与 [G2-02-01 Evidence](evidence/g2-02-01-materialization-architecture.md)：逻辑 DB-02 边界、全局锁/CAS、隔离 DDL Executor、Kill/Replay 与 zero-overlay Seam。
    - [ADR-015 永久 Identity/Attempt Base](architecture/adr/015-permanent-object-identity-attempt-owned-base.md)、[专项红队](reviews/g2-02-06-object-identity-base-red-team.md)与 [G2-02-06 Evidence](evidence/g2-02-06-object-identity-base.md)：永久 RID、类型化 Link、隔离 Staging、原子 Base 提升与 10k/100k 薄切片。
    - [ADR-017 Materialization Worker 恢复](architecture/adr/017-materialization-worker-recovery.md)、[专项红队](reviews/g2-02-08-materialization-worker-red-team.md)与 [G2-02-08 Evidence](evidence/g2-02-08-materialization-worker.md)：数据库时间租约、八阶段 Checkpoint、Retry/Cancel、最小权限与 16 点真实 PID Kill/Resume。
+   - [ADR-008 Shared Projection/Index/Capacity](architecture/adr/008-shared-projection-index-capacity.md)、[专项红队](reviews/g2-02-09-index-capacity-ddl-red-team.md)与 [G2-02-09 Evidence](evidence/g2-02-09-index-capacity-ddl.md)：Published Property 绑定、稳定 Index Plan、完整容量库存、隔离 DDL、故障恢复与 100k/1m 首轮实测。
 5. [G2-02 任务包红队](reviews/g2-02-task-pack-red-team.md)：Dynamic DDL、零成员 A0 前向兼容、Kill/Resume、100k/1m 与 Overlay Seam 的 Kill Criteria。
 6. [G2-01 Metadata 任务包](delivery/g2-01-metadata-task-pack.md)：已完成的 DB-01、Metadata/Release/Package Store、最小管理授权和 Admin API Gate。
 7. [G2-01 任务包红队](reviews/g2-01-task-pack-red-team.md)：零成员 Activation、Package/Release 原子性、渐进冻结、授权边界和单通道工期的 Kill Criteria。
