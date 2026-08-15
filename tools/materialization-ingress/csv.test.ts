@@ -7,6 +7,7 @@ import {
   parseManagedCsvMediaType,
   parseManagedSourceLabel,
   scanManagedCsv,
+  scanManagedCsvRows,
   type ManagedCsvErrorCode,
   type ManagedCsvScanLimits,
 } from "@ontos/materialization-domain";
@@ -23,6 +24,43 @@ void describe("managed UTF-8 CSV physical scanner", () => {
       columnCount: 2,
       bom: true,
     });
+  });
+
+  void it("emits one immutable row at a time and applies consumer backpressure", async () => {
+    const bytes = encoder.encode('id,note\n1,"hello,\nworld"\n2,"a""b"');
+    const rows: Array<Readonly<{ rowNumber: number; values: readonly string[] }>> = [];
+    let activeConsumers = 0;
+    let maximumActiveConsumers = 0;
+    const result = await scanManagedCsvRows(
+      chunks(bytes, [bytes.byteLength]),
+      ["id", "note"],
+      async (row) => {
+        activeConsumers += 1;
+        maximumActiveConsumers = Math.max(maximumActiveConsumers, activeConsumers);
+        await Promise.resolve();
+        rows.push(row);
+        activeConsumers -= 1;
+      },
+    );
+
+    assert.deepEqual(rows, [
+      { rowNumber: 1, values: ["1", "hello,\nworld"] },
+      { rowNumber: 2, values: ["2", 'a"b'] },
+    ]);
+    assert.equal(maximumActiveConsumers, 1);
+    assert.equal(result.rowCount, 2);
+    assert.ok(Object.isFrozen(rows[0]));
+    assert.ok(Object.isFrozen(rows[0]?.values));
+  });
+
+  void it("propagates row consumer failures without misclassifying them as invalid UTF-8", async () => {
+    const expected = new TypeError("downstream unavailable");
+    await assert.rejects(
+      scanManagedCsvRows(oneByteChunks(encoder.encode("id\n1")), ["id"], () => {
+        throw expected;
+      }),
+      (error: unknown) => error === expected,
+    );
   });
 
   void it("accepts Header-only input and does not invent a row after a trailing newline", async () => {
