@@ -57,6 +57,13 @@ const ids = {
   attempt1: "10000000-0000-4000-8000-000000001301",
   attempt2: "10000000-0000-4000-8000-000000001302",
   checkpoint: "10000000-0000-4000-8000-000000001401",
+  ingressSession: "10000000-0000-4000-8000-000000001501",
+  ingressExpiredSession: "10000000-0000-4000-8000-000000001502",
+  ingressArtifact: "10000000-0000-4000-8000-000000001601",
+  ingressExpiredArtifact: "10000000-0000-4000-8000-000000001602",
+  ingressClaim: "10000000-0000-4000-8000-000000001701",
+  ingressSnapshot: "10000000-0000-4000-8000-000000001801",
+  ingressFile: "10000000-0000-4000-8000-000000001901",
 } as const;
 
 const digests = {
@@ -131,7 +138,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9],
+          [7, 8, 9, 10],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -156,6 +163,7 @@ void test(
       await withClient(adminConfig, async (admin) => {
         await prepareRuntimeFacts(admin);
       });
+      await exerciseManagedCsvIngressDatabase(apiConfig, worker1Config, opsConfig);
       await withClient(apiConfig, async (api) => {
         await issueCertificateAndPublishA1(api);
       });
@@ -476,8 +484,9 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
   await client.query(
     `INSERT INTO runtime.snapshot_files (
        project_id, snapshot_id, file_id, managed_artifact_id, object_version,
-       ordinal, content_digest, byte_count, row_count
-     ) VALUES ($1, $2, $3, $4, 'version-1', 0, $5, 0, 0)`,
+       ordinal, content_digest, byte_count, row_count, source_label, scan_status
+     ) VALUES ($1, $2, $3, $4, 'version-1', 0, $5, 0, 0,
+               'DB-02 migration fixture', 'complete')`,
     [ids.project, ids.snapshot, ids.snapshotFile, ids.managedArtifact, digests.snapshotContent],
   );
   await client.query(
@@ -972,14 +981,297 @@ async function assertRuntimePrivilegeMatrix(
       "42501",
     );
     await assertPgCode(worker.query("DELETE FROM runtime.generations"), "42501");
+    await assertPgCode(worker.query("SELECT * FROM runtime.snapshot_upload_sessions"), "42501");
     await assertCommonEscalationsDenied(worker);
   });
   await withClient(opsConfig, async (ops) => {
     await ops.query("SELECT count(*) FROM ops.materialization_job_status");
     await ops.query("SELECT count(*) FROM ops.runtime_inventory_status");
+    await ops.query("SELECT count(*) FROM ops.snapshot_ingress_status");
     await assertPgCode(ops.query("SELECT * FROM ops.materialization_jobs"), "42501");
     await assertPgCode(ops.query("SELECT * FROM runtime.generations"), "42501");
     await assertCommonEscalationsDenied(ops);
+  });
+}
+
+async function exerciseManagedCsvIngressDatabase(
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+  opsConfig: pg.ClientConfig,
+): Promise<void> {
+  const contentDigest = digestOf("6");
+  const snapshotDigest = digestOf("5");
+  const groupDigest = digestOf("4");
+  const tokenDigest = digestOf("7");
+  const sourceLabel = "Orders 2026-08-15";
+  const objectVersion = "managed-version-2";
+
+  await withClient(apiConfig, async (api) => {
+    await api.query(
+      `INSERT INTO runtime.snapshot_upload_sessions (
+         project_id, session_id, created_by_principal_id, release_id,
+         snapshot_group_id, group_version, group_member_count,
+         member_key, member_kind, target_resource_id, target_revision_id,
+         snapshot_schema_resource_id, snapshot_schema_revision_id,
+         mapping_resource_id, mapping_revision_id, index_plan_digest,
+         runtime_plan_digest, managed_artifact_id, object_key,
+         allowed_media_type, expected_byte_count, max_byte_count,
+         source_label, finalize_token_digest, expires_at, cleanup_after
+       )
+       SELECT member.project_id, $1, $2, member.release_id,
+              member.snapshot_group_id, 2,
+              (SELECT count(*)::integer
+                 FROM meta.release_runtime_plan_members AS grouped
+                WHERE grouped.project_id = member.project_id
+                  AND grouped.release_id = member.release_id
+                  AND grouped.snapshot_group_id = member.snapshot_group_id),
+              member.member_key, member.member_kind,
+              member.target_resource_id, member.target_revision_id,
+              member.snapshot_schema_resource_id, member.snapshot_schema_revision_id,
+              member.mapping_resource_id, member.mapping_revision_id,
+              member.index_plan_digest, member.runtime_plan_digest,
+              $3, $4, 'text/csv', 12, 536870912, $5, $6,
+              statement_timestamp() + interval '14 minutes',
+              statement_timestamp() + interval '23 hours'
+         FROM meta.release_runtime_plan_members AS member
+        WHERE member.project_id = $7 AND member.release_id = $8
+          AND member.member_key = 'object:Order'`,
+      [
+        ids.ingressSession,
+        ids.principal,
+        ids.ingressArtifact,
+        `ingress/10/${ids.ingressArtifact}.csv`,
+        sourceLabel,
+        tokenDigest,
+        ids.project,
+        ids.release2,
+      ],
+    );
+
+    await assertPgCode(
+      api.query(
+        `UPDATE runtime.snapshot_upload_sessions
+            SET object_key = 'ingress/ff/10000000-0000-4000-8000-000000009999.csv'
+          WHERE project_id = $1 AND session_id = $2`,
+        [ids.project, ids.ingressSession],
+      ),
+      "42501",
+    );
+
+    await api.query(
+      `UPDATE runtime.snapshot_upload_sessions
+          SET state = 'uploaded', uploaded_object_version = $3,
+              uploaded_byte_count = 12, changed_at = clock_timestamp()
+        WHERE project_id = $1 AND session_id = $2`,
+      [ids.project, ids.ingressSession, objectVersion],
+    );
+    await api.query(
+      `UPDATE runtime.snapshot_upload_sessions
+          SET state = 'finalizing', finalize_claim_id = $3,
+              finalize_lease_expires_at = clock_timestamp() + interval '4 minutes 59 seconds',
+              changed_at = clock_timestamp()
+        WHERE project_id = $1 AND session_id = $2`,
+      [ids.project, ids.ingressSession, ids.ingressClaim],
+    );
+
+    await api.query("BEGIN");
+    try {
+      const plan = await api.query<{ readonly plan_digest: string }>(
+        `SELECT plan_digest FROM meta.release_runtime_plans WHERE release_id = $1`,
+        [ids.release2],
+      );
+      const runtimePlanDigest = plan.rows[0]?.plan_digest;
+      assert.ok(runtimePlanDigest);
+      await api.query(
+        `INSERT INTO runtime.snapshot_group_versions
+           (project_id, snapshot_group_id, group_version, member_count, group_digest)
+         VALUES ($1, $2, 2, 1, $3)`,
+        [ids.project, ids.snapshotGroup, groupDigest],
+      );
+      await api.query(
+        `INSERT INTO runtime.dataset_snapshots (
+           project_id, snapshot_id, snapshot_group_id, group_version,
+           member_key, member_kind, target_resource_id, target_revision_id,
+           snapshot_schema_resource_id, snapshot_schema_revision_id,
+           mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+           content_digest, byte_count, row_count, file_count, snapshot_digest
+         ) VALUES (
+           $1, $2, $3, 2, 'object:Order', 'object', $4, $5, $6, $7, $8, $9,
+           $10, $11, 12, 1, 1, $12
+         )`,
+        [
+          ids.project,
+          ids.ingressSnapshot,
+          ids.snapshotGroup,
+          ids.objectResource,
+          ids.objectRevision,
+          ids.schemaResource,
+          ids.schemaRevision,
+          ids.mappingResource,
+          ids.mappingRevision,
+          runtimePlanDigest,
+          contentDigest,
+          snapshotDigest,
+        ],
+      );
+      await api.query(
+        `INSERT INTO runtime.snapshot_files (
+           project_id, snapshot_id, file_id, managed_artifact_id, object_version,
+           ordinal, content_digest, byte_count, row_count, source_label, scan_status
+         ) VALUES ($1, $2, $3, $4, $5, 0, $6, 12, 1, $7, 'complete')`,
+        [
+          ids.project,
+          ids.ingressSnapshot,
+          ids.ingressFile,
+          ids.ingressArtifact,
+          objectVersion,
+          contentDigest,
+          sourceLabel,
+        ],
+      );
+      await api.query(
+        `INSERT INTO runtime.snapshot_group_members (
+           project_id, snapshot_group_id, group_version, member_key, member_kind,
+           snapshot_id, target_resource_id, target_revision_id
+         ) VALUES ($1, $2, 2, 'object:Order', 'object', $3, $4, $5)`,
+        [
+          ids.project,
+          ids.snapshotGroup,
+          ids.ingressSnapshot,
+          ids.objectResource,
+          ids.objectRevision,
+        ],
+      );
+      await api.query(
+        `UPDATE runtime.snapshot_upload_sessions
+            SET state = 'finalized', finalize_claim_id = NULL,
+                finalize_lease_expires_at = NULL, snapshot_id = $3,
+                changed_at = clock_timestamp()
+          WHERE project_id = $1 AND session_id = $2`,
+        [ids.project, ids.ingressSession, ids.ingressSnapshot],
+      );
+      await api.query("COMMIT");
+    } catch (error) {
+      await api.query("ROLLBACK");
+      throw error;
+    }
+
+    const finalized = await api.query<{
+      readonly state: string;
+      readonly snapshot_id: string | null;
+      readonly source_label: string;
+      readonly scan_status: string;
+    }>(
+      `SELECT session.state, session.snapshot_id, file.source_label, file.scan_status
+         FROM runtime.snapshot_upload_sessions AS session
+         JOIN runtime.snapshot_files AS file
+           ON file.project_id = session.project_id AND file.snapshot_id = session.snapshot_id
+        WHERE session.project_id = $1 AND session.session_id = $2`,
+      [ids.project, ids.ingressSession],
+    );
+    assert.deepEqual(finalized.rows[0], {
+      state: "finalized",
+      snapshot_id: ids.ingressSnapshot,
+      source_label: sourceLabel,
+      scan_status: "complete",
+    });
+
+    await api.query(
+      `UPDATE runtime.snapshot_upload_sessions
+          SET object_cleanup_completed_at = clock_timestamp(), changed_at = clock_timestamp()
+        WHERE project_id = $1 AND session_id = $2`,
+      [ids.project, ids.ingressSession],
+    );
+
+    await assertPgCode(
+      api.query(
+        `UPDATE runtime.snapshot_upload_sessions
+            SET state = 'cleaned', snapshot_id = NULL,
+                failure_code = 'UPLOAD_ABORTED', changed_at = clock_timestamp()
+          WHERE project_id = $1 AND session_id = $2`,
+        [ids.project, ids.ingressSession],
+      ),
+      "55000",
+    );
+    await assertPgCode(
+      api.query(
+        `DELETE FROM runtime.snapshot_upload_sessions
+          WHERE project_id = $1 AND session_id = $2`,
+        [ids.project, ids.ingressSession],
+      ),
+      "42501",
+    );
+
+    await api.query(
+      `INSERT INTO runtime.snapshot_upload_sessions (
+         project_id, session_id, created_by_principal_id, release_id,
+         snapshot_group_id, group_version, group_member_count,
+         member_key, member_kind, target_resource_id, target_revision_id,
+         snapshot_schema_resource_id, snapshot_schema_revision_id,
+         mapping_resource_id, mapping_revision_id, index_plan_digest,
+         runtime_plan_digest, managed_artifact_id, object_key,
+         allowed_media_type, expected_byte_count, max_byte_count,
+         source_label, finalize_token_digest, expires_at, cleanup_after
+       )
+       SELECT member.project_id, $1, $2, member.release_id,
+              member.snapshot_group_id, 3, 1,
+              member.member_key, member.member_kind,
+              member.target_resource_id, member.target_revision_id,
+              member.snapshot_schema_resource_id, member.snapshot_schema_revision_id,
+              member.mapping_resource_id, member.mapping_revision_id,
+              member.index_plan_digest, member.runtime_plan_digest,
+              $3, $4, 'text/csv', 12, 536870912, 'Expired fixture', $5,
+              statement_timestamp() + interval '14 minutes',
+              statement_timestamp() + interval '23 hours'
+         FROM meta.release_runtime_plan_members AS member
+        WHERE member.project_id = $6 AND member.release_id = $7
+          AND member.member_key = 'object:Order'`,
+      [
+        ids.ingressExpiredSession,
+        ids.principal,
+        ids.ingressExpiredArtifact,
+        `ingress/10/${ids.ingressExpiredArtifact}.csv`,
+        digestOf("8"),
+        ids.project,
+        ids.release2,
+      ],
+    );
+    await api.query(
+      `UPDATE runtime.snapshot_upload_sessions
+          SET state = 'expired', failure_code = 'SESSION_EXPIRED',
+              changed_at = clock_timestamp()
+        WHERE project_id = $1 AND session_id = $2`,
+      [ids.project, ids.ingressExpiredSession],
+    );
+    await api.query(
+      `UPDATE runtime.snapshot_upload_sessions
+          SET state = 'cleaned', object_cleanup_completed_at = clock_timestamp(),
+              changed_at = clock_timestamp()
+        WHERE project_id = $1 AND session_id = $2`,
+      [ids.project, ids.ingressExpiredSession],
+    );
+  });
+
+  await withClient(workerConfig, async (worker) => {
+    await assertPgCode(worker.query("SELECT * FROM runtime.snapshot_upload_sessions"), "42501");
+  });
+  await withClient(opsConfig, async (ops) => {
+    const statuses = await ops.query<{ readonly state: string; readonly count: number }>(
+      `SELECT state, count(*)::integer AS count
+         FROM ops.snapshot_ingress_status
+        GROUP BY state ORDER BY state`,
+    );
+    assert.deepEqual(statuses.rows, [
+      { state: "cleaned", count: 1 },
+      { state: "finalized", count: 1 },
+    ]);
+    const hidden = await ops.query<{ readonly column_name: string }>(
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'ops' AND table_name = 'snapshot_ingress_status'
+          AND column_name IN ('object_key', 'finalize_token_digest', 'source_label')`,
+    );
+    assert.deepEqual(hidden.rows, []);
   });
 }
 
@@ -998,11 +1290,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 9);
+  assert.equal(left.applied.length + right.applied.length, 10);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 9)).length, 9);
+    assert.equal((await migrationLedger(client, 10)).length, 10);
   });
 }
 
@@ -1011,6 +1303,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
     [7, "runtime.snapshot_groups"],
     [8, "runtime.object_identities"],
     [9, "ops.materialization_jobs"],
+    [10, "runtime.snapshot_upload_sessions"],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -1183,7 +1476,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(9);
+  const directory = await migrationPrefixDirectory(10);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);

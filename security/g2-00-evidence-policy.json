@@ -5,9 +5,13 @@
     "allowedWorkspacePackages": [
       "apps/api",
       "packages/contracts",
+      "packages/materialization-application",
+      "packages/materialization-domain",
+      "packages/materialization-postgres",
       "packages/metadata-application",
       "packages/metadata-domain",
       "packages/metadata-postgres",
+      "packages/object-store-s3",
       "packages/testkit",
       "packages/value-codec"
     ],
@@ -20,7 +24,8 @@
       "migrations/db-00/0006_package_lifecycle_guards.sql",
       "migrations/db-00/0007_materialization_control_facts.sql",
       "migrations/db-00/0008_materialization_shared_projection.sql",
-      "migrations/db-00/0009_materialization_operations.sql"
+      "migrations/db-00/0009_materialization_operations.sql",
+      "migrations/db-00/0010_managed_csv_ingress.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -75,7 +80,8 @@
       "runtime.snapshot_files",
       "runtime.snapshot_group_members",
       "runtime.snapshot_group_versions",
-      "runtime.snapshot_groups"
+      "runtime.snapshot_groups",
+      "runtime.snapshot_upload_sessions"
     ],
     "forbiddenTrackedPrefixes": ["apps/"],
     "allowedTrackedPrefixExceptions": ["apps/api/"],
@@ -160,7 +166,8 @@
     "docs/evidence/g2-01-12-clean-room-metadata-gate.md",
     "docs/evidence/g2-02-01-materialization-architecture.md",
     "docs/evidence/g2-02-02-materialization-contracts.md",
-    "docs/evidence/g2-02-03-db02-migrations.md"
+    "docs/evidence/g2-02-03-db02-migrations.md",
+    "docs/evidence/g2-02-04-managed-csv-ingress.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

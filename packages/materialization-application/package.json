@@ -1,0 +1,17 @@
+{
+  "name": "@ontos/materialization-application",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "application"
+  },
+  "dependencies": {
+    "@ontos/contracts": "0.0.0",
+    "@ontos/materialization-domain": "0.0.0",
+    "@ontos/metadata-application": "0.0.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

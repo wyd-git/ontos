@@ -61,6 +61,11 @@ const gates: readonly GateDefinition[] = [
     arguments: ["run", "check:metadata-evidence"],
   },
   { name: "license-sbom-vulnerability", command: "npm", arguments: ["run", "check:supply-chain"] },
+  {
+    name: "materialization-ingress-integration",
+    command: "npm",
+    arguments: ["run", "test:materialization-ingress:integration"],
+  },
   { name: "postgres-integration", command: "npm", arguments: ["run", "test:database"] },
   {
     name: "admin-api-oidc-postgres",
