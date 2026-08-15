@@ -88,9 +88,16 @@
 - 下一次强制重估仍在 G2-02-06 的 10k Object/100k Link 数据薄切片；必须记录 COPY/批次吞吐、Node Heap、PostgreSQL Heap/Index/WAL、失败重放和实际返工。缺少这些数据不得继续缩短区间。
 - 当前只放行 G2-02-04 Managed UTF-8 CSV Ingress；不得跳到 Mapping 后半段、Query、Action、UI 或把 DB Schema 宣称成生产闭环。
 
+### G2-02-05 后检查点（2026-08-15）
+
+- G2-02-04 已完成受管 UTF-8 CSV/S3 Ingress；G2-02-05 已完成确定性 Mapping Compiler、公共 Value Codec Row Evaluator、Object PK Candidate、Link Identity Lookup、背压和链式 Stream Digest。当前进度为 5/14。
+- 固定 Seed Property Tests 和跨 Locale/Timezone 进程逐字节比较已关闭值与重放风险；128 MiB Heap 下 100k Object/1m Link 纯 Mapping 完整执行，专用 x86_64 机器峰值 93.78 MiB。
+- 该结果只证明 Mapping 的确定性和内存形状，不包含永久 RID、PostgreSQL Base/COPY/WAL/Index、Dangling Link 或 Worker Kill/Resume；因此剩余 **6–10 工程周**容量情景不缩短。
+- 当前只放行 G2-02-06 永久 Object Identity 与不可变 Object/Link Base。完成 10k Object/100k Link 真实 PostgreSQL 薄切片后，再按 COPY 吞吐、WAL、Heap、Index、重启重放和实际返工强制重估。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01 与 G2-02-01～03 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-04，不得跳到 Mapping 后半段、Query、页面或 Action。
+1. G2-00、G2-01 与 G2-02-01～05 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-06，不得跳到 Current、Cutover、Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

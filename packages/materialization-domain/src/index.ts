@@ -1,3 +1,14 @@
+import {
+  createMappingExecution,
+  type CanonicalTextDigester,
+  type CompiledMappingPlan,
+  type MappingErrorAggregate,
+  type MappingEventSink,
+  type MappingExecutionSummary,
+} from "./mapping.ts";
+
+export * from "./mapping.ts";
+
 export const MANAGED_CSV_HARD_LIMITS = Object.freeze({
   maximumFileBytes: 512 * 1024 * 1024,
   maximumRows: 10_000_000,
@@ -23,6 +34,13 @@ export interface ManagedCsvScanResult {
   readonly columnCount: number;
   readonly bom: boolean;
 }
+
+export interface ManagedCsvRow {
+  readonly rowNumber: number;
+  readonly values: readonly string[];
+}
+
+export type ManagedCsvRowConsumer = (row: ManagedCsvRow) => void | Promise<void>;
 
 export type ManagedCsvErrorCode =
   | "CSV_EMPTY"
@@ -94,11 +112,53 @@ export async function scanManagedCsv(
   expectedHeaderInput: readonly string[],
   limitOverrides: Partial<ManagedCsvScanLimits> = {},
 ): Promise<ManagedCsvScanResult> {
+  return scanManagedCsvRows(source, expectedHeaderInput, undefined, limitOverrides);
+}
+
+export async function scanManagedCsvRows(
+  source: AsyncIterable<Uint8Array>,
+  expectedHeaderInput: readonly string[],
+  consumeRow: ManagedCsvRowConsumer | undefined,
+  limitOverrides: Partial<ManagedCsvScanLimits> = {},
+): Promise<ManagedCsvScanResult> {
   const limits = parseLimits(limitOverrides);
   const expectedHeader = parseExpectedHeader(expectedHeaderInput, limits);
-  const scanner = new ManagedCsvScanner(expectedHeader, limits);
+  const scanner = new ManagedCsvScanner(expectedHeader, limits, consumeRow);
   await scanner.consume(source);
   return scanner.result();
+}
+
+export interface ExecuteManagedCsvMappingInput {
+  readonly plan: CompiledMappingPlan;
+  readonly sourceContentDigest: unknown;
+  readonly source: AsyncIterable<Uint8Array>;
+  readonly digestCanonicalText: CanonicalTextDigester;
+  readonly sink?: MappingEventSink;
+  readonly limits?: Partial<ManagedCsvScanLimits>;
+}
+
+export interface ManagedCsvMappingExecutionResult extends MappingExecutionSummary {
+  readonly scan: ManagedCsvScanResult;
+  readonly errorAggregates: readonly MappingErrorAggregate[];
+}
+
+export async function executeManagedCsvMapping(
+  input: ExecuteManagedCsvMappingInput,
+): Promise<ManagedCsvMappingExecutionResult> {
+  const execution = createMappingExecution({
+    plan: input.plan,
+    sourceContentDigest: input.sourceContentDigest,
+    digestCanonicalText: input.digestCanonicalText,
+    ...(input.sink === undefined ? {} : { sink: input.sink }),
+  });
+  const scan = await scanManagedCsvRows(
+    input.source,
+    input.plan.columns.map((column) => column.columnApiName),
+    (row) => execution.consumeRow(row),
+    input.limits ?? {},
+  );
+  const summary = execution.finish();
+  return Object.freeze({ ...summary, scan });
 }
 
 export function parseManagedCsvMediaType(value: unknown): "text/csv" {
@@ -127,10 +187,12 @@ export function parseManagedSourceLabel(value: unknown): string {
 class ManagedCsvScanner {
   readonly #expectedHeader: readonly string[];
   readonly #limits: ManagedCsvScanLimits;
+  readonly #consumeRow: ManagedCsvRowConsumer | undefined;
   readonly #decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false });
   readonly #prefix: number[] = [];
   readonly #headerFields: string[] = [];
-  readonly #headerFieldBytes: number[] = [];
+  readonly #recordFields: string[] = [];
+  readonly #fieldValueBytes: number[] = [];
 
   #prefixDecided = false;
   #bom = false;
@@ -144,9 +206,14 @@ class ManagedCsvScanner {
   #pendingCarriageReturn = false;
   #state: CsvState = "field_start";
 
-  constructor(expectedHeader: readonly string[], limits: ManagedCsvScanLimits) {
+  constructor(
+    expectedHeader: readonly string[],
+    limits: ManagedCsvScanLimits,
+    consumeRow: ManagedCsvRowConsumer | undefined,
+  ) {
     this.#expectedHeader = expectedHeader;
     this.#limits = limits;
+    this.#consumeRow = consumeRow;
   }
 
   async consume(source: AsyncIterable<Uint8Array>): Promise<void> {
@@ -160,10 +227,19 @@ class ManagedCsvScanner {
         if (this.#byteCount > this.#limits.maximumFileBytes) {
           this.#fail("CSV_FILE_LIMIT_EXCEEDED");
         }
-        this.#consumeChunk(candidate);
+        await this.#consumeChunk(candidate);
       }
       this.#decoder.decode();
+      if (!this.#prefixDecided) await this.#decidePrefix();
+      if (this.#pendingCarriageReturn) this.#fail("CSV_BARE_CR");
+      if (this.#state === "quoted") this.#fail("CSV_TRUNCATED_QUOTE");
+      if (this.#recordHasBytes) {
+        const row = this.#finishRecord();
+        if (row !== null) await this.#emitRow(row);
+      }
+      if (this.#recordIndex === 0) this.#fail("CSV_EMPTY");
     } catch (error) {
+      if (error instanceof ManagedCsvRowConsumerFailure) throw error.cause;
       if (error instanceof ManagedCsvError || error instanceof TypeError) {
         if (
           error instanceof TypeError &&
@@ -176,12 +252,6 @@ class ManagedCsvScanner {
       }
       throw error;
     }
-
-    if (!this.#prefixDecided) this.#decidePrefix();
-    if (this.#pendingCarriageReturn) this.#fail("CSV_BARE_CR");
-    if (this.#state === "quoted") this.#fail("CSV_TRUNCATED_QUOTE");
-    if (this.#recordHasBytes) this.#finishRecord();
-    if (this.#recordIndex === 0) this.#fail("CSV_EMPTY");
   }
 
   result(): ManagedCsvScanResult {
@@ -193,23 +263,23 @@ class ManagedCsvScanner {
     });
   }
 
-  #consumeChunk(chunk: Uint8Array): void {
+  async #consumeChunk(chunk: Uint8Array): Promise<void> {
     let offset = 0;
     if (!this.#prefixDecided) {
       while (offset < chunk.byteLength && this.#prefix.length < 4) {
         this.#prefix.push(chunk[offset] ?? 0);
         offset += 1;
       }
-      if (this.#prefix.length === 4) this.#decidePrefix();
+      if (this.#prefix.length === 4) await this.#decidePrefix();
     }
     if (this.#prefixDecided && offset < chunk.byteLength) {
       const remainder = chunk.subarray(offset);
       this.#decoder.decode(remainder, { stream: true });
-      this.#consumeBytes(remainder);
+      await this.#consumeBytes(remainder);
     }
   }
 
-  #decidePrefix(): void {
+  async #decidePrefix(): Promise<void> {
     if (this.#prefixDecided) return;
     this.#prefixDecided = true;
     if (
@@ -228,14 +298,17 @@ class ManagedCsvScanner {
     this.#bom = utf8Bom.every((byte, index) => this.#prefix[index] === byte);
     this.#decoder.decode(Uint8Array.from(this.#prefix), { stream: true });
     const firstCsvByte = this.#bom ? utf8Bom.length : 0;
-    this.#consumeBytes(Uint8Array.from(this.#prefix.slice(firstCsvByte)));
+    await this.#consumeBytes(Uint8Array.from(this.#prefix.slice(firstCsvByte)));
   }
 
-  #consumeBytes(bytes: Uint8Array): void {
-    for (const byte of bytes) this.#consumeByte(byte);
+  async #consumeBytes(bytes: Uint8Array): Promise<void> {
+    for (const byte of bytes) {
+      const row = this.#consumeByte(byte);
+      if (row !== null) await this.#emitRow(row);
+    }
   }
 
-  #consumeByte(byte: number): void {
+  #consumeByte(byte: number): ManagedCsvRow | null {
     if (byte === nul) this.#fail("CSV_NUL_BYTE");
     this.#recordHasBytes = true;
     this.#recordBytes += 1;
@@ -246,18 +319,16 @@ class ManagedCsvScanner {
     if (this.#pendingCarriageReturn) {
       if (byte !== lineFeed) this.#fail("CSV_BARE_CR");
       this.#pendingCarriageReturn = false;
-      this.#finishRecord();
-      return;
+      return this.#finishRecord();
     }
 
     if (this.#state !== "quoted") {
       if (byte === carriageReturn) {
         this.#pendingCarriageReturn = true;
-        return;
+        return null;
       }
       if (byte === lineFeed) {
-        this.#finishRecord();
-        return;
+        return this.#finishRecord();
       }
     }
 
@@ -270,10 +341,10 @@ class ManagedCsvScanner {
           this.#state = "quoted";
         } else {
           this.#countFieldByte();
-          this.#appendHeaderByte(byte);
+          this.#appendFieldValueByte(byte);
           this.#state = "unquoted";
         }
-        return;
+        return null;
       case "unquoted":
         if (byte === comma) {
           this.#finishField();
@@ -281,24 +352,25 @@ class ManagedCsvScanner {
           this.#fail("CSV_QUOTE_INVALID");
         } else {
           this.#countFieldByte();
-          this.#appendHeaderByte(byte);
+          this.#appendFieldValueByte(byte);
         }
-        return;
+        return null;
       case "quoted":
         this.#countFieldByte();
         if (byte === quote) this.#state = "after_quote";
-        else this.#appendHeaderByte(byte);
-        return;
+        else this.#appendFieldValueByte(byte);
+        return null;
       case "after_quote":
         if (byte === quote) {
           this.#countFieldByte();
-          this.#appendHeaderByte(quote);
+          this.#appendFieldValueByte(quote);
           this.#state = "quoted";
         } else if (byte === comma) {
           this.#finishField();
         } else {
           this.#fail("CSV_QUOTE_INVALID");
         }
+        return null;
     }
   }
 
@@ -309,10 +381,12 @@ class ManagedCsvScanner {
     }
   }
 
-  #appendHeaderByte(byte: number): void {
-    if (this.#recordIndex !== 0) return;
-    this.#headerFieldBytes.push(byte);
-    if (this.#headerFieldBytes.length > this.#limits.maximumHeaderFieldBytes) {
+  #appendFieldValueByte(byte: number): void {
+    this.#fieldValueBytes.push(byte);
+    if (
+      this.#recordIndex === 0 &&
+      this.#fieldValueBytes.length > this.#limits.maximumHeaderFieldBytes
+    ) {
       this.#fail("CSV_FIELD_LIMIT_EXCEEDED");
     }
   }
@@ -322,32 +396,49 @@ class ManagedCsvScanner {
     if (this.#fieldIndex > this.#limits.maximumColumns) {
       this.#fail("CSV_COLUMN_LIMIT_EXCEEDED");
     }
-    if (this.#recordIndex === 0) {
-      this.#headerFields.push(
-        new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(this.#headerFieldBytes)),
-      );
-      this.#headerFieldBytes.length = 0;
-    }
+    const value = new TextDecoder("utf-8", { fatal: true }).decode(
+      Uint8Array.from(this.#fieldValueBytes),
+    );
+    if (this.#recordIndex === 0) this.#headerFields.push(value);
+    else this.#recordFields.push(value);
+    this.#fieldValueBytes.length = 0;
     this.#fieldBytes = 0;
     this.#state = "field_start";
   }
 
-  #finishRecord(): void {
+  #finishRecord(): ManagedCsvRow | null {
     this.#finishField();
-    if (this.#recordIndex === 0) this.#validateHeader();
-    else {
+    let row: ManagedCsvRow | null = null;
+    if (this.#recordIndex === 0) {
+      this.#validateHeader();
+    } else {
       if (this.#fieldIndex !== this.#expectedHeader.length) {
         this.#fail("CSV_COLUMN_COUNT_MISMATCH");
       }
       this.#rowCount += 1;
       if (this.#rowCount > this.#limits.maximumRows) this.#fail("CSV_ROW_LIMIT_EXCEEDED");
+      row = Object.freeze({
+        rowNumber: this.#rowCount,
+        values: Object.freeze([...this.#recordFields]),
+      });
     }
     this.#recordIndex += 1;
+    this.#recordFields.length = 0;
     this.#fieldIndex = 0;
     this.#recordBytes = 0;
     this.#fieldBytes = 0;
     this.#recordHasBytes = false;
     this.#state = "field_start";
+    return row;
+  }
+
+  async #emitRow(row: ManagedCsvRow): Promise<void> {
+    if (this.#consumeRow === undefined) return;
+    try {
+      await this.#consumeRow(row);
+    } catch (error) {
+      throw new ManagedCsvRowConsumerFailure(error);
+    }
   }
 
   #validateHeader(): void {
@@ -369,6 +460,13 @@ class ManagedCsvScanner {
       rowNumber: this.#recordIndex + 1,
       columnNumber,
     });
+  }
+}
+
+class ManagedCsvRowConsumerFailure extends Error {
+  constructor(cause: unknown) {
+    super("Managed CSV row consumer failed.", { cause });
+    this.name = "ManagedCsvRowConsumerFailure";
   }
 }
 
