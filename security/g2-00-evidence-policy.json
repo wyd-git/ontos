@@ -4,6 +4,7 @@
   "scope": {
     "allowedWorkspacePackages": [
       "apps/api",
+      "apps/projection-ddl-executor",
       "apps/worker",
       "packages/contracts",
       "packages/materialization-application",
@@ -29,7 +30,8 @@
       "migrations/db-00/0010_managed_csv_ingress.sql",
       "migrations/db-00/0011_object_identity_base_staging.sql",
       "migrations/db-00/0012_materialization_quality_current.sql",
-      "migrations/db-00/0013_materialization_job_worker.sql"
+      "migrations/db-00/0013_materialization_job_worker.sql",
+      "migrations/db-00/0014_projection_index_capacity_ddl.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -70,12 +72,15 @@
       "ops.materialization_staged_batches",
       "ops.link_base_staging",
       "ops.object_base_staging",
+      "ops.projection_ddl_requests",
+      "runtime.capacity_admissions",
       "runtime.capacity_approvals",
       "runtime.compatibility_certificates",
       "runtime.dataset_snapshots",
       "runtime.generation_measurements",
       "runtime.generations",
       "runtime.index_inventory",
+      "runtime.index_plan_admissions",
       "runtime.index_plan_entries",
       "runtime.index_plans",
       "runtime.link_base",
@@ -89,6 +94,7 @@
       "runtime.object_head_candidates",
       "runtime.object_heads",
       "runtime.object_identities",
+      "runtime.project_physical_measurements",
       "runtime.project_runtime_inventories",
       "runtime.property_provenance",
       "runtime.rejected_row_sets",
@@ -96,10 +102,15 @@
       "runtime.snapshot_group_members",
       "runtime.snapshot_group_versions",
       "runtime.snapshot_groups",
-      "runtime.snapshot_upload_sessions"
+      "runtime.snapshot_upload_sessions",
+      "runtime.source_forecasts"
     ],
     "forbiddenTrackedPrefixes": ["apps/"],
-    "allowedTrackedPrefixExceptions": ["apps/api/", "apps/worker/"],
+    "allowedTrackedPrefixExceptions": [
+      "apps/api/",
+      "apps/projection-ddl-executor/",
+      "apps/worker/"
+    ],
     "forbiddenUiExtensions": [".html", ".jsx", ".tsx", ".vue", ".svelte"],
     "ignoredPrefixes": ["spikes/g1/"]
   },
@@ -204,7 +215,8 @@
     "docs/evidence/g2-02-05-deterministic-mapping.md",
     "docs/evidence/g2-02-06-object-identity-base.md",
     "docs/evidence/g2-02-07-quality-current-provenance.md",
-    "docs/evidence/g2-02-08-materialization-worker.md"
+    "docs/evidence/g2-02-08-materialization-worker.md",
+    "docs/evidence/g2-02-09-index-capacity-ddl.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",
@@ -268,9 +280,9 @@
     },
     {
       "id": "RISK-G2-00-03",
-      "risk": "Capacity bounds still require DB-02 production-shape measurement before materialization cutover.",
+      "risk": "Capacity bounds have a first-round 100k/1m database measurement; final HTTP/S3/OIDC/Worker/Cutover-shape confirmation remains required before materialization cutover.",
       "owner": "Runtime / Database (accountable: wyd-git)",
-      "nextGate": "G2-02"
+      "nextGate": "G2-02-14"
     },
     {
       "id": "RISK-G2-00-04",

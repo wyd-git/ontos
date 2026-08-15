@@ -99,10 +99,13 @@ ONTOS_G2_02_09_CAPACITY=1 \
 PASS — 正式 100k Object / 1m Link，核心构建 1,265,885 ms，Peak 4,239,777,792 bytes
 
 npm run verify
-PASS — 独立 Ubuntu 24 / 8C16G staged-worktree：28/28 Gates、408 tests、0 failures、339,093 ms
+DIAGNOSTIC PASS — 独立 Ubuntu 24 / 8C16G staged-worktree：28/28 Gates、408 tests、0 failures、339,093 ms；该 rsync 工作区排除了 `.git`，后续证明 `git ls-files` 没有看到新 App/Migration，因此不作为最终 Commit 绑定验收
+
+GitHub Required Check on final PR Head
+REQUIRED — 必须在包含新 Foundation 精确允许清单的真实 Git checkout 上通过后才能合并
 ```
 
-最终 PR Head 仍必须通过统一 Gate 与 GitHub Required Check；本文中的独立机器 staged-worktree 结果不冒充 Commit 绑定的远端检查。
+最终 PR Head 仍必须通过统一 Gate 与 GitHub Required Check；本文中的独立机器 staged-worktree 结果只证明运行链路，不冒充 Commit 绑定的远端检查。以后新增 tracked scope 的任务必须以真实 Git checkout 复跑精确清单，不能只依赖排除 `.git` 的 rsync 镜像。
 
 ## 6. 非结论与下一项
 
