@@ -5,6 +5,15 @@ import {
   type ObjectTypeDefinition,
   type ResourceFamily,
 } from "./metadata.ts";
+import {
+  parseMappingDefinition,
+  parseSnapshotSchemaDefinition,
+  type MappingDefinition,
+  type SnapshotSchemaDefinition,
+} from "./materialization.ts";
+
+export type PublishableResourceContent =
+  ObjectTypeDefinition | LinkTypeDefinition | MappingDefinition | SnapshotSchemaDefinition;
 
 export type ResourceFamilyGate = "G2-01" | "G2-02" | "G2-03" | "G2-04" | "G2-05";
 export type ResourceFamilyStatus = "active" | "deferred";
@@ -13,7 +22,7 @@ export interface ResourceFamilyRegistration {
   readonly family: ResourceFamily;
   readonly status: ResourceFamilyStatus;
   readonly freezeGate: ResourceFamilyGate;
-  readonly parser?: (value: unknown) => ObjectTypeDefinition | LinkTypeDefinition;
+  readonly parser?: (value: unknown) => PublishableResourceContent;
 }
 
 export type ResourceFamilyRegistryErrorCode = "CAPABILITY_NOT_ACTIVE" | "RESOURCE_FAMILY_UNKNOWN";
@@ -53,8 +62,18 @@ export const RESOURCE_FAMILY_REGISTRY: Readonly<
     parser: parseLinkTypeDefinition,
   }),
   interface: deferred("interface", "G2-05"),
-  mapping: deferred("mapping", "G2-02"),
-  snapshot_schema: deferred("snapshot_schema", "G2-02"),
+  mapping: Object.freeze({
+    family: "mapping",
+    status: "active",
+    freezeGate: "G2-02",
+    parser: parseMappingDefinition,
+  }),
+  snapshot_schema: Object.freeze({
+    family: "snapshot_schema",
+    status: "active",
+    freezeGate: "G2-02",
+    parser: parseSnapshotSchemaDefinition,
+  }),
   policy: deferred("policy", "G2-03"),
   function_type: deferred("function_type", "G2-04"),
   action_type: deferred("action_type", "G2-04"),
@@ -65,7 +84,7 @@ export const RESOURCE_FAMILY_REGISTRY: Readonly<
 export function parsePublishableResourceContent(
   family: string,
   value: unknown,
-): ObjectTypeDefinition | LinkTypeDefinition {
+): PublishableResourceContent {
   const registration = (
     RESOURCE_FAMILY_REGISTRY as Readonly<Record<string, ResourceFamilyRegistration>>
   )[family];
@@ -90,14 +109,14 @@ export function parsePublishableResourceContent(
 export function parseDirectResourceContent(
   family: string,
   value: unknown,
-): ObjectTypeDefinition | LinkTypeDefinition {
+): PublishableResourceContent {
   return parsePublishableResourceContent(family, value);
 }
 
 export function parsePackageResourceContent(
   family: string,
   value: unknown,
-): ObjectTypeDefinition | LinkTypeDefinition {
+): PublishableResourceContent {
   return parsePublishableResourceContent(family, value);
 }
 

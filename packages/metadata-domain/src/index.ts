@@ -9,6 +9,7 @@ import {
   type LinkTypeDefinition,
   type ManagementRoleValue,
   type ObjectTypeDefinition,
+  type PublishableResourceContent,
   type ResourceFamily,
   type ValidationIssueContract,
 } from "@ontos/contracts";
@@ -116,7 +117,7 @@ export function validateProjectApiName(value: unknown): string {
 
 export type ResourceState = "active" | "deprecated" | "archived";
 export type ResourceRevisionState = "draft" | "validated" | "published" | "deprecated" | "archived";
-export type DirectResourceContent = ObjectTypeDefinition | LinkTypeDefinition;
+export type DirectResourceContent = PublishableResourceContent;
 
 export interface PreparedResourceContent {
   readonly content: DirectResourceContent;
@@ -274,7 +275,7 @@ export function validateRevisionDefinition(
         }
       }
     }
-  } else {
+  } else if (input.family === "link_type") {
     const linkType = content as LinkTypeDefinition;
     if (
       linkType.sourceKind === "base" &&
@@ -305,7 +306,7 @@ export function extractResourceDependencies(
   contentInput: unknown,
 ): readonly ExtractedResourceDependency[] {
   const content = parseDirectResourceContent(family, contentInput);
-  if (family === "object_type") return Object.freeze([]);
+  if (family !== "link_type") return Object.freeze([]);
   const link = content as LinkTypeDefinition;
   return Object.freeze(
     [

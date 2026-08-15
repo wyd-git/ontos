@@ -1,0 +1,641 @@
+{
+  "schemaVersion": 1,
+  "stableReasonCodes": [
+    "PRIMARY_KEY_NULL",
+    "PRIMARY_KEY_DUPLICATE",
+    "REQUIRED_PROPERTY_INVALID",
+    "OPTIONAL_PROPERTY_INVALID",
+    "REQUIRED_LINK_DANGLING",
+    "OPTIONAL_LINK_DANGLING",
+    "ROW_COUNT_CONFIRMATION_REQUIRED"
+  ],
+  "stableOperationErrorCodes": [
+    "SNAPSHOT_CONTENT_MISMATCH",
+    "SNAPSHOT_SCHEMA_INVALID",
+    "MAPPING_CONTRACT_INVALID",
+    "MATERIALIZATION_IDEMPOTENCY_CONFLICT",
+    "MATERIALIZATION_VALIDATION_FAILED",
+    "MATERIALIZATION_CONFIRMATION_REQUIRED",
+    "MATERIALIZATION_JOB_FENCED",
+    "GENERATION_COMPATIBILITY_INVALID",
+    "RUNTIME_PLAN_MISMATCH",
+    "CAPACITY_HARD_LIMIT_EXCEEDED",
+    "GC_PLAN_STALE"
+  ],
+  "cases": [
+    {
+      "name": "snapshot-schema-object-csv",
+      "contract": "SnapshotSchemaDefinition",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "snapshot-schema-v1",
+        "format": "csv_utf8",
+        "headerRow": true,
+        "columns": [
+          {
+            "ordinal": 0,
+            "columnApiName": "customer_id",
+            "valueType": "string",
+            "required": true,
+            "caseSensitive": true
+          },
+          {
+            "ordinal": 1,
+            "columnApiName": "amount",
+            "valueType": "decimal",
+            "required": false,
+            "decimalPrecision": 18,
+            "decimalScale": 2
+          },
+          {
+            "ordinal": 2,
+            "columnApiName": "status",
+            "valueType": "enum",
+            "required": false,
+            "enumValues": ["active", "inactive"]
+          }
+        ]
+      }
+    },
+    {
+      "name": "mapping-object-row-ast",
+      "contract": "MappingDefinition",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "mappingVersion": "mapping-v1",
+        "targetKind": "object",
+        "inputSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "targetResourceId": "66666666-6666-6666-6666-666666666666",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "valueCodecVersion": "pk1",
+        "propertyMappings": [
+          {
+            "propertyApiName": "amount",
+            "required": false,
+            "nullPolicy": "reject_row",
+            "expression": {
+              "op": "cast",
+              "input": { "op": "column", "columnApiName": "amount" },
+              "targetValueType": "decimal",
+              "codecVersion": "pk1"
+            }
+          },
+          {
+            "propertyApiName": "displayName",
+            "required": false,
+            "nullPolicy": "allow",
+            "expression": {
+              "op": "concat",
+              "inputs": [
+                { "op": "column", "columnApiName": "first_name" },
+                { "op": "column", "columnApiName": "last_name" }
+              ],
+              "separator": " "
+            }
+          }
+        ],
+        "primaryKeyExpression": { "op": "column", "columnApiName": "customer_id" },
+        "qualityRules": {
+          "primaryKeyNullMaximumCount": 0,
+          "primaryKeyDuplicateMaximumCount": 0,
+          "requiredPropertyFailureMaximumCount": 0,
+          "requiredLinkDanglingMaximumCount": 0,
+          "optionalPropertyFailureMaximumBasisPoints": 10,
+          "optionalLinkDanglingMaximumBasisPoints": 10,
+          "rowCountChangeConfirmationBasisPoints": 1000,
+          "optionalFailureDisposition": "reject_row"
+        }
+      }
+    },
+    {
+      "name": "mapping-link-endpoint-keys",
+      "contract": "MappingDefinition",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "mappingVersion": "mapping-v1",
+        "targetKind": "link",
+        "inputSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "targetResourceId": "66666666-6666-6666-6666-666666666667",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555556",
+        "valueCodecVersion": "pk1",
+        "propertyMappings": [],
+        "sourceKeyMapping": {
+          "objectTypeRevisionId": "55555555-5555-5555-5555-555555555555",
+          "expression": { "op": "column", "columnApiName": "customer_id" },
+          "codecVersion": "pk1"
+        },
+        "targetKeyMapping": {
+          "objectTypeRevisionId": "55555555-5555-5555-5555-555555555557",
+          "expression": { "op": "column", "columnApiName": "order_id" },
+          "codecVersion": "pk1"
+        },
+        "qualityRules": {
+          "primaryKeyNullMaximumCount": 0,
+          "primaryKeyDuplicateMaximumCount": 0,
+          "requiredPropertyFailureMaximumCount": 0,
+          "requiredLinkDanglingMaximumCount": 0,
+          "optionalPropertyFailureMaximumBasisPoints": 10,
+          "optionalLinkDanglingMaximumBasisPoints": 10,
+          "rowCountChangeConfirmationBasisPoints": 1000,
+          "optionalFailureDisposition": "reject_row"
+        }
+      }
+    },
+    {
+      "name": "dataset-snapshot-managed-file",
+      "contract": "DatasetSnapshot",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "dataset-snapshot-v1",
+        "snapshotId": "77777777-7777-7777-7777-777777777777",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "groupVersion": 1,
+        "targetMemberKey": "object:Customer",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "snapshotSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "mappingRevisionId": "44444444-4444-4444-4444-444444444444",
+        "runtimePlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "contentDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "byteCount": 12,
+        "rowCount": 2,
+        "files": [
+          {
+            "fileId": "88888888-8888-8888-8888-888888888888",
+            "managedArtifactId": "99999999-9999-9999-9999-999999999999",
+            "ordinal": 0,
+            "contentDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "byteCount": 12,
+            "rowCount": 2
+          }
+        ],
+        "state": "registered",
+        "registeredAt": "2026-08-15T00:00:00.000000Z",
+        "snapshotDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    },
+    {
+      "name": "snapshot-group-object-and-link",
+      "contract": "SnapshotGroup",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "snapshot-group-v1",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "groupVersion": 1,
+        "state": "ready",
+        "members": [
+          {
+            "memberKey": "link:CustomerOrders",
+            "memberKind": "link",
+            "snapshotId": "77777777-7777-7777-7777-777777777778",
+            "targetRevisionId": "55555555-5555-5555-5555-555555555556"
+          },
+          {
+            "memberKey": "object:Customer",
+            "memberKind": "object",
+            "snapshotId": "77777777-7777-7777-7777-777777777777",
+            "targetRevisionId": "55555555-5555-5555-5555-555555555555"
+          }
+        ],
+        "groupDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "createdAt": "2026-08-15T00:00:01.000000Z"
+      }
+    },
+    {
+      "name": "materialization-job-queued",
+      "contract": "MaterializationJob",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "materialization-job-v1",
+        "jobId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "idempotencyKey": "materialize-key-0001",
+        "inputDigest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "state": "queued",
+        "attemptCount": 0,
+        "createdAt": "2026-08-15T00:00:02.000000Z",
+        "updatedAt": "2026-08-15T00:00:02.000000Z"
+      }
+    },
+    {
+      "name": "materialization-report-optional-rejection",
+      "contract": "MaterializationReport",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "materialization-report-v1",
+        "reportId": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "jobId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "outcome": "passed",
+        "totalRows": 10,
+        "acceptedRows": 9,
+        "rejectedRows": 1,
+        "reasonCounts": [{ "code": "OPTIONAL_PROPERTY_INVALID", "count": 1 }],
+        "errorSamples": [
+          {
+            "code": "OPTIONAL_PROPERTY_INVALID",
+            "fileId": "88888888-8888-8888-8888-888888888888",
+            "rowNumber": 4,
+            "fingerprint": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          }
+        ],
+        "validatorVersion": "materialization-g2-02-v1",
+        "reportDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "createdAt": "2026-08-15T00:00:03.000000Z"
+      }
+    },
+    {
+      "name": "materialization-report-required-failure",
+      "contract": "MaterializationReport",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "materialization-report-v1",
+        "reportId": "cccccccc-cccc-cccc-cccc-cccccccccccd",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "jobId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "outcome": "failed",
+        "totalRows": 1,
+        "acceptedRows": 0,
+        "rejectedRows": 1,
+        "reasonCounts": [{ "code": "REQUIRED_PROPERTY_INVALID", "count": 1 }],
+        "errorSamples": [],
+        "validatorVersion": "materialization-g2-02-v1",
+        "reportDigest": "sha256:1212121212121212121212121212121212121212121212121212121212121212",
+        "createdAt": "2026-08-15T00:00:04.000000Z"
+      }
+    },
+    {
+      "name": "materialization-report-row-confirmation",
+      "contract": "MaterializationReport",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "materialization-report-v1",
+        "reportId": "cccccccc-cccc-cccc-cccc-ccccccccccce",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "jobId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        "outcome": "awaiting_confirmation",
+        "totalRows": 10,
+        "acceptedRows": 10,
+        "rejectedRows": 0,
+        "reasonCounts": [{ "code": "ROW_COUNT_CONFIRMATION_REQUIRED", "count": 1 }],
+        "errorSamples": [],
+        "validatorVersion": "materialization-g2-02-v1",
+        "reportDigest": "sha256:1313131313131313131313131313131313131313131313131313131313131313",
+        "createdAt": "2026-08-15T00:00:05.000000Z"
+      }
+    },
+    {
+      "name": "generation-ready-invisible",
+      "contract": "Generation",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "generation-v1",
+        "generationId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "memberKey": "object:Customer",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "groupVersion": 1,
+        "snapshotSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "mappingRevisionId": "44444444-4444-4444-4444-444444444444",
+        "runtimePlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "indexPlanDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "reportDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "state": "ready",
+        "generationDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "createdAt": "2026-08-15T00:00:06.000000Z"
+      }
+    },
+    {
+      "name": "runtime-member-plan-composite",
+      "contract": "RuntimeMemberPlan",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "runtime-member-plan-v1",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "releaseId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        "members": [
+          {
+            "memberKey": "link:CustomerOrders",
+            "memberKind": "link",
+            "targetResourceId": "66666666-6666-6666-6666-666666666667",
+            "targetRevisionId": "55555555-5555-5555-5555-555555555556",
+            "snapshotSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+            "mappingRevisionId": "44444444-4444-4444-4444-444444444445",
+            "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+            "indexPlanDigest": "sha256:2323232323232323232323232323232323232323232323232323232323232323"
+          },
+          {
+            "memberKey": "object:Customer",
+            "memberKind": "object",
+            "targetResourceId": "66666666-6666-6666-6666-666666666666",
+            "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+            "snapshotSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+            "mappingRevisionId": "44444444-4444-4444-4444-444444444444",
+            "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+            "indexPlanDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        ],
+        "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "runtime-activation-composite",
+      "contract": "RuntimeActivation",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "runtime-activation-v1",
+        "activationId": "01234567-0123-0123-0123-0123456789ab",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "releaseId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        "runtimePlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "state": "active",
+        "members": [
+          {
+            "memberKey": "link:CustomerOrders",
+            "generationId": "dddddddd-dddd-dddd-dddd-ddddddddddde",
+            "snapshotId": "77777777-7777-7777-7777-777777777778",
+            "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+            "groupVersion": 1,
+            "certificateId": "ffffffff-ffff-ffff-ffff-ffffffffffff"
+          },
+          {
+            "memberKey": "object:Customer",
+            "generationId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+            "snapshotId": "77777777-7777-7777-7777-777777777777",
+            "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+            "groupVersion": 1,
+            "certificateId": "ffffffff-ffff-ffff-ffff-fffffffffffe"
+          }
+        ],
+        "activationDigest": "sha256:3434343434343434343434343434343434343434343434343434343434343434",
+        "createdAt": "2026-08-15T00:00:07.000000Z"
+      }
+    },
+    {
+      "name": "compatibility-certificate-server-issued",
+      "contract": "CompatibilityCertificate",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "generation-compatibility-v1",
+        "issuer": "materialization-compatibility-verifier",
+        "certificateId": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "generationId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        "generationDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "targetReleaseId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        "targetMemberKey": "object:Customer",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "groupVersion": 1,
+        "snapshotSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "snapshotSchemaDigest": "sha256:3535353535353535353535353535353535353535353535353535353535353535",
+        "mappingRevisionId": "44444444-4444-4444-4444-444444444444",
+        "mappingDigest": "sha256:3636363636363636363636363636363636363636363636363636363636363636",
+        "indexPlanDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "runtimePlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision": "exact_pin",
+        "validatorVersion": "materialization-g2-02-v1",
+        "evidenceDigest": "sha256:3737373737373737373737373737373737373737373737373737373737373737",
+        "issuedAt": "2026-08-15T00:00:08.000000Z",
+        "certificateDigest": "sha256:3838383838383838383838383838383838383838383838383838383838383838"
+      }
+    },
+    {
+      "name": "index-capacity-under-hard-limit",
+      "contract": "IndexCapacity",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "index-capacity-v1",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "runtimePlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "indexPlanDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "sourceForecastDigest": "sha256:3939393939393939393939393939393939393939393939393939393939393939",
+        "measurementDigest": "sha256:4040404040404040404040404040404040404040404040404040404040404040",
+        "measuredBytes": 100,
+        "reservedBytes": 20,
+        "projectedPeakBytes": 200,
+        "hardLimitBytes": 1000,
+        "inventoryRevision": "1",
+        "admission": "accepted",
+        "capacityDigest": "sha256:4141414141414141414141414141414141414141414141414141414141414141"
+      }
+    },
+    {
+      "name": "gc-plan-empty-safe-set",
+      "contract": "GcPlan",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "gc-plan-v1",
+        "gcPlanId": "abababab-abab-abab-abab-abababababab",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "stateRevision": "2",
+        "inventoryRevision": "3",
+        "candidateGenerationIds": [],
+        "candidateIndexDigests": [],
+        "protectedRootDigest": "sha256:4242424242424242424242424242424242424242424242424242424242424242",
+        "state": "planned",
+        "planDigest": "sha256:4343434343434343434343434343434343434343434343434343434343434343",
+        "createdAt": "2026-08-15T00:00:09.000000Z"
+      }
+    },
+    {
+      "name": "mapping-rejects-raw-sql",
+      "contract": "MappingDefinition",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD",
+      "value": {
+        "schemaVersion": 1,
+        "mappingVersion": "mapping-v1",
+        "targetKind": "object",
+        "inputSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "targetResourceId": "66666666-6666-6666-6666-666666666666",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "valueCodecVersion": "pk1",
+        "propertyMappings": [],
+        "primaryKeyExpression": { "op": "column", "columnApiName": "customer_id" },
+        "qualityRules": {
+          "primaryKeyNullMaximumCount": 0,
+          "primaryKeyDuplicateMaximumCount": 0,
+          "requiredPropertyFailureMaximumCount": 0,
+          "requiredLinkDanglingMaximumCount": 0,
+          "optionalPropertyFailureMaximumBasisPoints": 10,
+          "optionalLinkDanglingMaximumBasisPoints": 10,
+          "rowCountChangeConfirmationBasisPoints": 1000,
+          "optionalFailureDisposition": "reject_row"
+        },
+        "sql": "select * from source"
+      }
+    },
+    {
+      "name": "mapping-rejects-join-op",
+      "contract": "MappingDefinition",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_FORMAT_INVALID",
+      "value": {
+        "schemaVersion": 1,
+        "mappingVersion": "mapping-v1",
+        "targetKind": "object",
+        "inputSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "targetResourceId": "66666666-6666-6666-6666-666666666666",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "valueCodecVersion": "pk1",
+        "propertyMappings": [],
+        "primaryKeyExpression": { "op": "join", "columnApiName": "customer_id" },
+        "qualityRules": {
+          "primaryKeyNullMaximumCount": 0,
+          "primaryKeyDuplicateMaximumCount": 0,
+          "requiredPropertyFailureMaximumCount": 0,
+          "requiredLinkDanglingMaximumCount": 0,
+          "optionalPropertyFailureMaximumBasisPoints": 10,
+          "optionalLinkDanglingMaximumBasisPoints": 10,
+          "rowCountChangeConfirmationBasisPoints": 1000,
+          "optionalFailureDisposition": "reject_row"
+        }
+      }
+    },
+    {
+      "name": "snapshot-rejects-arbitrary-path",
+      "contract": "DatasetSnapshot",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "dataset-snapshot-v1",
+        "snapshotId": "77777777-7777-7777-7777-777777777777",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "groupVersion": 1,
+        "targetMemberKey": "object:Customer",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "snapshotSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "mappingRevisionId": "44444444-4444-4444-4444-444444444444",
+        "runtimePlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "contentDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "byteCount": 0,
+        "rowCount": 0,
+        "files": [
+          {
+            "fileId": "88888888-8888-8888-8888-888888888888",
+            "managedArtifactId": "99999999-9999-9999-9999-999999999999",
+            "ordinal": 0,
+            "contentDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "byteCount": 0,
+            "rowCount": 0,
+            "path": "/etc/passwd"
+          }
+        ],
+        "state": "registered",
+        "registeredAt": "2026-08-15T00:00:00.000000Z",
+        "snapshotDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    },
+    {
+      "name": "snapshot-rejects-loose-date",
+      "contract": "DatasetSnapshot",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_VALUE_OUT_OF_RANGE",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "dataset-snapshot-v1",
+        "snapshotId": "77777777-7777-7777-7777-777777777777",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "groupVersion": 1,
+        "targetMemberKey": "object:Customer",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "snapshotSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "mappingRevisionId": "44444444-4444-4444-4444-444444444444",
+        "runtimePlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "contentDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "byteCount": 0,
+        "rowCount": 0,
+        "files": [
+          {
+            "fileId": "88888888-8888-8888-8888-888888888888",
+            "managedArtifactId": "99999999-9999-9999-9999-999999999999",
+            "ordinal": 0,
+            "contentDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "byteCount": 0,
+            "rowCount": 0
+          }
+        ],
+        "state": "registered",
+        "registeredAt": "2026-08-15T00:00:00Z",
+        "snapshotDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    },
+    {
+      "name": "certificate-rejects-client-compatible-flag",
+      "contract": "CompatibilityCertificate",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD",
+      "value": {
+        "schemaVersion": 1,
+        "contractVersion": "generation-compatibility-v1",
+        "issuer": "materialization-compatibility-verifier",
+        "certificateId": "ffffffff-ffff-ffff-ffff-fffffffffffe",
+        "projectId": "11111111-1111-1111-1111-111111111111",
+        "generationId": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        "generationDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "targetReleaseId": "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+        "targetMemberKey": "object:Customer",
+        "targetRevisionId": "55555555-5555-5555-5555-555555555555",
+        "snapshotGroupId": "22222222-2222-2222-2222-222222222222",
+        "groupVersion": 1,
+        "snapshotSchemaRevisionId": "33333333-3333-3333-3333-333333333333",
+        "snapshotSchemaDigest": "sha256:3535353535353535353535353535353535353535353535353535353535353535",
+        "mappingRevisionId": "44444444-4444-4444-4444-444444444444",
+        "mappingDigest": "sha256:3636363636363636363636363636363636363636363636363636363636363636",
+        "indexPlanDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "runtimePlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "decision": "exact_pin",
+        "validatorVersion": "materialization-g2-02-v1",
+        "evidenceDigest": "sha256:3737373737373737373737373737373737373737373737373737373737373737",
+        "issuedAt": "2026-08-15T00:00:08.000000Z",
+        "certificateDigest": "sha256:3838383838383838383838383838383838383838383838383838383838383838",
+        "compatible": true
+      }
+    }
+  ]
+}

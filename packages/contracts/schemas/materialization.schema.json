@@ -1,0 +1,789 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ontos.local/contracts/materialization/v1",
+  "title": "Ontos G2-02 materialization contracts",
+  "$defs": {
+    "SchemaVersion": { "const": 1 },
+    "OntosId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "ArtifactDigest": {
+      "type": "string",
+      "minLength": 71,
+      "maxLength": 71,
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "IdempotencyKey": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._~-]{15,127}$"
+    },
+    "CanonicalInstant": {
+      "type": "string",
+      "minLength": 27,
+      "maxLength": 27,
+      "format": "ontos-canonical-instant",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{6}Z$"
+    },
+    "ApiName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[A-Za-z][A-Za-z0-9_]{0,62}$"
+    },
+    "MemberKey": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 70,
+      "pattern": "^(?:object|link):[A-Za-z][A-Za-z0-9_]{0,62}$"
+    },
+    "Version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+    },
+    "PositiveBigintText": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,18}$"
+    },
+    "PropertyValueType": {
+      "type": "string",
+      "enum": [
+        "string",
+        "boolean",
+        "integer",
+        "decimal",
+        "date",
+        "timestamp",
+        "enum",
+        "string[]",
+        "json"
+      ]
+    },
+    "SnapshotColumn": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 0, "maximum": 511 },
+        "columnApiName": { "$ref": "#/$defs/ApiName" },
+        "valueType": { "$ref": "#/$defs/PropertyValueType" },
+        "required": { "type": "boolean" },
+        "caseSensitive": { "type": "boolean" },
+        "enumValues": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": { "type": "string", "maxLength": 128 }
+        },
+        "decimalPrecision": { "type": "integer", "minimum": 1, "maximum": 38 },
+        "decimalScale": { "type": "integer", "minimum": 0, "maximum": 38 }
+      },
+      "required": ["ordinal", "columnApiName", "valueType", "required"]
+    },
+    "MappingExpression": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "op": { "type": "string", "enum": ["column", "constant", "cast", "concat"] },
+        "columnApiName": { "$ref": "#/$defs/ApiName" },
+        "literal": { "type": "string", "maxLength": 4096 },
+        "input": { "$ref": "#/$defs/MappingExpression" },
+        "targetValueType": { "$ref": "#/$defs/PropertyValueType" },
+        "codecVersion": { "const": "pk1" },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/MappingExpression" }
+        },
+        "separator": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["op"]
+    },
+    "MappingProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "propertyApiName": { "$ref": "#/$defs/ApiName" },
+        "required": { "type": "boolean" },
+        "nullPolicy": { "type": "string", "enum": ["allow", "reject_row"] },
+        "expression": { "$ref": "#/$defs/MappingExpression" }
+      },
+      "required": ["propertyApiName", "required", "nullPolicy", "expression"]
+    },
+    "MappingKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "objectTypeRevisionId": { "$ref": "#/$defs/OntosId" },
+        "expression": { "$ref": "#/$defs/MappingExpression" },
+        "codecVersion": { "const": "pk1" }
+      },
+      "required": ["objectTypeRevisionId", "expression", "codecVersion"]
+    },
+    "MappingQualityRules": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "primaryKeyNullMaximumCount": { "const": 0 },
+        "primaryKeyDuplicateMaximumCount": { "const": 0 },
+        "requiredPropertyFailureMaximumCount": { "const": 0 },
+        "requiredLinkDanglingMaximumCount": { "const": 0 },
+        "optionalPropertyFailureMaximumBasisPoints": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "optionalLinkDanglingMaximumBasisPoints": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "rowCountChangeConfirmationBasisPoints": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "optionalFailureDisposition": { "const": "reject_row" }
+      },
+      "required": [
+        "primaryKeyNullMaximumCount",
+        "primaryKeyDuplicateMaximumCount",
+        "requiredPropertyFailureMaximumCount",
+        "requiredLinkDanglingMaximumCount",
+        "optionalPropertyFailureMaximumBasisPoints",
+        "optionalLinkDanglingMaximumBasisPoints",
+        "rowCountChangeConfirmationBasisPoints",
+        "optionalFailureDisposition"
+      ]
+    },
+    "SnapshotFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fileId": { "$ref": "#/$defs/OntosId" },
+        "managedArtifactId": { "$ref": "#/$defs/OntosId" },
+        "ordinal": { "type": "integer", "minimum": 0, "maximum": 1023 },
+        "contentDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "byteCount": { "type": "integer", "minimum": 0 },
+        "rowCount": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "fileId",
+        "managedArtifactId",
+        "ordinal",
+        "contentDigest",
+        "byteCount",
+        "rowCount"
+      ]
+    },
+    "SnapshotGroupMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memberKey": { "$ref": "#/$defs/MemberKey" },
+        "memberKind": { "type": "string", "enum": ["object", "link"] },
+        "snapshotId": { "$ref": "#/$defs/OntosId" },
+        "targetRevisionId": { "$ref": "#/$defs/OntosId" }
+      },
+      "required": ["memberKey", "memberKind", "snapshotId", "targetRevisionId"]
+    },
+    "MaterializationCheckpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "attemptId": { "$ref": "#/$defs/OntosId" },
+        "fencingToken": { "$ref": "#/$defs/PositiveBigintText" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "stage": {
+          "type": "string",
+          "enum": [
+            "scan",
+            "map",
+            "validate",
+            "build_stage",
+            "build_index",
+            "ready_for_activation",
+            "catch_up",
+            "activate"
+          ]
+        },
+        "outputDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      },
+      "required": ["attemptId", "fencingToken", "sequence", "stage", "outputDigest"]
+    },
+    "MaterializationReasonCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "PRIMARY_KEY_NULL",
+            "PRIMARY_KEY_DUPLICATE",
+            "REQUIRED_PROPERTY_INVALID",
+            "OPTIONAL_PROPERTY_INVALID",
+            "REQUIRED_LINK_DANGLING",
+            "OPTIONAL_LINK_DANGLING",
+            "ROW_COUNT_CONFIRMATION_REQUIRED"
+          ]
+        },
+        "count": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["code", "count"]
+    },
+    "MaterializationErrorSample": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "PRIMARY_KEY_NULL",
+            "PRIMARY_KEY_DUPLICATE",
+            "REQUIRED_PROPERTY_INVALID",
+            "OPTIONAL_PROPERTY_INVALID",
+            "REQUIRED_LINK_DANGLING",
+            "OPTIONAL_LINK_DANGLING",
+            "ROW_COUNT_CONFIRMATION_REQUIRED"
+          ]
+        },
+        "fileId": { "$ref": "#/$defs/OntosId" },
+        "rowNumber": { "type": "integer", "minimum": 1 },
+        "fingerprint": { "$ref": "#/$defs/ArtifactDigest" }
+      },
+      "required": ["code", "fileId", "rowNumber", "fingerprint"]
+    },
+    "RuntimeMemberPlanEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memberKey": { "$ref": "#/$defs/MemberKey" },
+        "memberKind": { "type": "string", "enum": ["object", "link"] },
+        "targetResourceId": { "$ref": "#/$defs/OntosId" },
+        "targetRevisionId": { "$ref": "#/$defs/OntosId" },
+        "snapshotSchemaRevisionId": { "$ref": "#/$defs/OntosId" },
+        "mappingRevisionId": { "$ref": "#/$defs/OntosId" },
+        "snapshotGroupId": { "$ref": "#/$defs/OntosId" },
+        "indexPlanDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      },
+      "required": [
+        "memberKey",
+        "memberKind",
+        "targetResourceId",
+        "targetRevisionId",
+        "snapshotSchemaRevisionId",
+        "mappingRevisionId",
+        "snapshotGroupId",
+        "indexPlanDigest"
+      ]
+    },
+    "RuntimeActivationMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memberKey": { "$ref": "#/$defs/MemberKey" },
+        "generationId": { "$ref": "#/$defs/OntosId" },
+        "snapshotId": { "$ref": "#/$defs/OntosId" },
+        "snapshotGroupId": { "$ref": "#/$defs/OntosId" },
+        "groupVersion": { "type": "integer", "minimum": 1 },
+        "certificateId": { "$ref": "#/$defs/OntosId" }
+      },
+      "required": [
+        "memberKey",
+        "generationId",
+        "snapshotId",
+        "snapshotGroupId",
+        "groupVersion",
+        "certificateId"
+      ]
+    },
+    "SnapshotSchemaDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "snapshot-schema-v1" },
+        "format": { "const": "csv_utf8" },
+        "headerRow": { "const": true },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/SnapshotColumn" }
+        }
+      },
+      "required": ["schemaVersion", "contractVersion", "format", "headerRow", "columns"]
+    },
+    "MappingDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "mappingVersion": { "const": "mapping-v1" },
+        "targetKind": { "type": "string", "enum": ["object", "link"] },
+        "inputSchemaRevisionId": { "$ref": "#/$defs/OntosId" },
+        "targetResourceId": { "$ref": "#/$defs/OntosId" },
+        "targetRevisionId": { "$ref": "#/$defs/OntosId" },
+        "valueCodecVersion": { "const": "pk1" },
+        "propertyMappings": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/MappingProperty" }
+        },
+        "primaryKeyExpression": { "$ref": "#/$defs/MappingExpression" },
+        "sourceKeyMapping": { "$ref": "#/$defs/MappingKey" },
+        "targetKeyMapping": { "$ref": "#/$defs/MappingKey" },
+        "qualityRules": { "$ref": "#/$defs/MappingQualityRules" }
+      },
+      "required": [
+        "schemaVersion",
+        "mappingVersion",
+        "targetKind",
+        "inputSchemaRevisionId",
+        "targetResourceId",
+        "targetRevisionId",
+        "valueCodecVersion",
+        "propertyMappings",
+        "qualityRules"
+      ]
+    },
+    "DatasetSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "dataset-snapshot-v1" },
+        "snapshotId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "snapshotGroupId": { "$ref": "#/$defs/OntosId" },
+        "groupVersion": { "type": "integer", "minimum": 1 },
+        "targetMemberKey": { "$ref": "#/$defs/MemberKey" },
+        "targetRevisionId": { "$ref": "#/$defs/OntosId" },
+        "snapshotSchemaRevisionId": { "$ref": "#/$defs/OntosId" },
+        "mappingRevisionId": { "$ref": "#/$defs/OntosId" },
+        "runtimePlanDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "contentDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "byteCount": { "type": "integer", "minimum": 0 },
+        "rowCount": { "type": "integer", "minimum": 0 },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": { "$ref": "#/$defs/SnapshotFile" }
+        },
+        "previousSnapshotId": { "$ref": "#/$defs/OntosId" },
+        "state": {
+          "type": "string",
+          "enum": [
+            "registered",
+            "validated",
+            "materializing",
+            "ready",
+            "active",
+            "superseded",
+            "failed"
+          ]
+        },
+        "registeredAt": { "$ref": "#/$defs/CanonicalInstant" },
+        "snapshotDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "snapshotId",
+        "projectId",
+        "snapshotGroupId",
+        "groupVersion",
+        "targetMemberKey",
+        "targetRevisionId",
+        "snapshotSchemaRevisionId",
+        "mappingRevisionId",
+        "runtimePlanDigest",
+        "contentDigest",
+        "byteCount",
+        "rowCount",
+        "files",
+        "state",
+        "registeredAt",
+        "snapshotDigest"
+      ]
+    },
+    "SnapshotGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "snapshot-group-v1" },
+        "snapshotGroupId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "groupVersion": { "type": "integer", "minimum": 1 },
+        "state": {
+          "type": "string",
+          "enum": [
+            "registered",
+            "validated",
+            "materializing",
+            "ready",
+            "active",
+            "superseded",
+            "failed"
+          ]
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/SnapshotGroupMember" }
+        },
+        "groupDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "snapshotGroupId",
+        "projectId",
+        "groupVersion",
+        "state",
+        "members",
+        "groupDigest",
+        "createdAt"
+      ]
+    },
+    "MaterializationJob": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "materialization-job-v1" },
+        "jobId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "snapshotGroupId": { "$ref": "#/$defs/OntosId" },
+        "idempotencyKey": { "$ref": "#/$defs/IdempotencyKey" },
+        "inputDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "state": {
+          "type": "string",
+          "enum": ["queued", "running", "retry_wait", "succeeded", "dead_letter", "cancelled"]
+        },
+        "currentStage": {
+          "type": "string",
+          "enum": [
+            "scan",
+            "map",
+            "validate",
+            "build_stage",
+            "build_index",
+            "ready_for_activation",
+            "catch_up",
+            "activate"
+          ]
+        },
+        "attemptCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "checkpoint": { "$ref": "#/$defs/MaterializationCheckpoint" },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" },
+        "updatedAt": { "$ref": "#/$defs/CanonicalInstant" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "jobId",
+        "projectId",
+        "snapshotGroupId",
+        "idempotencyKey",
+        "inputDigest",
+        "state",
+        "attemptCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MaterializationReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "materialization-report-v1" },
+        "reportId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "snapshotGroupId": { "$ref": "#/$defs/OntosId" },
+        "jobId": { "$ref": "#/$defs/OntosId" },
+        "outcome": {
+          "type": "string",
+          "enum": ["passed", "awaiting_confirmation", "failed"]
+        },
+        "totalRows": { "type": "integer", "minimum": 0 },
+        "acceptedRows": { "type": "integer", "minimum": 0 },
+        "rejectedRows": { "type": "integer", "minimum": 0 },
+        "reasonCounts": {
+          "type": "array",
+          "maxItems": 7,
+          "items": { "$ref": "#/$defs/MaterializationReasonCount" }
+        },
+        "errorSamples": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/MaterializationErrorSample" }
+        },
+        "validatorVersion": { "$ref": "#/$defs/Version" },
+        "reportDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "reportId",
+        "projectId",
+        "snapshotGroupId",
+        "jobId",
+        "outcome",
+        "totalRows",
+        "acceptedRows",
+        "rejectedRows",
+        "reasonCounts",
+        "errorSamples",
+        "validatorVersion",
+        "reportDigest",
+        "createdAt"
+      ]
+    },
+    "Generation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "generation-v1" },
+        "generationId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "memberKey": { "$ref": "#/$defs/MemberKey" },
+        "targetRevisionId": { "$ref": "#/$defs/OntosId" },
+        "snapshotGroupId": { "$ref": "#/$defs/OntosId" },
+        "groupVersion": { "type": "integer", "minimum": 1 },
+        "snapshotSchemaRevisionId": { "$ref": "#/$defs/OntosId" },
+        "mappingRevisionId": { "$ref": "#/$defs/OntosId" },
+        "runtimePlanDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "indexPlanDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "reportDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "state": { "type": "string", "enum": ["building", "ready", "active", "retired", "failed"] },
+        "generationDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "generationId",
+        "projectId",
+        "memberKey",
+        "targetRevisionId",
+        "snapshotGroupId",
+        "groupVersion",
+        "snapshotSchemaRevisionId",
+        "mappingRevisionId",
+        "runtimePlanDigest",
+        "indexPlanDigest",
+        "reportDigest",
+        "state",
+        "generationDigest",
+        "createdAt"
+      ]
+    },
+    "RuntimeMemberPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "runtime-member-plan-v1" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "releaseId": { "$ref": "#/$defs/OntosId" },
+        "members": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/RuntimeMemberPlanEntry" }
+        },
+        "planDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "projectId",
+        "releaseId",
+        "members",
+        "planDigest"
+      ]
+    },
+    "RuntimeActivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "runtime-activation-v1" },
+        "activationId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "releaseId": { "$ref": "#/$defs/OntosId" },
+        "runtimePlanDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "state": { "type": "string", "enum": ["building", "ready", "active", "retired", "failed"] },
+        "members": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/RuntimeActivationMember" }
+        },
+        "activationDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "activationId",
+        "projectId",
+        "releaseId",
+        "runtimePlanDigest",
+        "state",
+        "members",
+        "activationDigest",
+        "createdAt"
+      ]
+    },
+    "CompatibilityCertificate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "generation-compatibility-v1" },
+        "issuer": { "const": "materialization-compatibility-verifier" },
+        "certificateId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "generationId": { "$ref": "#/$defs/OntosId" },
+        "generationDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "targetReleaseId": { "$ref": "#/$defs/OntosId" },
+        "targetMemberKey": { "$ref": "#/$defs/MemberKey" },
+        "targetRevisionId": { "$ref": "#/$defs/OntosId" },
+        "snapshotGroupId": { "$ref": "#/$defs/OntosId" },
+        "groupVersion": { "type": "integer", "minimum": 1 },
+        "snapshotSchemaRevisionId": { "$ref": "#/$defs/OntosId" },
+        "snapshotSchemaDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "mappingRevisionId": { "$ref": "#/$defs/OntosId" },
+        "mappingDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "indexPlanDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "runtimePlanDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "decision": { "type": "string", "enum": ["exact_pin", "projection_equivalent"] },
+        "validatorVersion": { "$ref": "#/$defs/Version" },
+        "evidenceDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "issuedAt": { "$ref": "#/$defs/CanonicalInstant" },
+        "certificateDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "issuer",
+        "certificateId",
+        "projectId",
+        "generationId",
+        "generationDigest",
+        "targetReleaseId",
+        "targetMemberKey",
+        "targetRevisionId",
+        "snapshotGroupId",
+        "groupVersion",
+        "snapshotSchemaRevisionId",
+        "snapshotSchemaDigest",
+        "mappingRevisionId",
+        "mappingDigest",
+        "indexPlanDigest",
+        "runtimePlanDigest",
+        "decision",
+        "validatorVersion",
+        "evidenceDigest",
+        "issuedAt",
+        "certificateDigest"
+      ]
+    },
+    "IndexCapacity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "index-capacity-v1" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "runtimePlanDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "indexPlanDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "sourceForecastDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "measurementDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "measuredBytes": { "type": "integer", "minimum": 0 },
+        "reservedBytes": { "type": "integer", "minimum": 0 },
+        "projectedPeakBytes": { "type": "integer", "minimum": 0 },
+        "hardLimitBytes": { "type": "integer", "minimum": 0 },
+        "inventoryRevision": { "$ref": "#/$defs/PositiveBigintText" },
+        "admission": { "type": "string", "enum": ["accepted", "approval_required", "rejected"] },
+        "approvalDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "capacityDigest": { "$ref": "#/$defs/ArtifactDigest" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "projectId",
+        "runtimePlanDigest",
+        "indexPlanDigest",
+        "sourceForecastDigest",
+        "measurementDigest",
+        "measuredBytes",
+        "reservedBytes",
+        "projectedPeakBytes",
+        "hardLimitBytes",
+        "inventoryRevision",
+        "admission",
+        "capacityDigest"
+      ]
+    },
+    "GcPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/$defs/SchemaVersion" },
+        "contractVersion": { "const": "gc-plan-v1" },
+        "gcPlanId": { "$ref": "#/$defs/OntosId" },
+        "projectId": { "$ref": "#/$defs/OntosId" },
+        "stateRevision": { "$ref": "#/$defs/PositiveBigintText" },
+        "inventoryRevision": { "$ref": "#/$defs/PositiveBigintText" },
+        "candidateGenerationIds": {
+          "type": "array",
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/OntosId" }
+        },
+        "candidateIndexDigests": {
+          "type": "array",
+          "maxItems": 10000,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/ArtifactDigest" }
+        },
+        "protectedRootDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "state": {
+          "type": "string",
+          "enum": ["planned", "committed", "stale", "failed", "cancelled"]
+        },
+        "planDigest": { "$ref": "#/$defs/ArtifactDigest" },
+        "createdAt": { "$ref": "#/$defs/CanonicalInstant" }
+      },
+      "required": [
+        "schemaVersion",
+        "contractVersion",
+        "gcPlanId",
+        "projectId",
+        "stateRevision",
+        "inventoryRevision",
+        "candidateGenerationIds",
+        "candidateIndexDigests",
+        "protectedRootDigest",
+        "state",
+        "planDigest",
+        "createdAt"
+      ]
+    }
+  }
+}

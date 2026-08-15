@@ -32,8 +32,8 @@ void test("Metadata catalog, schema, parsers, baseline and Golden Fixtures agree
     goldenCaseCount: 36,
     structuralRejectionCount: 7,
     semanticRejectionCount: 5,
-    activeResourceFamilyCount: 2,
-    deferredResourceFamilyCount: 8,
+    activeResourceFamilyCount: 4,
+    deferredResourceFamilyCount: 6,
     compatibilityFindingCount: 0,
   });
 });
@@ -123,8 +123,6 @@ void test("direct Resource API and Package expansion share one Resource Family R
 
   const expectedGates: Readonly<Record<string, string>> = {
     interface: "G2-05",
-    mapping: "G2-02",
-    snapshot_schema: "G2-02",
     policy: "G2-03",
     function_type: "G2-04",
     action_type: "G2-04",

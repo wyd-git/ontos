@@ -52,14 +52,16 @@ JSON Schema 可能接受一个结构合法但语义矛盾的对象，这不是 P
 
 `RESOURCE_FAMILY_REGISTRY` 是直接 Resource API 与 Package Expander 的共同事实来源；两个入口只做 Adapter 映射，最终都调用 `parsePublishableResourceContent`。
 
-| Family                                           | G2-01 状态 | 最早拥有 Gate | VALIDATED/READY 行为      |
-| ------------------------------------------------ | ---------- | ------------- | ------------------------- |
-| `object_type`、`link_type`                       | Active     | G2-01         | 使用已登记严格 Parser     |
-| `mapping`、`snapshot_schema`                     | Deferred   | G2-02         | `CAPABILITY_NOT_ACTIVE`   |
-| `policy`                                         | Deferred   | G2-03         | `CAPABILITY_NOT_ACTIVE`   |
-| `function_type`、`action_type`                   | Deferred   | G2-04         | `CAPABILITY_NOT_ACTIVE`   |
-| `interface`、`object_view`、`application_config` | Deferred   | G2-05         | `CAPABILITY_NOT_ACTIVE`   |
-| 未登记字符串                                     | Unknown    | 未定义        | `RESOURCE_FAMILY_UNKNOWN` |
+截至 G2-02-02，当前注册状态如下；Mapping/Snapshot 的专属规则见 [Materialization v1 合同治理](materialization-contract-governance.md)。
+
+| Family                                           | 当前状态 | 最早拥有 Gate | VALIDATED/READY 行为      |
+| ------------------------------------------------ | -------- | ------------- | ------------------------- |
+| `object_type`、`link_type`                       | Active   | G2-01         | 使用已登记严格 Parser     |
+| `mapping`、`snapshot_schema`                     | Active   | G2-02         | 使用已登记严格 Parser     |
+| `policy`                                         | Deferred | G2-03         | `CAPABILITY_NOT_ACTIVE`   |
+| `function_type`、`action_type`                   | Deferred | G2-04         | `CAPABILITY_NOT_ACTIVE`   |
+| `interface`、`object_view`、`application_config` | Deferred | G2-05         | `CAPABILITY_NOT_ACTIVE`   |
+| 未登记字符串                                     | Unknown  | 未定义        | `RESOURCE_FAMILY_UNKNOWN` |
 
 Package Manifest 可以登记 Deferred Entry 以产生预检报告，但 Package 内容不能绕过 Registry 进入 VALIDATED/READY。Property 是 Object Type 内嵌定义，不作为独立可发布 Family。
 
