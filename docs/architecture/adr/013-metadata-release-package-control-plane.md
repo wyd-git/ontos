@@ -1,7 +1,7 @@
 # ADR-013：Metadata、Release、Package 与管理授权控制面
 
 - 状态：Accepted for G2-01-01
-- 实现状态：DB-01、Project/RBAC、Resource Revision、Definition/Dependency/Compatibility Gate、Release Lifecycle 与 Package Lifecycle 已于 G2-01-03～09 落地；Admin HTTP/OIDC 仍 OPEN
+- 实现状态：G2-01-03～12 已完成 DB-01、Project/RBAC、Resource Revision、Definition/Dependency/Compatibility、Release/Package Lifecycle、Admin HTTP/OIDC、统一 Gate 与 clean-room 总验收；DB-02 Generation/Snapshot 仍由 G2-02 拥有
 - 日期：2026-08-14
 - Owner：Tech Lead / Database / Security
 - 决策范围：DB-01 候选表、不可变 Revision/Release/Package 状态、原子 Publish、零成员 Activation、管理 RBAC、锁顺序与向前恢复
