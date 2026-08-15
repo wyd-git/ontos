@@ -12,6 +12,7 @@ import {
   parseCompatibilityCertificate,
   parseDirectResourceContent,
   parseMappingDefinition,
+  parseMaterializationReport,
   parsePackageResourceContent,
   parseSnapshotSchemaDefinition,
 } from "../../packages/contracts/src/index.ts";
@@ -27,6 +28,8 @@ void test("Materialization catalog, schema, parsers, baseline and Golden Fixture
     stableOperationErrorCodeCount: 11,
     activeResourceFamilyCount: 4,
     deferredResourceFamilyCount: 6,
+    // The optional Link dangling policy is now frozen into the deployed v1
+    // reader/writer baseline, so the active schema has no outstanding drift.
     compatibilityFindingCount: 0,
   });
 });
@@ -73,6 +76,49 @@ void test("Mapping v1 is a bounded row AST and rejects unactivated or infrastruc
         ],
       }),
     "CONTRACT_UNKNOWN_FIELD",
+  );
+});
+
+void test("Link dangling policy is explicit, backwards compatible, and Object mappings reject it", async () => {
+  const fixture = await readGolden();
+  const link = record(structuredClone(goldenValue(fixture, "mapping-link-endpoint-keys")));
+  assert.equal(parseMappingDefinition(link).linkDanglingDisposition, undefined);
+  assert.equal(
+    parseMappingDefinition({ ...link, linkDanglingDisposition: "optional" })
+      .linkDanglingDisposition,
+    "optional",
+  );
+  assertContractError(
+    () => parseMappingDefinition({ ...link, linkDanglingDisposition: "silent_drop" }),
+    "CONTRACT_FORMAT_INVALID",
+  );
+
+  const object = record(structuredClone(goldenValue(fixture, "mapping-object-row-ast")));
+  assertContractError(
+    () => parseMappingDefinition({ ...object, linkDanglingDisposition: "optional" }),
+    "CONTRACT_FORMAT_INVALID",
+  );
+});
+
+void test("a configured optional quality threshold can produce a failed Report", () => {
+  assert.doesNotThrow(() =>
+    parseMaterializationReport({
+      schemaVersion: 1,
+      contractVersion: "materialization-report-v1",
+      reportId: "cccccccc-cccc-4ccc-8ccc-cccccccccccf",
+      projectId: "11111111-1111-4111-8111-111111111111",
+      snapshotGroupId: "22222222-2222-4222-8222-222222222222",
+      jobId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      outcome: "failed",
+      totalRows: 1,
+      acceptedRows: 0,
+      rejectedRows: 1,
+      reasonCounts: [{ code: "OPTIONAL_PROPERTY_INVALID", count: 1 }],
+      errorSamples: [],
+      validatorVersion: "materialization-quality-v1",
+      reportDigest: "sha256:abababababababababababababababababababababababababababababababab",
+      createdAt: "2026-08-15T00:00:00.000000Z",
+    }),
   );
 });
 

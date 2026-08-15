@@ -28,6 +28,7 @@ import {
 } from "@ontos/metadata-application";
 
 export * from "./base.ts";
+export * from "./quality.ts";
 
 export type MaterializationIngressErrorCode =
   | "ADMIN_REQUEST_INVALID"

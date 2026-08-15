@@ -153,6 +153,7 @@ void describe("deterministic Mapping compiler", () => {
     const plan = compileMapping(linkCompileInput(), digestCanonicalText);
     assert.equal(plan.targetKind, "link");
     if (plan.targetKind !== "link") return;
+    assert.equal(plan.linkDanglingDisposition, undefined);
     assert.deepEqual(
       {
         sourceResource: plan.sourceKey.objectTypeResourceId,
@@ -186,6 +187,20 @@ void describe("deterministic Mapping compiler", () => {
         ),
       "MAPPING_ENDPOINT_INVALID",
     );
+
+    const optional = { ...linkMapping, linkDanglingDisposition: "optional" as const };
+    const optionalPlan = compileMapping(
+      linkCompileInput({
+        mapping: optional,
+        mappingRevisionDigest: definitionDigest(optional),
+      }),
+      digestCanonicalText,
+    );
+    assert.equal(optionalPlan.targetKind, "link");
+    if (optionalPlan.targetKind === "link") {
+      assert.equal(optionalPlan.linkDanglingDisposition, "optional");
+      assert.notEqual(optionalPlan.planDigest, plan.planDigest);
+    }
   });
 });
 
