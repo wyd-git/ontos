@@ -44,6 +44,11 @@ const gates: readonly GateDefinition[] = [
     command: "npm",
     arguments: ["run", "test:materialization-mapping:capacity"],
   },
+  {
+    name: "materialization-base-capacity",
+    command: "npm",
+    arguments: ["run", "test:materialization-base:capacity"],
+  },
   { name: "admin-api-unit", command: "npm", arguments: ["run", "test:admin-api"] },
   { name: "contract-golden-diff", command: "npm", arguments: ["run", "check:contracts"] },
   { name: "architecture-dependency", command: "npm", arguments: ["run", "check:architecture"] },

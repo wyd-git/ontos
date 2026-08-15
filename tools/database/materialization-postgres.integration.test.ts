@@ -7,8 +7,32 @@ import test from "node:test";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 
-import { canonicalizeMaterializationContractForDigest } from "@ontos/contracts";
+import {
+  canonicalizeContractForDigest,
+  canonicalizeMaterializationContractForDigest,
+  parseArtifactDigest,
+  parseOntosId,
+} from "@ontos/contracts";
+import {
+  MaterializationBaseError,
+  MaterializationBaseService,
+  type BaseBatchReceipt,
+} from "@ontos/materialization-application";
+import {
+  compileMapping,
+  executeManagedCsvMapping,
+  type MappingAcceptedLinkRow,
+  type MappingAcceptedObjectRow,
+} from "@ontos/materialization-domain";
+import { PostgresMaterializationBaseRepository } from "@ontos/materialization-postgres";
+import { canonicalizePrimaryKey } from "@ontos/value-codec";
 import pg from "pg";
+
+import {
+  definitionDigest,
+  objectMapping,
+  orderObjectType,
+} from "../materialization-mapping/fixtures.ts";
 
 import { isDatabaseMigrationError } from "./errors.ts";
 import { databaseMigrationDirectory, runDatabaseMigrations } from "./migrator.ts";
@@ -19,6 +43,18 @@ const postgresImage = resolvePostgresTestImage();
 const database = "ontos_db02_upgrade";
 const adminPassword = "local-only-db02-admin-secret";
 const runtimePassword = "local-only-db02-runtime-secret";
+const capacityMode = process.env.ONTOS_G2_02_06_CAPACITY === "1";
+const capacityMetrics = {
+  objectRows: capacityMode ? 10_000 : 2,
+  linkRows: capacityMode ? 100_000 : 1,
+  objectBatches: 0,
+  linkBatches: 0,
+  objectMilliseconds: 0,
+  linkMilliseconds: 0,
+  peakRssBytes: process.memoryUsage().rss,
+  walStart: "",
+  identityProbeRows: 0,
+};
 
 const ids = {
   principal: "10000000-0000-4000-8000-000000000001",
@@ -56,6 +92,8 @@ const ids = {
   worker2: "10000000-0000-4000-8000-000000001202",
   attempt1: "10000000-0000-4000-8000-000000001301",
   attempt2: "10000000-0000-4000-8000-000000001302",
+  baseAttempt1: "10000000-0000-4000-8000-000000001303",
+  baseAttempt2: "10000000-0000-4000-8000-000000001304",
   checkpoint: "10000000-0000-4000-8000-000000001401",
   ingressSession: "10000000-0000-4000-8000-000000001501",
   ingressExpiredSession: "10000000-0000-4000-8000-000000001502",
@@ -64,6 +102,20 @@ const ids = {
   ingressClaim: "10000000-0000-4000-8000-000000001701",
   ingressSnapshot: "10000000-0000-4000-8000-000000001801",
   ingressFile: "10000000-0000-4000-8000-000000001901",
+  linkResource: "10000000-0000-4000-8000-000000002001",
+  linkRevision: "10000000-0000-4000-8000-000000002002",
+  linkValidation: "10000000-0000-4000-8000-000000002003",
+  linkSourceDependency: "10000000-0000-4000-8000-000000002004",
+  linkTargetDependency: "10000000-0000-4000-8000-000000002005",
+  linkIndexPlan: "10000000-0000-4000-8000-000000002006",
+  linkSnapshotGroup: "10000000-0000-4000-8000-000000002007",
+  linkSnapshot: "10000000-0000-4000-8000-000000002008",
+  linkSnapshotFile: "10000000-0000-4000-8000-000000002009",
+  linkManagedArtifact: "10000000-0000-4000-8000-00000000200a",
+  linkJob: "10000000-0000-4000-8000-00000000200b",
+  linkReport: "10000000-0000-4000-8000-00000000200c",
+  linkGeneration: "10000000-0000-4000-8000-00000000200d",
+  linkAttempt: "10000000-0000-4000-8000-00000000200e",
 } as const;
 
 const digests = {
@@ -90,7 +142,7 @@ const digests = {
 
 void test(
   "G2-02-03 upgrades A0 safely and enforces DB-02 facts, fencing and least privilege",
-  { timeout: 240_000 },
+  { timeout: capacityMode ? 600_000 : 240_000 },
   async () => {
     const containerName = `ontos-db02-${process.pid}-${randomUUID().slice(0, 8)}`;
     const prefix6 = await migrationPrefixDirectory(6);
@@ -138,7 +190,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10],
+          [7, 8, 9, 10, 11],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -163,6 +215,9 @@ void test(
       await withClient(adminConfig, async (admin) => {
         await prepareRuntimeFacts(admin);
       });
+      await exercisePermanentIdentityAndObjectBase(adminConfig, worker1Config, worker2Config);
+      await withClient(adminConfig, prepareLinkRuntimeFacts);
+      await exerciseLinkBase(adminConfig, apiConfig, worker1Config);
       await exerciseManagedCsvIngressDatabase(apiConfig, worker1Config, opsConfig);
       await withClient(apiConfig, async (api) => {
         await issueCertificateAndPublishA1(api);
@@ -556,17 +611,6 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
       digests.generation,
     ],
   );
-  await client.query(
-    `UPDATE runtime.generations SET state = 'ready', changed_at = clock_timestamp()
-     WHERE project_id = $1 AND generation_id = $2`,
-    [ids.project, ids.generation],
-  );
-  await client.query(
-    `UPDATE ops.materialization_jobs
-     SET state = 'cancelled', updated_at = clock_timestamp()
-     WHERE project_id = $1 AND job_id = $2`,
-    [ids.project, ids.job],
-  );
   const empty = await client.query<{ readonly objects: number; readonly links: number }>(
     `SELECT
        (SELECT count(*)::integer FROM runtime.object_current WHERE generation_id = $1) AS objects,
@@ -574,6 +618,1127 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     [ids.generation],
   );
   assert.deepEqual(empty.rows[0], { objects: 0, links: 0 });
+}
+
+async function exercisePermanentIdentityAndObjectBase(
+  adminConfig: pg.ClientConfig,
+  worker1Config: pg.ClientConfig,
+  worker2Config: pg.ClientConfig,
+): Promise<void> {
+  capacityMetrics.identityProbeRows = capacityMode
+    ? 0
+    : await assertConcurrentIdentityResolution(adminConfig, worker1Config, worker2Config);
+  if (capacityMode) {
+    capacityMetrics.walStart = await withClient(adminConfig, async (admin) => {
+      const result = await admin.query<{ readonly lsn: string }>(
+        "SELECT pg_current_wal_lsn()::text AS lsn",
+      );
+      return result.rows[0]?.lsn ?? "";
+    });
+  }
+  const objectStartedAt = process.hrtime.bigint();
+  const firstClaim = await withClient(worker1Config, async (worker) => {
+    const result = await worker.query<{
+      readonly job_id: string;
+      readonly fencing_token: string;
+    }>(
+      `SELECT job_id, fencing_token::text
+       FROM ops.claim_materialization_job($1, $2, 300)`,
+      [ids.worker1, ids.baseAttempt1],
+    );
+    assert.equal(result.rows[0]?.job_id, ids.job);
+    return result.rows[0];
+  });
+  assert.ok(firstClaim);
+  const firstPool = new pg.Pool(worker1Config);
+  const rows = capacityMode
+    ? []
+    : Array.from({ length: capacityMetrics.objectRows }, (_, index) =>
+        baseObjectRow(index + 1, `order-${String(index + 1)}`),
+      );
+  samplePeakRss();
+  const firstReceipts = await (async (): Promise<readonly BaseBatchReceipt[]> => {
+    try {
+      const service = baseService(firstPool);
+      const attemptScope = {
+        projectId: ids.project,
+        jobId: ids.job,
+        attemptId: ids.baseAttempt1,
+        fencingToken: BigInt(firstClaim.fencing_token),
+      };
+      return capacityMode
+        ? await stageObjectUpload(service, attemptScope, capacityMetrics.objectRows)
+        : await stageObjectRows(service, attemptScope, rows);
+    } finally {
+      await firstPool.end();
+    }
+  })();
+
+  await withClient(adminConfig, async (admin) => {
+    const invisible = await admin.query<{ readonly count: number }>(
+      `SELECT count(*)::integer AS count FROM runtime.object_base
+       WHERE project_id = $1 AND generation_id = $2`,
+      [ids.project, ids.generation],
+    );
+    assert.equal(invisible.rows[0]?.count, 0);
+    await admin.query(
+      `UPDATE ops.materialization_jobs
+       SET lease_expires_at = clock_timestamp() - interval '1 second',
+           updated_at = clock_timestamp()
+       WHERE project_id = $1 AND job_id = $2`,
+      [ids.project, ids.job],
+    );
+  });
+
+  const secondClaim = await withClient(worker2Config, async (worker) => {
+    const result = await worker.query<{
+      readonly job_id: string;
+      readonly fencing_token: string;
+    }>(
+      `SELECT job_id, fencing_token::text
+       FROM ops.claim_materialization_job($1, $2, 300)`,
+      [ids.worker2, ids.baseAttempt2],
+    );
+    assert.equal(result.rows[0]?.job_id, ids.job);
+    return result.rows[0];
+  });
+  assert.ok(secondClaim);
+
+  const stalePool = new pg.Pool(worker1Config);
+  try {
+    await assert.rejects(
+      baseService(stalePool).promoteGenerationBase({
+        scope: {
+          projectId: ids.project,
+          jobId: ids.job,
+          attemptId: ids.baseAttempt1,
+          fencingToken: BigInt(firstClaim.fencing_token),
+        },
+        generationId: ids.generation,
+        expectedRowCount: capacityMetrics.objectRows,
+        batchReceipts: firstReceipts,
+      }),
+      (error: unknown) =>
+        error instanceof MaterializationBaseError &&
+        error.code === "MATERIALIZATION_ATTEMPT_FENCED",
+    );
+  } finally {
+    await stalePool.end();
+  }
+
+  const secondPool = new pg.Pool(worker2Config);
+  const secondReceipts = await (async (): Promise<readonly BaseBatchReceipt[]> => {
+    try {
+      const service = baseService(secondPool);
+      const attemptScope = {
+        projectId: ids.project,
+        jobId: ids.job,
+        attemptId: ids.baseAttempt2,
+        fencingToken: BigInt(secondClaim.fencing_token),
+      };
+      const receipts = capacityMode
+        ? await stageObjectUpload(service, attemptScope, capacityMetrics.objectRows)
+        : await stageObjectRows(service, attemptScope, rows);
+      assert.deepEqual(
+        receipts.map(({ batchDigest }) => batchDigest),
+        firstReceipts.map(({ batchDigest }) => batchDigest),
+      );
+      const promoted = await service.promoteGenerationBase({
+        scope: {
+          projectId: ids.project,
+          jobId: ids.job,
+          attemptId: ids.baseAttempt2,
+          fencingToken: BigInt(secondClaim.fencing_token),
+        },
+        generationId: ids.generation,
+        expectedRowCount: capacityMetrics.objectRows,
+        batchReceipts: receipts,
+      });
+      assert.equal(promoted.reused, false);
+      return receipts;
+    } finally {
+      await secondPool.end();
+    }
+  })();
+
+  const restartedPool = new pg.Pool(worker2Config);
+  try {
+    const replay = await baseService(restartedPool).promoteGenerationBase({
+      scope: {
+        projectId: ids.project,
+        jobId: ids.job,
+        attemptId: ids.baseAttempt2,
+        fencingToken: BigInt(secondClaim.fencing_token),
+      },
+      generationId: ids.generation,
+      expectedRowCount: capacityMetrics.objectRows,
+      batchReceipts: firstReceipts,
+    });
+    assert.equal(replay.reused, true);
+  } finally {
+    await restartedPool.end();
+  }
+
+  await withClient(adminConfig, async (admin) => {
+    const state = await admin.query<{
+      readonly identities: number;
+      readonly staged: number;
+      readonly base: number;
+      readonly distinct_rids: number;
+      readonly abandoned: number;
+    }>(
+      `SELECT
+         (SELECT count(*)::integer FROM runtime.object_identities
+           WHERE project_id = $1 AND object_type_resource_id = $2) AS identities,
+         (SELECT count(*)::integer FROM ops.object_base_staging
+           WHERE project_id = $1 AND generation_id = $3) AS staged,
+         (SELECT count(*)::integer FROM runtime.object_base
+           WHERE project_id = $1 AND generation_id = $3) AS base,
+         (SELECT count(DISTINCT object_rid)::integer FROM ops.object_base_staging
+           WHERE project_id = $1 AND generation_id = $3) AS distinct_rids,
+         (SELECT count(*)::integer FROM ops.materialization_attempts
+           WHERE project_id = $1 AND job_id = $4 AND state = 'abandoned') AS abandoned`,
+      [ids.project, ids.objectResource, ids.generation, ids.job],
+    );
+    assert.deepEqual(state.rows[0], {
+      identities: capacityMetrics.objectRows + capacityMetrics.identityProbeRows,
+      staged: capacityMetrics.objectRows * 2,
+      base: capacityMetrics.objectRows,
+      distinct_rids: capacityMetrics.objectRows,
+      abandoned: 1,
+    });
+    await admin.query(
+      `UPDATE ops.materialization_attempts
+       SET state = 'completed', finished_at = clock_timestamp(), result_code = 'BASE_PROMOTED'
+       WHERE project_id = $1 AND attempt_id = $2 AND state = 'leased'`,
+      [ids.project, ids.baseAttempt2],
+    );
+    await admin.query(
+      `UPDATE ops.materialization_jobs
+       SET state = 'succeeded', lease_owner_id = NULL, lease_expires_at = NULL,
+           result_code = 'BASE_PROMOTED', updated_at = clock_timestamp()
+       WHERE project_id = $1 AND job_id = $2`,
+      [ids.project, ids.job],
+    );
+    await admin.query(
+      `UPDATE runtime.generations SET state = 'ready', changed_at = clock_timestamp()
+       WHERE project_id = $1 AND generation_id = $2`,
+      [ids.project, ids.generation],
+    );
+  });
+  capacityMetrics.objectBatches = secondReceipts.length;
+  capacityMetrics.objectMilliseconds = elapsedMilliseconds(objectStartedAt);
+  samplePeakRss();
+}
+
+async function assertConcurrentIdentityResolution(
+  adminConfig: pg.ClientConfig,
+  worker1Config: pg.ClientConfig,
+  worker2Config: pg.ClientConfig,
+): Promise<number> {
+  const first = new pg.Client(worker1Config);
+  const second = new pg.Client(worker2Config);
+  await Promise.all([first.connect(), second.connect()]);
+  const canonicalPrimaryKey = canonicalizePrimaryKey(["order-concurrent"], {
+    components: [{ type: "string", caseSensitive: false }],
+  });
+  const resolveSql = `SELECT ordinal, object_rid::text AS object_rid
+                        FROM runtime.resolve_or_create_object_identities($1, $2::jsonb)`;
+  const candidates = () =>
+    JSON.stringify([
+      {
+        ordinal: 0,
+        objectTypeResourceId: ids.objectResource,
+        canonicalPrimaryKey,
+        candidateObjectRid: randomUUID(),
+      },
+    ]);
+  let committed = false;
+  try {
+    await first.query("BEGIN");
+    const firstResolution = await first.query<{ readonly object_rid: string }>(resolveSql, [
+      ids.project,
+      candidates(),
+    ]);
+    const concurrent = second
+      .query<{ readonly object_rid: string }>(resolveSql, [ids.project, candidates()])
+      .then(
+        (value) => ({ ok: true as const, value }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+    await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 25));
+    await first.query("COMMIT");
+    committed = true;
+    const secondOutcome = await concurrent;
+    if (!secondOutcome.ok) throw secondOutcome.error;
+    assert.equal(firstResolution.rows[0]?.object_rid, secondOutcome.value.rows[0]?.object_rid);
+    const count = await withClient(adminConfig, async (admin) =>
+      admin.query<{ readonly count: number }>(
+        `SELECT count(*)::integer AS count
+           FROM runtime.object_identities
+          WHERE project_id = $1 AND object_type_resource_id = $2
+            AND canonical_primary_key = $3`,
+        [ids.project, ids.objectResource, canonicalPrimaryKey],
+      ),
+    );
+    assert.equal(count.rows[0]?.count, 1);
+    return 1;
+  } finally {
+    if (!committed) await first.query("ROLLBACK").catch(() => undefined);
+    await Promise.all([first.end(), second.end()]);
+  }
+}
+
+async function prepareLinkRuntimeFacts(client: pg.Client): Promise<void> {
+  const linkDefinition = {
+    schemaVersion: 1,
+    apiName: "OrderRelation",
+    displayName: "Order Relation",
+    description: "DB-02 permanent Link Base fixture.",
+    source: {
+      objectTypeRevisionId: ids.objectRevision,
+      apiName: "sourceOrder",
+      displayName: "Source Order",
+    },
+    target: {
+      objectTypeRevisionId: ids.objectRevision,
+      apiName: "targetOrder",
+      displayName: "Target Order",
+    },
+    cardinality: "many_to_many",
+    sourceKind: "base",
+    deletionBehavior: "restrict",
+    actionCreateAllowed: false,
+    actionDeleteAllowed: false,
+  } as const;
+  const linkDefinitionDigest = sha256Digest(canonicalizeContractForDigest(linkDefinition));
+  await client.query(
+    `INSERT INTO meta.resources
+       (resource_id, project_id, namespace, api_name, family)
+     VALUES ($1, $2, 'db02.core', 'OrderRelation', 'link_type')`,
+    [ids.linkResource, ids.project],
+  );
+  await client.query(
+    `INSERT INTO meta.resource_revisions
+       (revision_id, resource_id, revision_number, family, content_digest,
+        content, created_by_principal_id)
+     VALUES ($1, $2, 1, 'link_type', $3, $4::jsonb, $5)`,
+    [
+      ids.linkRevision,
+      ids.linkResource,
+      linkDefinitionDigest,
+      JSON.stringify(linkDefinition),
+      ids.principal,
+    ],
+  );
+  await client.query(
+    `INSERT INTO meta.resource_dependencies
+       (dependency_id, source_revision_id, target_revision_id, dependency_type, source_path)
+     VALUES
+       ($1, $3, $4, 'link_source', '/source/objectTypeRevisionId'),
+       ($2, $3, $4, 'link_target', '/target/objectTypeRevisionId')`,
+    [ids.linkSourceDependency, ids.linkTargetDependency, ids.linkRevision, ids.objectRevision],
+  );
+  await client.query(
+    `INSERT INTO meta.validation_reports
+       (report_id, subject_type, subject_id, resource_revision_id,
+        subject_digest, validation_context_digest, validator_version, valid, issues)
+     VALUES ($1, 'resource_revision', $2, $2, $3, $3,
+             'metadata-g2-01-v1', TRUE, '[]'::jsonb)`,
+    [ids.linkValidation, ids.linkRevision, linkDefinitionDigest],
+  );
+  for (const state of ["validated", "published"] as const) {
+    await client.query(
+      `UPDATE meta.resource_revisions
+       SET state = $2, changed_at = clock_timestamp() WHERE revision_id = $1`,
+      [ids.linkRevision, state],
+    );
+  }
+
+  const indexDigest = sha256Digest("link-index-plan");
+  const groupDigest = sha256Digest("link-snapshot-group");
+  const contentDigest = sha256Digest("link-snapshot-content");
+  const snapshotDigest = sha256Digest("link-snapshot");
+  const runtimePlanDigest = sha256Digest("link-runtime-plan");
+  const jobDigest = sha256Digest("link-job");
+  const reportDigest = sha256Digest("link-report");
+  const generationDigest = sha256Digest("link-generation");
+  await client.query(
+    `INSERT INTO runtime.index_plans
+       (project_id, index_plan_id, target_resource_id, target_revision_id,
+        plan_digest, entry_count, compiler_version)
+     VALUES ($1, $2, $3, $4, $5, 0, 'index-plan-g2-02-v1')`,
+    [ids.project, ids.linkIndexPlan, ids.linkResource, ids.linkRevision, indexDigest],
+  );
+  await client.query(
+    `INSERT INTO runtime.snapshot_groups
+       (project_id, snapshot_group_id, group_key)
+     VALUES ($1, $2, 'order-links')`,
+    [ids.project, ids.linkSnapshotGroup],
+  );
+  await client.query("BEGIN");
+  await client.query(
+    `INSERT INTO runtime.snapshot_group_versions
+       (project_id, snapshot_group_id, group_version, member_count, group_digest)
+     VALUES ($1, $2, 1, 1, $3)`,
+    [ids.project, ids.linkSnapshotGroup, groupDigest],
+  );
+  await client.query(
+    `INSERT INTO runtime.dataset_snapshots (
+       project_id, snapshot_id, snapshot_group_id, group_version,
+       member_key, member_kind, target_resource_id, target_revision_id,
+       snapshot_schema_resource_id, snapshot_schema_revision_id,
+       mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+       content_digest, byte_count, row_count, file_count, snapshot_digest
+     ) VALUES (
+       $1, $2, $3, 1, 'link:OrderRelation', 'link', $4, $5, $6, $7, $8, $9,
+       $10, $11, 64, 2, 1, $12
+     )`,
+    [
+      ids.project,
+      ids.linkSnapshot,
+      ids.linkSnapshotGroup,
+      ids.linkResource,
+      ids.linkRevision,
+      ids.schemaResource,
+      ids.schemaRevision,
+      ids.mappingResource,
+      ids.mappingRevision,
+      runtimePlanDigest,
+      contentDigest,
+      snapshotDigest,
+    ],
+  );
+  await client.query(
+    `INSERT INTO runtime.snapshot_files (
+       project_id, snapshot_id, file_id, managed_artifact_id, object_version,
+       ordinal, content_digest, byte_count, row_count, source_label, scan_status
+     ) VALUES ($1, $2, $3, $4, 'link-version-1', 0, $5, 64, 2,
+               'DB-02 Link Base fixture', 'complete')`,
+    [ids.project, ids.linkSnapshot, ids.linkSnapshotFile, ids.linkManagedArtifact, contentDigest],
+  );
+  await client.query(
+    `INSERT INTO runtime.snapshot_group_members (
+       project_id, snapshot_group_id, group_version, member_key, member_kind,
+       snapshot_id, target_resource_id, target_revision_id
+     ) VALUES ($1, $2, 1, 'link:OrderRelation', 'link', $3, $4, $5)`,
+    [ids.project, ids.linkSnapshotGroup, ids.linkSnapshot, ids.linkResource, ids.linkRevision],
+  );
+  await client.query("COMMIT");
+  await client.query(
+    `INSERT INTO ops.materialization_jobs
+       (project_id, job_id, snapshot_group_id, group_version, idempotency_key, input_digest)
+     VALUES ($1, $2, $3, 1, 'db02-link-base-job-0001', $4)`,
+    [ids.project, ids.linkJob, ids.linkSnapshotGroup, jobDigest],
+  );
+  await client.query(
+    `INSERT INTO runtime.materialization_reports (
+       project_id, report_id, snapshot_group_id, group_version, job_id, outcome,
+       total_rows, accepted_rows, rejected_rows, validator_version, report_digest
+     ) VALUES ($1, $2, $3, 1, $4, 'passed', 1, 1, 0,
+               'materialization-g2-02-v1', $5)`,
+    [ids.project, ids.linkReport, ids.linkSnapshotGroup, ids.linkJob, reportDigest],
+  );
+  await client.query(
+    `INSERT INTO runtime.generations (
+       project_id, generation_id, member_key, member_kind,
+       target_resource_id, target_revision_id, snapshot_id, snapshot_group_id, group_version,
+       snapshot_schema_resource_id, snapshot_schema_revision_id,
+       mapping_resource_id, mapping_revision_id, runtime_plan_digest, index_plan_digest,
+       report_id, report_digest, generation_digest
+     ) VALUES (
+       $1, $2, 'link:OrderRelation', 'link', $3, $4, $5, $6, 1,
+       $7, $8, $9, $10, $11, $12, $13, $14, $15
+     )`,
+    [
+      ids.project,
+      ids.linkGeneration,
+      ids.linkResource,
+      ids.linkRevision,
+      ids.linkSnapshot,
+      ids.linkSnapshotGroup,
+      ids.schemaResource,
+      ids.schemaRevision,
+      ids.mappingResource,
+      ids.mappingRevision,
+      runtimePlanDigest,
+      indexDigest,
+      ids.linkReport,
+      reportDigest,
+      generationDigest,
+    ],
+  );
+}
+
+async function exerciseLinkBase(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+): Promise<void> {
+  const linkStartedAt = process.hrtime.bigint();
+  const claim = await withClient(workerConfig, async (worker) => {
+    const result = await worker.query<{ readonly fencing_token: string }>(
+      `SELECT fencing_token::text
+       FROM ops.claim_materialization_job($1, $2, 300)`,
+      [ids.worker1, ids.linkAttempt],
+    );
+    return result.rows[0];
+  });
+  assert.ok(claim);
+  const pool = new pg.Pool(workerConfig);
+  const batchReceipts = await (async (): Promise<readonly BaseBatchReceipt[]> => {
+    try {
+      const service = baseService(pool);
+      await assert.rejects(
+        service.stageLinkBatch({
+          scope: linkScope(BigInt(claim.fencing_token)),
+          generation: linkGenerationBinding(),
+          batchSequence: 1,
+          rows: [baseLinkRow(1, "order-1", "order-2", true)],
+        }),
+        (error: unknown) =>
+          error instanceof MaterializationBaseError && error.code === "LINK_ENDPOINT_TYPE_INVALID",
+      );
+
+      const dangling = await service.stageLinkBatch({
+        scope: linkScope(BigInt(claim.fencing_token)),
+        generation: linkGenerationBinding(),
+        batchSequence: 1,
+        rows: [baseLinkRow(1, "order-1", "missing-order")],
+      });
+      assert.equal(dangling.stagedRowCount, 0);
+      assert.deepEqual(dangling.dangling[0]?.missingEndpoints, ["target"]);
+
+      const linked = capacityMode
+        ? await stageLinkUpload(
+            service,
+            linkScope(BigInt(claim.fencing_token)),
+            2,
+            capacityMetrics.linkRows,
+          )
+        : await stageLinkRows(
+            service,
+            linkScope(BigInt(claim.fencing_token)),
+            2,
+            capacityMetrics.linkRows,
+          );
+      const receipts = [dangling, ...linked];
+      const promoted = await service.promoteGenerationBase({
+        scope: linkScope(BigInt(claim.fencing_token)),
+        generationId: ids.linkGeneration,
+        expectedRowCount: capacityMetrics.linkRows,
+        batchReceipts: receipts,
+      });
+      assert.equal(promoted.rowCount, capacityMetrics.linkRows);
+      return receipts;
+    } finally {
+      await pool.end();
+    }
+  })();
+
+  const digestBeforeRestart = await withClient(adminConfig, baseContentDigest);
+  const restartedWorkerPool = new pg.Pool(workerConfig);
+  try {
+    const replay = await baseService(restartedWorkerPool).promoteGenerationBase({
+      scope: linkScope(BigInt(claim.fencing_token)),
+      generationId: ids.linkGeneration,
+      expectedRowCount: capacityMetrics.linkRows,
+      batchReceipts,
+    });
+    assert.equal(replay.reused, true);
+  } finally {
+    await restartedWorkerPool.end();
+  }
+  const firstApiPool = new pg.Pool(apiConfig);
+  const beforeApiRestart = await firstApiPool.query<{ readonly generation_digest: string }>(
+    `SELECT generation_digest FROM runtime.generations
+     WHERE project_id = $1 AND generation_id = $2`,
+    [ids.project, ids.linkGeneration],
+  );
+  await firstApiPool.end();
+  const restartedApiPool = new pg.Pool(apiConfig);
+  const afterApiRestart = await restartedApiPool.query<{ readonly generation_digest: string }>(
+    `SELECT generation_digest FROM runtime.generations
+     WHERE project_id = $1 AND generation_id = $2`,
+    [ids.project, ids.linkGeneration],
+  );
+  await restartedApiPool.end();
+  assert.deepEqual(afterApiRestart.rows, beforeApiRestart.rows);
+  assert.equal(await withClient(adminConfig, baseContentDigest), digestBeforeRestart);
+
+  await withClient(adminConfig, async (admin) => {
+    const state = await admin.query<{
+      readonly links: number;
+      readonly source_type: string;
+      readonly target_type: string;
+      readonly identities: number;
+    }>(
+      `SELECT
+         (SELECT count(*)::integer FROM runtime.link_base
+           WHERE project_id = $1 AND generation_id = $2) AS links,
+         min(source_object_type_resource_id::text) AS source_type,
+         min(target_object_type_resource_id::text) AS target_type,
+         (SELECT count(*)::integer FROM runtime.object_identities
+           WHERE project_id = $1) AS identities
+       FROM runtime.link_base
+       WHERE project_id = $1 AND generation_id = $2`,
+      [ids.project, ids.linkGeneration],
+    );
+    assert.deepEqual(state.rows[0], {
+      links: capacityMetrics.linkRows,
+      source_type: ids.objectResource,
+      target_type: ids.objectResource,
+      identities: capacityMetrics.objectRows + capacityMetrics.identityProbeRows,
+    });
+    await admin.query(
+      `UPDATE ops.materialization_attempts
+       SET state = 'completed', finished_at = clock_timestamp(), result_code = 'BASE_PROMOTED'
+       WHERE project_id = $1 AND attempt_id = $2 AND state = 'leased'`,
+      [ids.project, ids.linkAttempt],
+    );
+    await admin.query(
+      `UPDATE ops.materialization_jobs
+       SET state = 'succeeded', lease_owner_id = NULL, lease_expires_at = NULL,
+           result_code = 'BASE_PROMOTED', updated_at = clock_timestamp()
+       WHERE project_id = $1 AND job_id = $2`,
+      [ids.project, ids.linkJob],
+    );
+    await admin.query(
+      `UPDATE runtime.generations SET state = 'ready', changed_at = clock_timestamp()
+       WHERE project_id = $1 AND generation_id = $2`,
+      [ids.project, ids.linkGeneration],
+    );
+  });
+  capacityMetrics.linkBatches = Math.ceil(capacityMetrics.linkRows / 5_000);
+  capacityMetrics.linkMilliseconds = elapsedMilliseconds(linkStartedAt);
+  samplePeakRss();
+  if (capacityMode) await reportBaseCapacity(adminConfig, digestBeforeRestart);
+}
+
+async function stageLinkRows(
+  service: MaterializationBaseService,
+  scope: ReturnType<typeof linkScope>,
+  firstBatchSequence: number,
+  rowCount: number,
+): Promise<readonly BaseBatchReceipt[]> {
+  const receipts: BaseBatchReceipt[] = [];
+  const batchSize = 5_000;
+  for (let offset = 0; offset < rowCount; offset += batchSize) {
+    const count = Math.min(batchSize, rowCount - offset);
+    const rows = Array.from({ length: count }, (_, localIndex) => {
+      const index = offset + localIndex;
+      const source = (index % capacityMetrics.objectRows) + 1;
+      const relationOffset = Math.floor(index / capacityMetrics.objectRows) + 1;
+      const target = ((source - 1 + relationOffset) % capacityMetrics.objectRows) + 1;
+      return baseLinkRow(index + 2, `order-${String(source)}`, `order-${String(target)}`);
+    });
+    receipts.push(
+      await service.stageLinkBatch({
+        scope,
+        generation: linkGenerationBinding(),
+        batchSequence: firstBatchSequence + receipts.length,
+        rows,
+      }),
+    );
+    samplePeakRss();
+  }
+  return Object.freeze(receipts);
+}
+
+async function stageObjectUpload(
+  service: MaterializationBaseService,
+  scope: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly attemptId: string;
+    readonly fencingToken: bigint;
+  },
+  rowCount: number,
+): Promise<readonly BaseBatchReceipt[]> {
+  const receipts: BaseBatchReceipt[] = [];
+  const batch: MappingAcceptedObjectRow[] = [];
+  const flush = async (): Promise<void> => {
+    if (batch.length === 0) return;
+    receipts.push(
+      await service.stageObjectBatch({
+        scope,
+        generation: baseGenerationBinding(),
+        batchSequence: receipts.length + 1,
+        rows: batch.splice(0, batch.length),
+      }),
+    );
+    samplePeakRss();
+  };
+  const result = await executeManagedCsvMapping({
+    plan: capacityObjectMappingPlan(),
+    sourceContentDigest: capacityObjectCsvDigest(rowCount),
+    source: capacityObjectCsv(rowCount),
+    digestCanonicalText: sha256Artifact,
+    sink: {
+      async write(event) {
+        if (event.kind !== "object") throw new Error("capacity object mapping rejected a row");
+        batch.push(event);
+        if (batch.length === 5_000) await flush();
+      },
+    },
+  });
+  await flush();
+  assert.equal(result.acceptedRowCount, rowCount);
+  assert.equal(result.rejectedRowCount, 0);
+  return Object.freeze(receipts);
+}
+
+async function stageLinkUpload(
+  service: MaterializationBaseService,
+  scope: ReturnType<typeof linkScope>,
+  firstBatchSequence: number,
+  rowCount: number,
+): Promise<readonly BaseBatchReceipt[]> {
+  const receipts: BaseBatchReceipt[] = [];
+  const batch: MappingAcceptedLinkRow[] = [];
+  const flush = async (): Promise<void> => {
+    if (batch.length === 0) return;
+    receipts.push(
+      await service.stageLinkBatch({
+        scope,
+        generation: linkGenerationBinding(),
+        batchSequence: firstBatchSequence + receipts.length,
+        rows: batch.splice(0, batch.length),
+      }),
+    );
+    samplePeakRss();
+  };
+  const result = await executeManagedCsvMapping({
+    plan: capacityLinkMappingPlan(),
+    sourceContentDigest: capacityLinkCsvDigest(rowCount),
+    source: capacityLinkCsv(rowCount),
+    digestCanonicalText: sha256Artifact,
+    sink: {
+      async write(event) {
+        if (event.kind !== "link") throw new Error("capacity Link mapping rejected a row");
+        batch.push(event);
+        if (batch.length === 5_000) await flush();
+      },
+    },
+  });
+  await flush();
+  assert.equal(result.acceptedRowCount, rowCount);
+  assert.equal(result.rejectedRowCount, 0);
+  return Object.freeze(receipts);
+}
+
+function capacityObjectMappingPlan() {
+  const schema = {
+    schemaVersion: 1,
+    contractVersion: "snapshot-schema-v1",
+    format: "csv_utf8",
+    headerRow: true,
+    columns: [
+      { ordinal: 0, columnApiName: "orderId", valueType: "string", required: true },
+      { ordinal: 1, columnApiName: "displayName", valueType: "string", required: true },
+    ],
+  } as const;
+  const mapping = {
+    schemaVersion: 1,
+    mappingVersion: "mapping-v1",
+    targetKind: "object",
+    inputSchemaRevisionId: ids.schemaRevision,
+    targetResourceId: ids.objectResource,
+    targetRevisionId: ids.objectRevision,
+    valueCodecVersion: "pk1",
+    propertyMappings: [
+      {
+        propertyApiName: "displayName",
+        required: true,
+        nullPolicy: "reject_row",
+        expression: { op: "column", columnApiName: "displayName" },
+      },
+    ],
+    primaryKeyExpression: { op: "column", columnApiName: "orderId" },
+    qualityRules: objectMapping.qualityRules,
+  } as const;
+  return compileMapping(
+    {
+      mappingRevisionId: ids.mappingRevision,
+      mappingRevisionDigest: definitionDigest(mapping),
+      mapping,
+      inputSchemaRevisionId: ids.schemaRevision,
+      inputSchemaDigest: definitionDigest(schema),
+      inputSchema: schema,
+      target: {
+        kind: "object",
+        resourceId: ids.objectResource,
+        revisionId: ids.objectRevision,
+        definitionDigest: definitionDigest(capacityOrderObjectType()),
+        definition: capacityOrderObjectType(),
+      },
+    },
+    sha256Artifact,
+  );
+}
+
+function capacityLinkMappingPlan() {
+  const schema = {
+    schemaVersion: 1,
+    contractVersion: "snapshot-schema-v1",
+    format: "csv_utf8",
+    headerRow: true,
+    columns: [
+      { ordinal: 0, columnApiName: "sourceOrderId", valueType: "string", required: true },
+      { ordinal: 1, columnApiName: "targetOrderId", valueType: "string", required: true },
+    ],
+  } as const;
+  const definition = {
+    schemaVersion: 1,
+    apiName: "OrderRelation",
+    displayName: "Order Relation",
+    description: "Capacity Link fixture.",
+    source: {
+      objectTypeRevisionId: ids.objectRevision,
+      apiName: "sourceOrder",
+      displayName: "Source Order",
+    },
+    target: {
+      objectTypeRevisionId: ids.objectRevision,
+      apiName: "targetOrder",
+      displayName: "Target Order",
+    },
+    cardinality: "many_to_many",
+    sourceKind: "base",
+    deletionBehavior: "restrict",
+    actionCreateAllowed: false,
+    actionDeleteAllowed: false,
+  } as const;
+  const mapping = {
+    schemaVersion: 1,
+    mappingVersion: "mapping-v1",
+    targetKind: "link",
+    inputSchemaRevisionId: ids.schemaRevision,
+    targetResourceId: ids.linkResource,
+    targetRevisionId: ids.linkRevision,
+    valueCodecVersion: "pk1",
+    propertyMappings: [],
+    sourceKeyMapping: {
+      objectTypeRevisionId: ids.objectRevision,
+      expression: { op: "column", columnApiName: "sourceOrderId" },
+      codecVersion: "pk1",
+    },
+    targetKeyMapping: {
+      objectTypeRevisionId: ids.objectRevision,
+      expression: { op: "column", columnApiName: "targetOrderId" },
+      codecVersion: "pk1",
+    },
+    qualityRules: objectMapping.qualityRules,
+  } as const;
+  return compileMapping(
+    {
+      mappingRevisionId: ids.mappingRevision,
+      mappingRevisionDigest: definitionDigest(mapping),
+      mapping,
+      inputSchemaRevisionId: ids.schemaRevision,
+      inputSchemaDigest: definitionDigest(schema),
+      inputSchema: schema,
+      target: {
+        kind: "link",
+        resourceId: ids.linkResource,
+        revisionId: ids.linkRevision,
+        definitionDigest: definitionDigest(definition),
+        definition,
+        sourceObject: {
+          resourceId: ids.objectResource,
+          revisionId: ids.objectRevision,
+          definitionDigest: definitionDigest(capacityOrderObjectType()),
+          definition: capacityOrderObjectType(),
+        },
+        targetObject: {
+          resourceId: ids.objectResource,
+          revisionId: ids.objectRevision,
+          definitionDigest: definitionDigest(capacityOrderObjectType()),
+          definition: capacityOrderObjectType(),
+        },
+      },
+    },
+    sha256Artifact,
+  );
+}
+
+async function* capacityObjectCsv(rowCount: number): AsyncIterable<Uint8Array> {
+  await Promise.resolve();
+  yield Buffer.from("orderId,displayName\n");
+  let chunk = "";
+  for (let index = 1; index <= rowCount; index += 1) {
+    chunk += `order-${String(index)},Order ${String(index)}\n`;
+    if (chunk.length >= 64 * 1024) {
+      yield Buffer.from(chunk);
+      chunk = "";
+    }
+  }
+  if (chunk.length > 0) yield Buffer.from(chunk);
+}
+
+async function* capacityLinkCsv(rowCount: number): AsyncIterable<Uint8Array> {
+  await Promise.resolve();
+  yield Buffer.from("sourceOrderId,targetOrderId\n");
+  let chunk = "";
+  for (let index = 0; index < rowCount; index += 1) {
+    const [source, target] = capacityLinkEndpoints(index);
+    chunk += `order-${String(source)},order-${String(target)}\n`;
+    if (chunk.length >= 64 * 1024) {
+      yield Buffer.from(chunk);
+      chunk = "";
+    }
+  }
+  if (chunk.length > 0) yield Buffer.from(chunk);
+}
+
+function capacityObjectCsvDigest(rowCount: number) {
+  const hash = createHash("sha256").update("orderId,displayName\n");
+  for (let index = 1; index <= rowCount; index += 1) {
+    hash.update(`order-${String(index)},Order ${String(index)}\n`);
+  }
+  return parseArtifactDigest(`sha256:${hash.digest("hex")}`);
+}
+
+function capacityOrderObjectType() {
+  return {
+    ...orderObjectType,
+    titlePropertyApiName: "displayName",
+    defaultSearchPropertyApiNames: ["displayName"],
+    properties: [
+      ...orderObjectType.properties,
+      {
+        schemaVersion: 1,
+        apiName: "displayName",
+        displayName: "Display Name",
+        description: "Capacity fixture business property.",
+        valueType: "string",
+        caseSensitive: true,
+        nullable: false,
+        writeMode: "source_only",
+        unique: false,
+        filterable: true,
+        sortable: true,
+        searchable: true,
+        classification: "internal",
+      },
+    ],
+  } as const;
+}
+
+function capacityLinkCsvDigest(rowCount: number) {
+  const hash = createHash("sha256").update("sourceOrderId,targetOrderId\n");
+  for (let index = 0; index < rowCount; index += 1) {
+    const [source, target] = capacityLinkEndpoints(index);
+    hash.update(`order-${String(source)},order-${String(target)}\n`);
+  }
+  return parseArtifactDigest(`sha256:${hash.digest("hex")}`);
+}
+
+function capacityLinkEndpoints(index: number): readonly [number, number] {
+  const source = (index % capacityMetrics.objectRows) + 1;
+  const relationOffset = Math.floor(index / capacityMetrics.objectRows) + 1;
+  const target = ((source - 1 + relationOffset) % capacityMetrics.objectRows) + 1;
+  return [source, target];
+}
+
+function sha256Artifact(value: string) {
+  return parseArtifactDigest(`sha256:${createHash("sha256").update(value).digest("hex")}`);
+}
+
+async function baseContentDigest(client: pg.Client | pg.Pool): Promise<string> {
+  const result = await client.query<{ readonly digest: string }>(
+    `SELECT 'sha256:' || encode(sha256(convert_to(
+       COALESCE((SELECT string_agg('o:' || object_rid::text || ':' || value_digest,
+                                  ',' ORDER BY object_rid)
+                 FROM runtime.object_base WHERE project_id = $1), '') || '|' ||
+       COALESCE((SELECT string_agg('l:' || link_rid::text || ':' || value_digest,
+                                  ',' ORDER BY link_rid)
+                 FROM runtime.link_base WHERE project_id = $1), ''),
+       'UTF8')), 'hex') AS digest`,
+    [ids.project],
+  );
+  return result.rows[0]?.digest ?? "";
+}
+
+async function reportBaseCapacity(
+  adminConfig: pg.ClientConfig,
+  contentDigest: string,
+): Promise<void> {
+  const storage = await withClient(adminConfig, async (admin) => {
+    const result = await admin.query<{
+      readonly wal_bytes: string;
+      readonly object_heap_bytes: string;
+      readonly object_index_bytes: string;
+      readonly link_heap_bytes: string;
+      readonly link_index_bytes: string;
+      readonly identity_heap_bytes: string;
+      readonly identity_index_bytes: string;
+      readonly staging_total_bytes: string;
+    }>(
+      `SELECT
+         pg_wal_lsn_diff(pg_current_wal_lsn(), $1::pg_lsn)::bigint::text AS wal_bytes,
+         pg_relation_size('runtime.object_base')::bigint::text AS object_heap_bytes,
+         pg_indexes_size('runtime.object_base')::bigint::text AS object_index_bytes,
+         pg_relation_size('runtime.link_base')::bigint::text AS link_heap_bytes,
+         pg_indexes_size('runtime.link_base')::bigint::text AS link_index_bytes,
+         pg_relation_size('runtime.object_identities')::bigint::text AS identity_heap_bytes,
+         pg_indexes_size('runtime.object_identities')::bigint::text AS identity_index_bytes,
+         (pg_total_relation_size('ops.object_base_staging') +
+          pg_total_relation_size('ops.link_base_staging'))::bigint::text AS staging_total_bytes`,
+      [capacityMetrics.walStart],
+    );
+    return result.rows[0];
+  });
+  assert.ok(storage);
+  const totalRows = capacityMetrics.objectRows + capacityMetrics.linkRows;
+  const totalMilliseconds = capacityMetrics.objectMilliseconds + capacityMetrics.linkMilliseconds;
+  process.stdout.write(
+    `CI_MATERIALIZATION_BASE_CAPACITY ${JSON.stringify({
+      objectRows: capacityMetrics.objectRows,
+      linkRows: capacityMetrics.linkRows,
+      objectBatches: capacityMetrics.objectBatches,
+      linkBatches: capacityMetrics.linkBatches,
+      objectMilliseconds: Math.round(capacityMetrics.objectMilliseconds),
+      linkMilliseconds: Math.round(capacityMetrics.linkMilliseconds),
+      rowsPerSecond: Math.round((totalRows * 1_000) / totalMilliseconds),
+      peakNodeRssBytes: capacityMetrics.peakRssBytes,
+      contentDigest,
+      workerRestartDigestStable: true,
+      apiRestartDigestStable: true,
+      ...storage,
+    })}\n`,
+  );
+}
+
+function linkScope(fencingToken: bigint) {
+  return Object.freeze({
+    projectId: ids.project,
+    jobId: ids.linkJob,
+    attemptId: ids.linkAttempt,
+    fencingToken,
+  });
+}
+
+function linkGenerationBinding() {
+  return Object.freeze({
+    generationId: ids.linkGeneration,
+    targetResourceId: ids.linkResource,
+    targetRevisionId: ids.linkRevision,
+    sourceSnapshotId: ids.linkSnapshot,
+    sourceFileId: ids.linkSnapshotFile,
+    mappingRevisionId: ids.mappingRevision,
+  });
+}
+
+function baseLinkRow(
+  rowNumber: number,
+  sourceIdentity: string,
+  targetIdentity: string,
+  wrongSourceType = false,
+) {
+  return Object.freeze({
+    kind: "link" as const,
+    rowNumber,
+    targetResourceId: parseOntosId(ids.linkResource),
+    targetRevisionId: parseOntosId(ids.linkRevision),
+    sourceLookup: Object.freeze({
+      objectTypeResourceId: parseOntosId(
+        wrongSourceType ? ids.mappingResource : ids.objectResource,
+      ),
+      objectTypeRevisionId: parseOntosId(
+        wrongSourceType ? ids.mappingRevision : ids.objectRevision,
+      ),
+      canonicalPrimaryKey: canonicalizePrimaryKey([sourceIdentity], {
+        components: [{ type: "string" as const, caseSensitive: capacityMode }],
+      }),
+      sourceColumnApiNames: Object.freeze(["sourceOrderId"]),
+    }),
+    targetLookup: Object.freeze({
+      objectTypeResourceId: parseOntosId(ids.objectResource),
+      objectTypeRevisionId: parseOntosId(ids.objectRevision),
+      canonicalPrimaryKey: canonicalizePrimaryKey([targetIdentity], {
+        components: [{ type: "string" as const, caseSensitive: capacityMode }],
+      }),
+      sourceColumnApiNames: Object.freeze(["targetOrderId"]),
+    }),
+  });
+}
+
+function baseService(pool: pg.Pool): MaterializationBaseService {
+  return new MaterializationBaseService({
+    repository: new PostgresMaterializationBaseRepository(pool),
+    crypto: {
+      randomId: randomUUID,
+      digestCanonicalText(value) {
+        return parseArtifactDigest(`sha256:${createHash("sha256").update(value).digest("hex")}`);
+      },
+    },
+  });
+}
+
+function baseGenerationBinding() {
+  return Object.freeze({
+    generationId: ids.generation,
+    targetResourceId: ids.objectResource,
+    targetRevisionId: ids.objectRevision,
+    sourceSnapshotId: ids.snapshot,
+    sourceFileId: ids.snapshotFile,
+    mappingRevisionId: ids.mappingRevision,
+  });
+}
+
+function baseObjectRow(rowNumber: number, identity: string) {
+  return Object.freeze({
+    kind: "object" as const,
+    rowNumber,
+    targetResourceId: parseOntosId(ids.objectResource),
+    targetRevisionId: parseOntosId(ids.objectRevision),
+    canonicalPrimaryKey: canonicalizePrimaryKey([identity], {
+      components: [{ type: "string" as const, caseSensitive: false }],
+    }),
+    properties: Object.freeze([
+      Object.freeze({
+        propertyApiName: "orderId",
+        valueType: "string" as const,
+        value: identity,
+        sourceColumnApiNames: Object.freeze(["orderId"]),
+      }),
+    ]),
+  });
+}
+
+async function stageObjectRows(
+  service: MaterializationBaseService,
+  scope: {
+    readonly projectId: string;
+    readonly jobId: string;
+    readonly attemptId: string;
+    readonly fencingToken: bigint;
+  },
+  rows: readonly ReturnType<typeof baseObjectRow>[],
+): Promise<readonly BaseBatchReceipt[]> {
+  const receipts: BaseBatchReceipt[] = [];
+  const batchSize = 5_000;
+  for (let offset = 0; offset < rows.length; offset += batchSize) {
+    receipts.push(
+      await service.stageObjectBatch({
+        scope,
+        generation: baseGenerationBinding(),
+        batchSequence: receipts.length + 1,
+        rows: rows.slice(offset, offset + batchSize),
+      }),
+    );
+    samplePeakRss();
+  }
+  return Object.freeze(receipts);
+}
+
+function samplePeakRss(): void {
+  capacityMetrics.peakRssBytes = Math.max(capacityMetrics.peakRssBytes, process.memoryUsage().rss);
+}
+
+function elapsedMilliseconds(startedAt: bigint): number {
+  return Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 }
 
 async function issueCertificateAndPublishA1(client: pg.Client): Promise<void> {
@@ -948,6 +2113,22 @@ async function assertRuntimePrivilegeMatrix(
   await withClient(apiConfig, async (api) => {
     await api.query("SELECT count(*) FROM meta.release_runtime_plans");
     await assertPgCode(api.query("DELETE FROM meta.release_runtime_plans"), "42501");
+    for (const statement of [
+      "SELECT count(*) FROM runtime.object_base",
+      "SELECT count(*) FROM runtime.link_base",
+      "SELECT count(*) FROM ops.object_base_staging",
+      "SELECT count(*) FROM ops.link_base_staging",
+      "UPDATE runtime.object_base SET properties = properties WHERE false",
+      "DELETE FROM runtime.object_base WHERE false",
+      "UPDATE runtime.link_base SET value_digest = value_digest WHERE false",
+      "DELETE FROM runtime.link_base WHERE false",
+    ]) {
+      await assertPgCode(api.query(statement), "42501");
+    }
+    await assertPgCode(
+      api.query("SELECT * FROM runtime.lookup_object_identities($1, '[]'::jsonb)", [ids.project]),
+      "42501",
+    );
     await assertPgCode(
       api.query(
         `INSERT INTO runtime.compatibility_certificates
@@ -960,6 +2141,10 @@ async function assertRuntimePrivilegeMatrix(
   });
   await withClient(workerConfig, async (worker) => {
     await worker.query("SELECT count(*) FROM runtime.generations");
+    await worker.query("SELECT count(*) FROM ops.materialization_generation_stages");
+    await worker.query("SELECT count(*) FROM ops.materialization_generation_stage_batches");
+    await worker.query("SELECT count(*) FROM ops.object_base_staging");
+    await worker.query("SELECT count(*) FROM ops.link_base_staging");
     await assertPgCode(
       worker.query(
         `INSERT INTO ops.materialization_staged_batches
@@ -980,6 +2165,18 @@ async function assertRuntimePrivilegeMatrix(
       ),
       "42501",
     );
+    for (const statement of [
+      "UPDATE ops.object_base_staging SET properties = properties WHERE false",
+      "DELETE FROM ops.object_base_staging WHERE false",
+      "UPDATE ops.link_base_staging SET value_digest = value_digest WHERE false",
+      "DELETE FROM ops.link_base_staging WHERE false",
+      "UPDATE runtime.object_base SET properties = properties WHERE false",
+      "DELETE FROM runtime.object_base WHERE false",
+      "UPDATE runtime.link_base SET value_digest = value_digest WHERE false",
+      "DELETE FROM runtime.link_base WHERE false",
+    ]) {
+      await assertPgCode(worker.query(statement), "42501");
+    }
     await assertPgCode(worker.query("DELETE FROM runtime.generations"), "42501");
     await assertPgCode(worker.query("SELECT * FROM runtime.snapshot_upload_sessions"), "42501");
     await assertCommonEscalationsDenied(worker);
@@ -990,6 +2187,24 @@ async function assertRuntimePrivilegeMatrix(
     await ops.query("SELECT count(*) FROM ops.snapshot_ingress_status");
     await assertPgCode(ops.query("SELECT * FROM ops.materialization_jobs"), "42501");
     await assertPgCode(ops.query("SELECT * FROM runtime.generations"), "42501");
+    for (const statement of [
+      "SELECT count(*) FROM runtime.object_base",
+      "SELECT count(*) FROM runtime.link_base",
+      "SELECT count(*) FROM ops.object_base_staging",
+      "SELECT count(*) FROM ops.link_base_staging",
+    ]) {
+      await assertPgCode(ops.query(statement), "42501");
+    }
+    await assertPgCode(
+      ops.query("SELECT * FROM ops.promote_materialization_base($1, $2, $3, 1, $4, 0, $5)", [
+        ids.project,
+        ids.linkJob,
+        ids.linkAttempt,
+        ids.linkGeneration,
+        digestOf("1"),
+      ]),
+      "42501",
+    );
     await assertCommonEscalationsDenied(ops);
   });
 }
@@ -1290,11 +2505,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 10);
+  assert.equal(left.applied.length + right.applied.length, 11);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 10)).length, 10);
+    assert.equal((await migrationLedger(client, 11)).length, 11);
   });
 }
 
@@ -1304,6 +2519,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
     [8, "runtime.object_identities"],
     [9, "ops.materialization_jobs"],
     [10, "runtime.snapshot_upload_sessions"],
+    [11, "ops.materialization_generation_stages"],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -1353,6 +2569,10 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     "ops.materialization_checkpoints",
     "ops.materialization_jobs",
     "ops.materialization_staged_batches",
+    "ops.materialization_generation_stages",
+    "ops.materialization_generation_stage_batches",
+    "ops.object_base_staging",
+    "ops.link_base_staging",
     "runtime.compatibility_certificates",
     "runtime.dataset_snapshots",
     "runtime.generations",
@@ -1463,6 +2683,10 @@ function digestOf(character: string): string {
   return `sha256:${character.repeat(64)}`;
 }
 
+function sha256Digest(value: string): string {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
 async function migrationPrefixDirectory(through: number): Promise<string> {
   const directory = await mkdtemp(resolve(tmpdir(), `ontos-migrations-${String(through)}-`));
   const files = (await readdir(databaseMigrationDirectory)).sort();
@@ -1476,7 +2700,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(10);
+  const directory = await migrationPrefixDirectory(11);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);

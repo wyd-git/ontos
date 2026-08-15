@@ -27,6 +27,8 @@ import {
   type VerifiedFoundationIdentity,
 } from "@ontos/metadata-application";
 
+export * from "./base.ts";
+
 export type MaterializationIngressErrorCode =
   | "ADMIN_REQUEST_INVALID"
   | "DEPENDENCY_UNAVAILABLE"

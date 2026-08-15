@@ -8,9 +8,9 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
 - G2-00 Foundation：**PASS，13/13 已合并**；
 - G2-01 Metadata：**PASS，G2-01-01～12 已实现并通过 clean-room 总验收**；
-- 正式产品实现：**Metadata/Package 控制面已具备真实 OIDC、受限 HTTP 入口、最小 RBAC、PostgreSQL Repository、Release 原子发布、Package Install/Upgrade/Rollback、进程重启恢复和 22 道统一可审计 Gate**；
-- G2-02 Materialization：**G2-02-01 已完成事务/DDL Executor/Overlay Seam 架构与真实 PostgreSQL 16 Spike；完整 Gate 仍未实现**；
-- 下一唯一允许的工作项：**G2-02-02，冻结 Snapshot/Mapping/Generation/Job 等公共合同；不得跳过直接建 DB-02 业务表**。
+- 正式产品实现：**Metadata/Package 控制面已具备真实 OIDC、受限 HTTP 入口、最小 RBAC、PostgreSQL Repository、Release 原子发布、Package Install/Upgrade/Rollback 和进程重启恢复；统一 Gate 已扩展到 25 道**；
+- G2-02 Materialization：**G2-02-01～06 已 PASS，已有受管 CSV Ingress、确定 Mapping、永久 Object Identity、Attempt-owned Staging 和不可变 Object/Link Base；完整 Gate 仍未实现**；
+- 下一唯一允许的工作项：**G2-02-07，构建 Staging Current、质量报告与最小血缘；不得跳到 Worker、Cutover、Query 或 UI**。
 
 ## 权威文档
 
@@ -25,6 +25,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [G2-02 Materialization 任务包](docs/delivery/g2-02-materialization-task-pack.md) | CSV Snapshot 到 Object/Link Generation 原子激活的 14 个顺序工作项、边界与 Gate |
 | [G2-02 任务包红队](docs/reviews/g2-02-task-pack-red-team.md) | DDL 权限、A0 兼容、Kill/Resume、容量与 Overlay Seam 的 Kill Criteria |
 | [ADR-014 与 G2-02-01 Evidence](docs/architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md) | Materialization 事务、全局锁/CAS、隔离 DDL Executor、Kill/Replay 与 zero-overlay 生产边界 |
+| [ADR-015 与 G2-02-06 Evidence](docs/architecture/adr/015-permanent-object-identity-attempt-owned-base.md) | 永久 Object RID、类型化 Link、Attempt Staging、原子 Base 提升与 10k/100k 容量证据 |
 | [ADR-007 Runtime Activation](docs/architecture/adr/007-runtime-activation-serving-head.md) | Release/Generation 一致绑定、90 天支持、容量与 GC 语义 |
 | [ADR-010 Job/Lease 与 Outbox](docs/architecture/adr/010-postgresql-job-lease-outbox.md) | 持久 Job 恢复、租约 fencing、至少一次投递与同对象顺序 |
 | [G1 可行性报告](spikes/g1/docs/g1-feasibility-report.md) | 已验证结论、性能和限制 |

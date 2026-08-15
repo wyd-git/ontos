@@ -1,7 +1,7 @@
 # ADR-014：Materialization 事务、Projection DDL Executor 与 Overlay Seam
 
 - 状态：Accepted for G2-02-01；只冻结架构与代表性 Spike，不表示 DB-02 或完整 Materialization 已实现
-- 实现状态：G2-02-01 状态/Overlay/锁 Harness 与代表性 DDL Spike已通过；G2-02-03 已用连续 0007～0009 落正式 DB-02 表、复合约束、最小角色权限和单批 Lease/Fencing/Checkpoint；全部 Index Recipe、真实 Cutover、完整恢复与 Overlay Store 仍由后续拥有任务实现
+- 实现状态：G2-02-01 状态/Overlay/锁 Harness 与代表性 DDL Spike 已通过；G2-02-03～06 已用连续 0007～0011 落正式 DB-02 表、复合约束、最小角色权限、Managed CSV Ingress、永久 Identity 和 Attempt-owned Base；Current/Quality、全部 Index Recipe、真实 Cutover、完整恢复与 Overlay Store 仍由后续拥有任务实现
 - 日期：2026-08-15
 - Owner：Tech Lead / Database / Security
 - 上游：ADR-007、ADR-008、ADR-009、ADR-010、ADR-013 与 G2-02 可执行任务包
