@@ -4,6 +4,7 @@
   "scope": {
     "allowedWorkspacePackages": [
       "apps/api",
+      "apps/worker",
       "packages/contracts",
       "packages/materialization-application",
       "packages/materialization-domain",
@@ -27,7 +28,8 @@
       "migrations/db-00/0009_materialization_operations.sql",
       "migrations/db-00/0010_managed_csv_ingress.sql",
       "migrations/db-00/0011_object_identity_base_staging.sql",
-      "migrations/db-00/0012_materialization_quality_current.sql"
+      "migrations/db-00/0012_materialization_quality_current.sql",
+      "migrations/db-00/0013_materialization_job_worker.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -61,6 +63,7 @@
       "ops.materialization_generation_stage_batches",
       "ops.materialization_generation_stages",
       "ops.materialization_jobs",
+      "ops.materialization_job_error_samples",
       "ops.materialization_provenance_templates",
       "ops.materialization_quality_observations",
       "ops.materialization_quality_preparations",
@@ -96,7 +99,7 @@
       "runtime.snapshot_upload_sessions"
     ],
     "forbiddenTrackedPrefixes": ["apps/"],
-    "allowedTrackedPrefixExceptions": ["apps/api/"],
+    "allowedTrackedPrefixExceptions": ["apps/api/", "apps/worker/"],
     "forbiddenUiExtensions": [".html", ".jsx", ".tsx", ".vue", ".svelte"],
     "ignoredPrefixes": ["spikes/g1/"]
   },
@@ -160,6 +163,12 @@
       "path": "docs/architecture/adr/016-quality-current-provenance-confirmation.md",
       "acceptedStatus": "Accepted for G2-02-07",
       "evidence": "docs/evidence/g2-02-07-quality-current-provenance.md"
+    },
+    {
+      "id": "ADR-017",
+      "path": "docs/architecture/adr/017-materialization-worker-recovery.md",
+      "acceptedStatus": "Accepted for G2-02-08",
+      "evidence": "docs/evidence/g2-02-08-materialization-worker.md"
     }
   ],
   "requiredEvidence": [
@@ -194,7 +203,8 @@
     "docs/evidence/g2-02-04-managed-csv-ingress.md",
     "docs/evidence/g2-02-05-deterministic-mapping.md",
     "docs/evidence/g2-02-06-object-identity-base.md",
-    "docs/evidence/g2-02-07-quality-current-provenance.md"
+    "docs/evidence/g2-02-07-quality-current-provenance.md",
+    "docs/evidence/g2-02-08-materialization-worker.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

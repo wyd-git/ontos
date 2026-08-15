@@ -6,7 +6,7 @@ DB-02 是逻辑交付波次，不是第二个数据库或迁移账本。唯一�
 
 ```text
 migrations/db-00/0001 ... 0006  已发布历史，禁止修改/改名
-migrations/db-00/0007 ... 0012  DB-02 当前正式结构
+migrations/db-00/0007 ... 0013  DB-02 当前正式结构
 ontos_migration.schema_migrations 唯一账本
 ```
 
@@ -15,7 +15,7 @@ ontos_migration.schema_migrations 唯一账本
 ## 2. 上线前检查
 
 1. 确认 PostgreSQL 16、`plpgsql`、可恢复备份/PITR 和当前应用兼容版本。
-2. 导出并保存 `ontos_migration.schema_migrations` 的 `version/name/sha256`；所有已应用版本（最高可到 0012）必须与发布制品逐字一致。
+2. 导出并保存 `ontos_migration.schema_migrations` 的 `version/name/sha256`；所有已应用版本（最高可到 0013）必须与发布制品逐字一致。
 3. 检查不存在未知领先版本、缺号、Hash 漂移或同名异 Hash；任一命中立即停止。
 4. 确认 Runtime 登录不是 `migration_owner` 成员，数据库与 Schema Owner 没有漂移。
 5. 迁移不要求删除 R1/A0，也不要求停用已发布 Channel；若计划中出现历史行 UPDATE，停止执行。
@@ -30,7 +30,7 @@ Runner 会先执行版本/扩展/角色预检，再取得全局 Advisory Lock；
 
 ## 3. 成功后检查
 
-- Ledger 恰好连续到 0012，重复运行返回 no-op；
+- Ledger 恰好连续到 0013，重复运行返回 no-op；
 - 0001～0006 的 name/hash 不变；
 - 所有 `meta`/`runtime`/`ops` 新对象 Owner 为 `migration_owner`；
 - 历史 `member_count=0` Activation 的所有原列、值和 Digest 不变；
@@ -42,6 +42,8 @@ Runner 会先执行版本/扩展/角色预检，再取得全局 Advisory Lock；
 - API/Worker 不能直写 Current、Provenance、Report、Rejected Set、Head Candidate、Quality Binding 或 Confirmation；
 - Worker Candidate Reader 必须绑定精确 Project/Generation/Resource/Revision 和有界游标；API 只能调用 Owner 确认函数；
 - Generation 进入 `ready` 前必须有可用 Quality Binding、zero-overlay=0、Current/Report 行数一致和完整 Object Property Provenance；
+- API 只能调用幂等 Job Enqueue/Cancel/Replay，原 6 列直接 Job INSERT 已撤销；Worker 只能用完整 Lease/Fence 调用 Heartbeat/Checkpoint/Fail/Terminal；
+- Job Error Sample 最多 50 项/32 KiB，只含固定 Code/Classification/Fingerprint；
 - 运行 `npm run test:database` 的等价发布环境 Smoke。
 
 ## 4. 失败处理
@@ -63,4 +65,5 @@ Runner 会先执行版本/扩展/角色预检，再取得全局 Advisory Lock；
 - Migration Runner 与 Projection DDL Executor 是部署级受信进程，不复用 API/Worker 连接池或凭据。
 - 业务进程不得拼接 SQL、Identifier 或直接写 Migration Ledger。
 - 生产变更只向前追加；PR 合并后不得为了“修测试”改写已发布 Migration。
-- 0007～0012 已支持 Snapshot/Ingress/Job 事实、确定 Identity、Attempt-owned Base 和不可见的 Quality-qualified Current；仍不得在 G2-02-08～14 通过前开启 Worker 生产调度、Current Serving、Cutover 或 GC 流量。
+- 0007～0013 已支持 Snapshot/Ingress/Job 事实、确定 Identity、Attempt-owned Base、不可见的 Quality-qualified Current 和通用 Worker 恢复协议；G2-02-09～11 完成 Index/Certificate/Cutover 处理器组合前，`worker:start` 必须保持 fail closed，且不得开启 Current Serving 或 GC 流量。
+- Worker 的部署、故障和 Manual Replay 纪律见 [Materialization Worker 运行手册](materialization-worker.md)。

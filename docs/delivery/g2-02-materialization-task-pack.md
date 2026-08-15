@@ -3,7 +3,7 @@
 - 版本：1.0
 - 日期：2026-08-15
 - 状态：Implementation Ready，仍受本任务包 Gate、红队修订与停止条件约束
-- 执行进度：G2-02-01～07 已 PASS（7/14）；当前唯一顺序工作项为 G2-02-08
+- 执行进度：G2-02-01～08 已 PASS（8/14）；当前唯一顺序工作项为 G2-02-09
 - 上游：[Ontology Kernel PRD](../product/ontology-kernel-prd.md)
 - 实现蓝图：[G2 生产实现蓝图](../product/ontology-kernel-implementation-blueprint.md)
 - 入口证据：[G2-01-12 Metadata clean-room 总验收](../evidence/g2-01-12-clean-room-metadata-gate.md)
@@ -425,6 +425,8 @@ Base 写成功不等于可服务。系统必须在不可见 Generation 中得到
 - 真实 PostgreSQL 查询证明只按 `(project, generation, member revision)` 读取 Candidate，无跨 Project/Generation 泄露和无解释全表扫描。
 
 ### G2-02-08：实现 PostgreSQL Job/Lease Worker 与 Kill/Resume
+
+- 交付状态：**PASS**；证据见 [G2-02-08 Evidence](../evidence/g2-02-08-materialization-worker.md)，决策见 [ADR-017](../architecture/adr/017-materialization-worker-recovery.md)
 
 - 规模：L
 - 建议 Owner：Backend / Platform
