@@ -212,6 +212,8 @@ export interface CompiledObjectMappingPlan extends CompiledMappingPlanBase {
 
 export interface CompiledLinkMappingPlan extends CompiledMappingPlanBase {
   readonly targetKind: "link";
+  /** Absent is the backwards-compatible required policy. */
+  readonly linkDanglingDisposition?: "optional";
   readonly sourceKey: CompiledIdentityKeyMapping;
   readonly targetKey: CompiledIdentityKeyMapping;
 }
@@ -662,6 +664,9 @@ function compileLinkPlan(
   const preimage = Object.freeze({
     ...planCommonPreimage(common, propertyMappings),
     targetKind: "link" as const,
+    ...(common.mapping.linkDanglingDisposition === "optional"
+      ? { linkDanglingDisposition: "optional" as const }
+      : {}),
     sourceKey,
     targetKey,
   });

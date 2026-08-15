@@ -372,6 +372,8 @@ export interface MappingDefinition {
   readonly primaryKeyExpression?: MappingExpression;
   readonly sourceKeyMapping?: MappingKeyDefinition;
   readonly targetKeyMapping?: MappingKeyDefinition;
+  /** Absent is the backwards-compatible required policy. */
+  readonly linkDanglingDisposition?: "required" | "optional";
   readonly qualityRules: MappingQualityRules;
 }
 
@@ -387,6 +389,7 @@ export const MAPPING_DEFINITION_FIELDS = Object.freeze([
   "primaryKeyExpression",
   "sourceKeyMapping",
   "targetKeyMapping",
+  "linkDanglingDisposition",
   "qualityRules",
 ] as const);
 export const MAPPING_DEFINITION_REQUIRED_FIELDS = Object.freeze([
@@ -449,6 +452,7 @@ export function parseMappingDefinition(value: unknown): MappingDefinition {
   if (targetKind === "object") {
     requireAbsent(record.sourceKeyMapping, `${path}.sourceKeyMapping`);
     requireAbsent(record.targetKeyMapping, `${path}.targetKeyMapping`);
+    requireAbsent(record.linkDanglingDisposition, `${path}.linkDanglingDisposition`);
     if (record.primaryKeyExpression === undefined) {
       failContract(
         "CONTRACT_FIELD_MISSING",
@@ -478,6 +482,15 @@ export function parseMappingDefinition(value: unknown): MappingDefinition {
     ...common,
     sourceKeyMapping: parseMappingKey(record.sourceKeyMapping, `${path}.sourceKeyMapping`, budget),
     targetKeyMapping: parseMappingKey(record.targetKeyMapping, `${path}.targetKeyMapping`, budget),
+    ...(record.linkDanglingDisposition === undefined
+      ? {}
+      : {
+          linkDanglingDisposition: requireOneOf(
+            record.linkDanglingDisposition,
+            new Set(["required", "optional"] as const),
+            `${path}.linkDanglingDisposition`,
+          ),
+        }),
   });
 }
 
@@ -1194,10 +1207,13 @@ export function parseMaterializationReport(value: unknown): MaterializationRepor
       `${path}.outcome`,
     );
   }
-  if (outcome === "failed" && !hasFatalReason) {
+  const hasRowRejection = reasonCounts.some(
+    (entry) => entry.code !== "ROW_COUNT_CONFIRMATION_REQUIRED",
+  );
+  if (outcome === "failed" && !hasRowRejection) {
     failContract(
       "CONTRACT_FORMAT_INVALID",
-      "A failed Report requires a fatal stable reason.",
+      "A failed Report requires a stable row-rejection reason.",
       `${path}.reasonCounts`,
     );
   }

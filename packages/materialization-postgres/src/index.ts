@@ -18,6 +18,7 @@ import {
 import type pg from "pg";
 
 export * from "./base.ts";
+export * from "./quality.ts";
 
 interface SessionRow extends pg.QueryResultRow {
   readonly projectId: string;

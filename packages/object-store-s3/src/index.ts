@@ -53,8 +53,10 @@ export interface ManagedObjectVersionEntry {
   readonly deleteMarker: boolean;
 }
 
-const managedObjectKeyPattern =
+const ingressObjectKeyPattern =
   /^ingress\/[0-9a-f]{2}\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}[.]csv$/u;
+const rejectedObjectKeyPattern =
+  /^rejected\/[0-9a-f]{2}\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}[.]jsonl$/u;
 const silentS3Logger = Object.freeze({
   trace: () => undefined,
   debug: () => undefined,
@@ -102,9 +104,10 @@ export class S3ManagedObjectStore {
     readonly objectKey: string;
     readonly body: AsyncIterable<Uint8Array>;
     readonly expectedByteCount: number;
-    readonly mediaType: "text/csv";
+    readonly mediaType: "text/csv" | "application/vnd.ontos.rejected-rows+json";
   }): Promise<ManagedObjectVersionMetadata> {
     const objectKey = parseManagedObjectKey(input.objectKey);
+    assertManagedMediaType(objectKey, input.mediaType);
     const expectedByteCount = parseByteCount(input.expectedByteCount);
     const uploadBody = new PassThrough();
     const abortController = new AbortController();
@@ -335,10 +338,26 @@ function parseConfig(value: S3ManagedObjectStoreConfig): Required<S3ManagedObjec
 }
 
 function parseManagedObjectKey(value: unknown): string {
-  if (typeof value !== "string" || !managedObjectKeyPattern.test(value)) {
+  if (
+    typeof value !== "string" ||
+    (!ingressObjectKeyPattern.test(value) && !rejectedObjectKeyPattern.test(value))
+  ) {
     throw new ManagedObjectStoreError("CONFIGURATION_INVALID");
   }
   return value;
+}
+
+function assertManagedMediaType(
+  objectKey: string,
+  mediaType: "text/csv" | "application/vnd.ontos.rejected-rows+json",
+): void {
+  if (
+    (ingressObjectKeyPattern.test(objectKey) && mediaType !== "text/csv") ||
+    (rejectedObjectKeyPattern.test(objectKey) &&
+      mediaType !== "application/vnd.ontos.rejected-rows+json")
+  ) {
+    throw new ManagedObjectStoreError("CONFIGURATION_INVALID");
+  }
 }
 
 function parseVersionId(value: unknown): string {

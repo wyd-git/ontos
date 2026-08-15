@@ -24,6 +24,7 @@ void test(
     const hostPort = await reserveLoopbackPort();
     const endpoint = `http://127.0.0.1:${String(hostPort)}`;
     const objectKey = `ingress/aa/${randomUUID()}.csv`;
+    const rejectedObjectKey = `rejected/bb/${randomUUID()}.jsonl`;
     let rawClient: S3Client | null = null;
     let store: S3ManagedObjectStore | null = null;
 
@@ -136,10 +137,42 @@ void test(
         (await store.listVersions(objectKey)).map((entry) => entry.versionId),
         [second.versionId],
       );
+
+      const rejectedBytes = new TextEncoder().encode(
+        '{"columnClassification":"redacted","reasonCode":"OPTIONAL_PROPERTY_INVALID"}\n',
+      );
+      const rejected = await store.putVersion({
+        objectKey: rejectedObjectKey,
+        body: chunked(rejectedBytes, 7),
+        expectedByteCount: rejectedBytes.byteLength,
+        mediaType: "application/vnd.ontos.rejected-rows+json",
+      });
+      const rejectedHead = await store.headLatestVersion(rejectedObjectKey);
+      assert.deepEqual(rejectedHead, {
+        versionId: rejected.versionId,
+        byteCount: rejectedBytes.byteLength,
+        mediaType: "application/vnd.ontos.rejected-rows+json",
+      });
+      const rejectedVersion = await store.readVersion(rejectedObjectKey, rejected.versionId);
+      assert.equal(rejectedVersion.versionId, rejected.versionId);
+      assert.equal(rejectedVersion.mediaType, "application/vnd.ontos.rejected-rows+json");
+      assert.deepEqual(await readAll(rejectedVersion.body), rejectedBytes);
+      await assert.rejects(
+        store.putVersion({
+          objectKey: rejectedObjectKey,
+          body: chunked(rejectedBytes, 7),
+          expectedByteCount: rejectedBytes.byteLength,
+          mediaType: "text/csv",
+        }),
+        (error: unknown) =>
+          error instanceof ManagedObjectStoreError && error.code === "CONFIGURATION_INVALID",
+      );
     } finally {
       if (store !== null) {
-        for (const entry of await store.listVersions(objectKey).catch(() => [])) {
-          await store.deleteVersion(objectKey, entry.versionId).catch(() => undefined);
+        for (const key of [objectKey, rejectedObjectKey]) {
+          for (const entry of await store.listVersions(key).catch(() => [])) {
+            await store.deleteVersion(key, entry.versionId).catch(() => undefined);
+          }
         }
       }
       store?.destroy();

@@ -340,6 +340,10 @@
         "primaryKeyExpression": { "$ref": "#/$defs/MappingExpression" },
         "sourceKeyMapping": { "$ref": "#/$defs/MappingKey" },
         "targetKeyMapping": { "$ref": "#/$defs/MappingKey" },
+        "linkDanglingDisposition": {
+          "type": "string",
+          "enum": ["required", "optional"]
+        },
         "qualityRules": { "$ref": "#/$defs/MappingQualityRules" }
       },
       "required": [

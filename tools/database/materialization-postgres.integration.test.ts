@@ -11,11 +11,16 @@ import {
   canonicalizeContractForDigest,
   canonicalizeMaterializationContractForDigest,
   parseArtifactDigest,
+  parseCanonicalInstant,
   parseOntosId,
 } from "@ontos/contracts";
 import {
   MaterializationBaseError,
   MaterializationBaseService,
+  MaterializationQualityError,
+  MaterializationQualityService,
+  RowCountConfirmationService,
+  provenanceTemplatesFromPlan,
   type BaseBatchReceipt,
 } from "@ontos/materialization-application";
 import {
@@ -24,7 +29,10 @@ import {
   type MappingAcceptedLinkRow,
   type MappingAcceptedObjectRow,
 } from "@ontos/materialization-domain";
-import { PostgresMaterializationBaseRepository } from "@ontos/materialization-postgres";
+import {
+  PostgresMaterializationBaseRepository,
+  PostgresMaterializationQualityRepository,
+} from "@ontos/materialization-postgres";
 import { canonicalizePrimaryKey } from "@ontos/value-codec";
 import pg from "pg";
 
@@ -44,6 +52,7 @@ const database = "ontos_db02_upgrade";
 const adminPassword = "local-only-db02-admin-secret";
 const runtimePassword = "local-only-db02-runtime-secret";
 const capacityMode = process.env.ONTOS_G2_02_06_CAPACITY === "1";
+const qualityObjectRows = 1_000;
 const capacityMetrics = {
   objectRows: capacityMode ? 10_000 : 2,
   linkRows: capacityMode ? 100_000 : 1,
@@ -116,6 +125,49 @@ const ids = {
   linkReport: "10000000-0000-4000-8000-00000000200c",
   linkGeneration: "10000000-0000-4000-8000-00000000200d",
   linkAttempt: "10000000-0000-4000-8000-00000000200e",
+  qualityGroup: "30000000-0000-4000-8000-000000000001",
+  qualityObjectSnapshot: "30000000-0000-4000-8000-000000000002",
+  qualityObjectFile: "30000000-0000-4000-8000-000000000003",
+  qualityObjectArtifact: "30000000-0000-4000-8000-000000000004",
+  qualityLinkSnapshot: "30000000-0000-4000-8000-000000000005",
+  qualityLinkFile: "30000000-0000-4000-8000-000000000006",
+  qualityLinkArtifact: "30000000-0000-4000-8000-000000000007",
+  qualityObjectGeneration: "30000000-0000-4000-8000-000000000008",
+  qualityLinkGeneration: "30000000-0000-4000-8000-000000000009",
+  qualityJob: "30000000-0000-4000-8000-00000000000a",
+  qualityAttempt: "30000000-0000-4000-8000-00000000000b",
+  qualityObjectReport: "30000000-0000-4000-8000-00000000000c",
+  qualityObjectRejectedSet: "30000000-0000-4000-8000-00000000000d",
+  qualityObjectRejectedArtifact: "30000000-0000-4000-8000-00000000000e",
+  qualityLinkReport: "30000000-0000-4000-8000-00000000000f",
+  qualityLinkRejectedSet: "30000000-0000-4000-8000-000000000010",
+  qualityLinkRejectedArtifact: "30000000-0000-4000-8000-000000000011",
+  linkSchemaResource: "30000000-0000-4000-8000-000000000012",
+  linkSchemaRevision: "30000000-0000-4000-8000-000000000013",
+  linkSchemaValidation: "30000000-0000-4000-8000-000000000014",
+  linkMappingResource: "30000000-0000-4000-8000-000000000015",
+  linkMappingRevision: "30000000-0000-4000-8000-000000000016",
+  linkMappingValidation: "30000000-0000-4000-8000-000000000017",
+  qualityLinkIndexPlan: "30000000-0000-4000-8000-000000000018",
+  qualityOwnerBinding: "30000000-0000-4000-8000-000000000019",
+  qualityObjectSnapshotV2: "30000000-0000-4000-8000-00000000001a",
+  qualityObjectFileV2: "30000000-0000-4000-8000-00000000001b",
+  qualityObjectArtifactV2: "30000000-0000-4000-8000-00000000001c",
+  qualityObjectGenerationV2: "30000000-0000-4000-8000-00000000001d",
+  qualityJobV2: "30000000-0000-4000-8000-00000000001e",
+  qualityAttemptV2: "30000000-0000-4000-8000-00000000001f",
+  qualityObjectReportV2: "30000000-0000-4000-8000-000000000020",
+  qualityConfirmationV2Stale: "30000000-0000-4000-8000-000000000021",
+  qualityConfirmationV2: "30000000-0000-4000-8000-000000000022",
+  qualityObjectSnapshotV3: "30000000-0000-4000-8000-000000000023",
+  qualityObjectFileV3: "30000000-0000-4000-8000-000000000024",
+  qualityObjectArtifactV3: "30000000-0000-4000-8000-000000000025",
+  qualityObjectGenerationV3: "30000000-0000-4000-8000-000000000026",
+  qualityJobV3: "30000000-0000-4000-8000-000000000027",
+  qualityAttemptV3: "30000000-0000-4000-8000-000000000028",
+  qualityObjectReportV3: "30000000-0000-4000-8000-000000000029",
+  qualityConfirmationV3: "30000000-0000-4000-8000-00000000002a",
+  qualityConfirmationV2Race: "30000000-0000-4000-8000-00000000002b",
 } as const;
 
 const digests = {
@@ -190,7 +242,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11],
+          [7, 8, 9, 10, 11, 12],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -218,6 +270,7 @@ void test(
       await exercisePermanentIdentityAndObjectBase(adminConfig, worker1Config, worker2Config);
       await withClient(adminConfig, prepareLinkRuntimeFacts);
       await exerciseLinkBase(adminConfig, apiConfig, worker1Config);
+      await exerciseQualityCurrentAndRequiredDangling(adminConfig, apiConfig, worker2Config);
       await exerciseManagedCsvIngressDatabase(apiConfig, worker1Config, opsConfig);
       await withClient(apiConfig, async (api) => {
         await issueCertificateAndPublishA1(api);
@@ -264,6 +317,7 @@ async function seedMetadataOnlyRelease(client: pg.Client): Promise<void> {
     family: "object_type",
     apiName: "Order",
     contentDigest: digests.object,
+    content: capacityOrderObjectType(),
   });
   await client.query(
     `INSERT INTO meta.releases
@@ -336,6 +390,7 @@ async function createPublishedResource(
     readonly family: "object_type" | "snapshot_schema" | "mapping";
     readonly apiName: string;
     readonly contentDigest: string;
+    readonly content?: unknown;
   },
 ): Promise<void> {
   await client.query(
@@ -348,8 +403,15 @@ async function createPublishedResource(
     `INSERT INTO meta.resource_revisions
        (revision_id, resource_id, revision_number, family, content_digest,
         content, created_by_principal_id)
-     VALUES ($1, $2, 1, $3, $4, '{"schemaVersion":1}'::jsonb, $5)`,
-    [input.revisionId, input.resourceId, input.family, input.contentDigest, ids.principal],
+     VALUES ($1, $2, 1, $3, $4, $5::jsonb, $6)`,
+    [
+      input.revisionId,
+      input.resourceId,
+      input.family,
+      input.contentDigest,
+      JSON.stringify(input.content ?? { schemaVersion: 1 }),
+      ids.principal,
+    ],
   );
   await client.query(
     `INSERT INTO meta.validation_reports
@@ -379,6 +441,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     family: "snapshot_schema",
     apiName: "OrderCsvSchema",
     contentDigest: digests.schema,
+    content: capacityObjectSchemaDefinition(),
   });
   await createPublishedResource(client, {
     resourceId: ids.mappingResource,
@@ -387,6 +450,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     family: "mapping",
     apiName: "OrderCsvMapping",
     contentDigest: digests.mapping,
+    content: capacityObjectMappingDefinition(),
   });
   await client.query(
     `INSERT INTO meta.projects (project_id, api_name, display_name)
@@ -519,7 +583,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
        content_digest, byte_count, row_count, file_count, snapshot_digest
      ) VALUES (
        $1, $2, $3, 1, 'object:Order', 'object', $4, $5, $6, $7, $8, $9,
-       $10, $11, 0, 0, 1, $12
+       $10, $11, 0, $12, 1, $13
      )`,
     [
       ids.project,
@@ -533,6 +597,7 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
       ids.mappingRevision,
       runtimePlanDigest,
       digests.snapshotContent,
+      capacityMetrics.objectRows,
       digests.snapshot,
     ],
   );
@@ -540,9 +605,16 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     `INSERT INTO runtime.snapshot_files (
        project_id, snapshot_id, file_id, managed_artifact_id, object_version,
        ordinal, content_digest, byte_count, row_count, source_label, scan_status
-     ) VALUES ($1, $2, $3, $4, 'version-1', 0, $5, 0, 0,
+     ) VALUES ($1, $2, $3, $4, 'version-1', 0, $5, 0, $6,
                'DB-02 migration fixture', 'complete')`,
-    [ids.project, ids.snapshot, ids.snapshotFile, ids.managedArtifact, digests.snapshotContent],
+    [
+      ids.project,
+      ids.snapshot,
+      ids.snapshotFile,
+      ids.managedArtifact,
+      digests.snapshotContent,
+      capacityMetrics.objectRows,
+    ],
   );
   await client.query(
     `INSERT INTO runtime.snapshot_group_members (
@@ -575,23 +647,14 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
     [ids.project, ids.job, ids.snapshotGroup, digests.job],
   );
   await client.query(
-    `INSERT INTO runtime.materialization_reports (
-       project_id, report_id, snapshot_group_id, group_version, job_id, outcome,
-       total_rows, accepted_rows, rejected_rows, validator_version, report_digest
-     ) VALUES ($1, $2, $3, 1, $4, 'passed', 0, 0, 0,
-               'materialization-g2-02-v1', $5)`,
-    [ids.project, ids.report, ids.snapshotGroup, ids.job, digests.report],
-  );
-  await client.query(
     `INSERT INTO runtime.generations (
        project_id, generation_id, member_key, member_kind,
        target_resource_id, target_revision_id, snapshot_id, snapshot_group_id, group_version,
        snapshot_schema_resource_id, snapshot_schema_revision_id,
-       mapping_resource_id, mapping_revision_id, runtime_plan_digest, index_plan_digest,
-       report_id, report_digest, generation_digest
+       mapping_resource_id, mapping_revision_id, runtime_plan_digest, index_plan_digest
      ) VALUES (
        $1, $2, 'object:Order', 'object', $3, $4, $5, $6, 1,
-       $7, $8, $9, $10, $11, $12, $13, $14, $15
+       $7, $8, $9, $10, $11, $12
      )`,
     [
       ids.project,
@@ -606,9 +669,6 @@ async function prepareRuntimeFacts(client: pg.Client): Promise<void> {
       ids.mappingRevision,
       runtimePlanDigest,
       digests.indexPlan,
-      ids.report,
-      digests.report,
-      digests.generation,
     ],
   );
   const empty = await client.query<{ readonly objects: number; readonly links: number }>(
@@ -779,6 +839,8 @@ async function exercisePermanentIdentityAndObjectBase(
     await restartedPool.end();
   }
 
+  await exerciseObjectQuality(adminConfig, worker2Config, BigInt(secondClaim.fencing_token));
+
   await withClient(adminConfig, async (admin) => {
     const state = await admin.query<{
       readonly identities: number;
@@ -829,6 +891,1190 @@ async function exercisePermanentIdentityAndObjectBase(
   capacityMetrics.objectBatches = secondReceipts.length;
   capacityMetrics.objectMilliseconds = elapsedMilliseconds(objectStartedAt);
   samplePeakRss();
+}
+
+async function exerciseObjectQuality(
+  adminConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+  fencingToken: bigint,
+): Promise<void> {
+  const pool = new pg.Pool(workerConfig);
+  try {
+    const scopeProbe = await pool.query<{ readonly generation_id: string }>(
+      `SELECT generation_id
+       FROM ops.get_materialization_quality_scope($1, $2, $3, $4, $5)`,
+      [ids.project, ids.job, ids.baseAttempt2, fencingToken.toString(), ids.generation],
+    );
+    assert.equal(scopeProbe.rows[0]?.generation_id, ids.generation);
+    const repository = new PostgresMaterializationQualityRepository(pool);
+    const randomIds = [ids.report];
+    const service = new MaterializationQualityService({
+      repository,
+      overlays: {
+        inspect() {
+          return Promise.resolve({ state: "known" as const, rowCount: 0 });
+        },
+      },
+      artifacts: {
+        putVersion() {
+          return Promise.reject(new Error("a passing quality run has no rejected artifact"));
+        },
+      },
+      crypto: {
+        randomId() {
+          const value = randomIds.shift();
+          if (value === undefined) throw new Error("quality fixture exhausted IDs");
+          return value;
+        },
+        digestCanonicalText: sha256Artifact,
+        createStreamingDigest() {
+          const hash = createHash("sha256");
+          return {
+            update(chunk: Uint8Array) {
+              hash.update(chunk);
+            },
+            finish() {
+              return parseArtifactDigest(`sha256:${hash.digest("hex")}`);
+            },
+          };
+        },
+      },
+      clock: { now: () => parseCanonicalInstant("2026-08-16T00:00:00.000000Z") },
+    });
+    const qualityPlan = capacityObjectMappingPlan();
+    if (qualityPlan.targetKind !== "object") throw new Error("quality fixture must be Object");
+    const provenanceTemplates = provenanceTemplatesFromPlan(qualityPlan, {
+      digestCanonicalText: sha256Artifact,
+    });
+    assert.deepEqual(
+      provenanceTemplates.map(({ propertyApiName, inputColumnOrdinal }) => ({
+        propertyApiName,
+        inputColumnOrdinal,
+      })),
+      [
+        { propertyApiName: "displayName", inputColumnOrdinal: 1 },
+        { propertyApiName: "orderId", inputColumnOrdinal: 0 },
+      ],
+    );
+    await withClient(adminConfig, async (admin) => {
+      const basePropertyShape = await admin.query<{ readonly property_names: string[] }>(
+        `SELECT ARRAY(
+           SELECT property_name
+           FROM jsonb_object_keys(base.properties -> 'values') AS property_name
+           ORDER BY property_name COLLATE "C"
+         ) AS property_names
+         FROM runtime.object_base AS base
+         WHERE base.project_id = $1 AND base.generation_id = $2
+         ORDER BY base.object_rid
+         LIMIT 1`,
+        [ids.project, ids.generation],
+      );
+      assert.deepEqual(basePropertyShape.rows[0]?.property_names, ["displayName", "orderId"]);
+    });
+    const result = await service.build({
+      scope: {
+        projectId: ids.project,
+        jobId: ids.job,
+        attemptId: ids.baseAttempt2,
+        fencingToken,
+      },
+      generationId: ids.generation,
+      provenanceTemplates,
+    });
+    assert.equal(result.outcome, "passed");
+    assert.equal(result.reportId, ids.report);
+    await withClient(adminConfig, async (admin) => {
+      const state = await admin.query<{
+        readonly current_rows: number;
+        readonly provenance_rows: number;
+        readonly candidates: number;
+        readonly report_rows: string;
+        readonly generation_state: string;
+      }>(
+        `SELECT
+           (SELECT count(*)::integer FROM runtime.object_current
+             WHERE project_id = $1 AND generation_id = $2) AS current_rows,
+           (SELECT count(*)::integer FROM runtime.property_provenance
+             WHERE project_id = $1 AND generation_id = $2) AS provenance_rows,
+           (SELECT count(*)::integer FROM runtime.object_head_candidates
+             WHERE project_id = $1 AND generation_id = $2) AS candidates,
+           report.accepted_rows::text AS report_rows,
+           generation.state AS generation_state
+         FROM runtime.generations AS generation
+         JOIN runtime.materialization_reports AS report
+           ON report.project_id = generation.project_id
+          AND report.report_id = generation.report_id
+         WHERE generation.project_id = $1 AND generation.generation_id = $2`,
+        [ids.project, ids.generation],
+      );
+      assert.deepEqual(state.rows[0], {
+        current_rows: capacityMetrics.objectRows,
+        provenance_rows: capacityMetrics.objectRows * 2,
+        candidates: capacityMetrics.objectRows,
+        report_rows: String(capacityMetrics.objectRows),
+        generation_state: "building",
+      });
+    });
+    const candidate = await pool.query<{ readonly object_rid: string }>(
+      `SELECT object_rid::text
+       FROM runtime.read_object_current_candidate($1, $2, $3, $4, NULL, 1)`,
+      [ids.project, ids.generation, ids.objectResource, ids.objectRevision],
+    );
+    assert.equal(candidate.rows.length, capacityMetrics.objectRows === 0 ? 0 : 1);
+    await assertPgCode(
+      pool.query(`SELECT * FROM runtime.read_object_current_candidate($1, $2, $3, $4, NULL, 1)`, [
+        ids.otherProject,
+        ids.generation,
+        ids.objectResource,
+        ids.objectRevision,
+      ]),
+      "42501",
+    );
+  } finally {
+    await pool.end();
+  }
+}
+
+async function exerciseQualityCurrentAndRequiredDangling(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+): Promise<void> {
+  const activationBefore = await withClient(adminConfig, (admin) =>
+    activationSnapshot(admin, ids.activation0),
+  );
+  await withClient(adminConfig, prepareQualityCurrentFacts);
+  const claim = await withClient(workerConfig, async (worker) => {
+    const result = await worker.query<{ readonly fencing_token: string }>(
+      `SELECT fencing_token::text
+       FROM ops.claim_materialization_job($1, $2, 300)`,
+      [ids.worker2, ids.qualityAttempt],
+    );
+    return result.rows[0];
+  });
+  assert.ok(claim);
+  const fencingToken = BigInt(claim.fencing_token);
+  const scope = Object.freeze({
+    projectId: ids.project,
+    jobId: ids.qualityJob,
+    attemptId: ids.qualityAttempt,
+    fencingToken,
+  });
+  const pool = new pg.Pool(workerConfig);
+  const objectUploads: QualityUploadRecord[] = [];
+  const linkUploads: QualityUploadRecord[] = [];
+  try {
+    const base = baseService(pool);
+    const objectRows = Array.from({ length: qualityObjectRows - 1 }, (_, index) =>
+      baseObjectRow(index + 1, `quality-order-${String(index + 1)}`),
+    );
+    const objectReceipt = await base.stageObjectBatch({
+      scope,
+      generation: Object.freeze({
+        generationId: ids.qualityObjectGeneration,
+        targetResourceId: ids.objectResource,
+        targetRevisionId: ids.objectRevision,
+        sourceSnapshotId: ids.qualityObjectSnapshot,
+        sourceFileId: ids.qualityObjectFile,
+        mappingRevisionId: ids.mappingRevision,
+      }),
+      batchSequence: 1,
+      rows: objectRows,
+    });
+    await pool.query(`SELECT * FROM runtime.resolve_or_create_object_identities($1, $2::jsonb)`, [
+      ids.project,
+      JSON.stringify([
+        {
+          ordinal: 0,
+          objectTypeResourceId: ids.objectResource,
+          canonicalPrimaryKey: canonicalizePrimaryKey(
+            [`quality-order-${String(qualityObjectRows)}`],
+            { components: [{ type: "string" as const, caseSensitive: false }] },
+          ),
+          candidateObjectRid: randomUUID(),
+        },
+      ]),
+    ]);
+    await base.promoteGenerationBase({
+      scope,
+      generationId: ids.qualityObjectGeneration,
+      expectedRowCount: qualityObjectRows - 1,
+      batchReceipts: [objectReceipt],
+    });
+    await assertPgCode(
+      pool.query(`SELECT * FROM runtime.read_object_current_candidate($1, $2, $3, $4, NULL, 1)`, [
+        ids.project,
+        ids.qualityObjectGeneration,
+        ids.objectResource,
+        ids.objectRevision,
+      ]),
+      "42501",
+    );
+
+    const quality = postgresQualityService(
+      pool,
+      [ids.qualityObjectReport, ids.qualityObjectRejectedSet, ids.qualityObjectRejectedArtifact],
+      objectUploads,
+    );
+    await quality.stageObservations({
+      scope,
+      generationId: ids.qualityObjectGeneration,
+      observations: [
+        Object.freeze({
+          fileId: ids.qualityObjectFile,
+          rowNumber: qualityObjectRows,
+          reasonCode: "OPTIONAL_PROPERTY_INVALID" as const,
+          fingerprint: sha256Artifact("quality-object-optional-row-1000"),
+          columnClassification: "redacted" as const,
+          phase: "mapping" as const,
+        }),
+      ],
+    });
+    const objectPlan = capacityObjectMappingPlan();
+    if (objectPlan.targetKind !== "object") throw new Error("quality Object plan required");
+    const provenanceTemplates = provenanceTemplatesFromPlan(objectPlan, {
+      digestCanonicalText: sha256Artifact,
+    });
+    await assert.rejects(
+      postgresQualityService(pool, [], []).build({
+        scope,
+        generationId: ids.qualityObjectGeneration,
+        provenanceTemplates: provenanceTemplates.map((template) =>
+          Object.freeze({ ...template, inputColumnOrdinal: 99 }),
+        ),
+      }),
+      (error: unknown) =>
+        error instanceof MaterializationQualityError && error.code === "QUALITY_REQUEST_INVALID",
+    );
+    const objectResult = await quality.build({
+      scope,
+      generationId: ids.qualityObjectGeneration,
+      provenanceTemplates,
+    });
+    assert.equal(objectResult.outcome, "passed");
+    assert.equal(objectUploads.length, 1);
+    assert.match(objectUploads[0]?.body ?? "", /OPTIONAL_PROPERTY_INVALID/u);
+    assert.doesNotMatch(objectUploads[0]?.body ?? "", /quality-order|displayName/iu);
+
+    const candidate = await pool.query<{ readonly object_rid: string }>(
+      `SELECT object_rid::text
+       FROM runtime.read_object_current_candidate($1, $2, $3, $4, NULL, 1)`,
+      [ids.project, ids.qualityObjectGeneration, ids.objectResource, ids.objectRevision],
+    );
+    assert.equal(candidate.rows.length, 1);
+    await assertPgCode(
+      pool.query(`SELECT * FROM runtime.read_object_current_candidate($1, $2, $3, $4, NULL, 1)`, [
+        ids.otherProject,
+        ids.qualityObjectGeneration,
+        ids.objectResource,
+        ids.objectRevision,
+      ]),
+      "42501",
+    );
+
+    const linkReceipt = await base.stageLinkBatch({
+      scope,
+      generation: Object.freeze({
+        generationId: ids.qualityLinkGeneration,
+        targetResourceId: ids.linkResource,
+        targetRevisionId: ids.linkRevision,
+        sourceSnapshotId: ids.qualityLinkSnapshot,
+        sourceFileId: ids.qualityLinkFile,
+        mappingRevisionId: ids.linkMappingRevision,
+      }),
+      batchSequence: 2,
+      rows: [
+        baseLinkRow(
+          1,
+          "quality-order-1",
+          `quality-order-${String(qualityObjectRows)}`,
+          false,
+          false,
+        ),
+      ],
+    });
+    assert.equal(linkReceipt.stagedRowCount, 1);
+    await base.promoteGenerationBase({
+      scope,
+      generationId: ids.qualityLinkGeneration,
+      expectedRowCount: 1,
+      batchReceipts: [linkReceipt],
+    });
+    const linkResult = await postgresQualityService(
+      pool,
+      [ids.qualityLinkReport, ids.qualityLinkRejectedSet, ids.qualityLinkRejectedArtifact],
+      linkUploads,
+    ).build({
+      scope,
+      generationId: ids.qualityLinkGeneration,
+      provenanceTemplates: [],
+    });
+    assert.equal(linkResult.outcome, "failed");
+    assert.equal(linkUploads.length, 1);
+    assert.match(linkUploads[0]?.body ?? "", /REQUIRED_LINK_DANGLING/u);
+    assert.doesNotMatch(linkUploads[0]?.body ?? "", /quality-order/iu);
+    await assertPgCode(
+      pool.query(`SELECT * FROM runtime.read_link_current_candidate($1, $2, $3, $4, NULL, 1)`, [
+        ids.project,
+        ids.qualityLinkGeneration,
+        ids.linkResource,
+        ids.linkRevision,
+      ]),
+      "42501",
+    );
+  } finally {
+    await pool.end();
+  }
+
+  await withClient(adminConfig, async (admin) => {
+    const state = await admin.query<{
+      readonly object_current: number;
+      readonly provenance: number;
+      readonly object_rejected: string;
+      readonly object_reason: string;
+      readonly link_current: number;
+      readonly link_reason: string;
+      readonly link_state: string;
+      readonly old_generation_state: string;
+    }>(
+      `SELECT
+         (SELECT count(*)::integer FROM runtime.object_current
+           WHERE project_id = $1 AND generation_id = $2) AS object_current,
+         (SELECT count(*)::integer FROM runtime.property_provenance
+           WHERE project_id = $1 AND generation_id = $2) AS provenance,
+         (SELECT rejected_rows::text FROM runtime.materialization_reports
+           WHERE project_id = $1 AND report_id = $3) AS object_rejected,
+         (SELECT reason_code FROM runtime.materialization_report_reasons
+           WHERE project_id = $1 AND report_id = $3) AS object_reason,
+         (SELECT count(*)::integer FROM runtime.link_current
+           WHERE project_id = $1 AND generation_id = $4) AS link_current,
+         (SELECT reason_code FROM runtime.materialization_report_reasons
+           WHERE project_id = $1 AND report_id = $5) AS link_reason,
+         (SELECT state FROM runtime.generations
+           WHERE project_id = $1 AND generation_id = $4) AS link_state,
+         (SELECT state FROM runtime.generations
+           WHERE project_id = $1 AND generation_id = $6) AS old_generation_state`,
+      [
+        ids.project,
+        ids.qualityObjectGeneration,
+        ids.qualityObjectReport,
+        ids.qualityLinkGeneration,
+        ids.qualityLinkReport,
+        ids.generation,
+      ],
+    );
+    assert.deepEqual(state.rows[0], {
+      object_current: qualityObjectRows - 1,
+      provenance: (qualityObjectRows - 1) * 2,
+      object_rejected: "1",
+      object_reason: "OPTIONAL_PROPERTY_INVALID",
+      link_current: 0,
+      link_reason: "REQUIRED_LINK_DANGLING",
+      link_state: "failed",
+      old_generation_state: "ready",
+    });
+    await admin.query("BEGIN");
+    try {
+      await admin.query("SET LOCAL enable_seqscan = off");
+      const explain = await admin.query<{ readonly "QUERY PLAN": string }>(
+        `EXPLAIN (COSTS OFF)
+         SELECT object_rid
+         FROM runtime.object_current
+         WHERE project_id = $1 AND generation_id = $2
+           AND object_type_resource_id = $3 AND object_type_revision_id = $4
+           AND object_rid > $5
+         ORDER BY object_rid
+         LIMIT 100`,
+        [
+          ids.project,
+          ids.qualityObjectGeneration,
+          ids.objectResource,
+          ids.objectRevision,
+          "00000000-0000-4000-8000-000000000000",
+        ],
+      );
+      const plan = explain.rows.map((row) => row["QUERY PLAN"]).join("\n");
+      assert.match(plan, /Index (?:Only )?Scan/u);
+      assert.doesNotMatch(plan, /Seq Scan/u);
+    } finally {
+      await admin.query("ROLLBACK");
+    }
+    await admin.query(
+      `UPDATE ops.materialization_attempts
+       SET state = 'failed', finished_at = clock_timestamp(), result_code = 'QUALITY_FAILED'
+       WHERE project_id = $1 AND attempt_id = $2 AND state = 'leased'`,
+      [ids.project, ids.qualityAttempt],
+    );
+    await admin.query(
+      `UPDATE ops.materialization_jobs
+       SET state = 'dead_letter', lease_owner_id = NULL, lease_expires_at = NULL,
+           result_code = 'QUALITY_FAILED', updated_at = clock_timestamp()
+       WHERE project_id = $1 AND job_id = $2`,
+      [ids.project, ids.qualityJob],
+    );
+  });
+  await exerciseRowCountConfirmations(adminConfig, apiConfig, workerConfig);
+  assert.deepEqual(
+    await withClient(adminConfig, (admin) => activationSnapshot(admin, ids.activation0)),
+    activationBefore,
+  );
+}
+
+async function exerciseRowCountConfirmations(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+): Promise<void> {
+  const v2: QualityObjectVersionFixture = Object.freeze({
+    groupVersion: 2,
+    rowCount: 500,
+    snapshotId: ids.qualityObjectSnapshotV2,
+    fileId: ids.qualityObjectFileV2,
+    managedArtifactId: ids.qualityObjectArtifactV2,
+    generationId: ids.qualityObjectGenerationV2,
+    jobId: ids.qualityJobV2,
+    attemptId: ids.qualityAttemptV2,
+    reportId: ids.qualityObjectReportV2,
+    previousSnapshotId: ids.qualityObjectSnapshot,
+  });
+  await withClient(adminConfig, (admin) => prepareQualityObjectVersion(admin, v2));
+  const v2Result = await buildQualityObjectVersion(workerConfig, v2);
+  assert.equal(v2Result.outcome, "awaiting_confirmation");
+
+  const apiPool = new pg.Pool(apiConfig);
+  try {
+    const repository = new PostgresMaterializationQualityRepository(apiPool);
+    const staleScope = await repository.getConfirmationScope({
+      projectId: ids.project,
+      generationId: v2.generationId,
+    });
+    const publicationLock = new pg.Client(adminConfig);
+    await publicationLock.connect();
+    try {
+      await publicationLock.query("BEGIN");
+      await publicationLock.query(`SELECT 1 FROM meta.projects WHERE project_id = $1 FOR UPDATE`, [
+        ids.project,
+      ]);
+      const racePool = new pg.Pool({
+        ...apiConfig,
+        options: "-c lock_timeout=200ms",
+      });
+      try {
+        const raceRepository = new PostgresMaterializationQualityRepository(racePool);
+        await assert.rejects(
+          raceRepository.recordRowCountConfirmation({
+            ...staleScope,
+            confirmationId: ids.qualityConfirmationV2Race,
+            actorPrincipalId: ids.principal,
+            decision: "accepted",
+            expiresAt: futureCanonicalInstant(15),
+            confirmationDigest: sha256Artifact("racing-row-count-confirmation-v2"),
+          }),
+          (error: unknown) =>
+            error instanceof MaterializationQualityError && error.code === "DEPENDENCY_UNAVAILABLE",
+        );
+      } finally {
+        await racePool.end();
+      }
+    } finally {
+      await publicationLock.query("ROLLBACK");
+      await publicationLock.end();
+    }
+    await withClient(adminConfig, async (admin) => {
+      await admin.query(
+        `UPDATE meta.projects
+         SET publication_sequence = publication_sequence + 1,
+             changed_at = clock_timestamp()
+         WHERE project_id = $1`,
+        [ids.project],
+      );
+    });
+    await assert.rejects(
+      repository.recordRowCountConfirmation({
+        ...staleScope,
+        confirmationId: ids.qualityConfirmationV2Stale,
+        actorPrincipalId: ids.principal,
+        decision: "accepted",
+        expiresAt: futureCanonicalInstant(15),
+        confirmationDigest: sha256Artifact("stale-row-count-confirmation-v2"),
+      }),
+      (error: unknown) =>
+        error instanceof MaterializationQualityError &&
+        error.code === "QUALITY_CONFIRMATION_INVALID",
+    );
+    const currentScope = await repository.getConfirmationScope({
+      projectId: ids.project,
+      generationId: v2.generationId,
+    });
+    assert.equal(
+      currentScope.publicationControlSequence,
+      staleScope.publicationControlSequence + 1n,
+    );
+    const accepted = await postgresRowCountConfirmationService(
+      repository,
+      ids.qualityConfirmationV2,
+    ).confirm(qualityVerifiedIdentity(), {
+      projectId: ids.project,
+      generationId: v2.generationId,
+      expectedReportDigest: v2Result.reportDigest,
+      expectedPublicationControlSequence: currentScope.publicationControlSequence,
+      decision: "accepted",
+    });
+    assert.equal(accepted.outcome, "passed");
+  } finally {
+    await apiPool.end();
+  }
+  await withClient(adminConfig, async (admin) => {
+    await finishQualityObjectJob(admin, v2, "succeeded");
+    await admin.query(
+      `UPDATE runtime.generations SET state = 'ready', changed_at = clock_timestamp()
+       WHERE project_id = $1 AND generation_id = $2`,
+      [ids.project, v2.generationId],
+    );
+  });
+
+  const v3: QualityObjectVersionFixture = Object.freeze({
+    groupVersion: 3,
+    rowCount: 1,
+    snapshotId: ids.qualityObjectSnapshotV3,
+    fileId: ids.qualityObjectFileV3,
+    managedArtifactId: ids.qualityObjectArtifactV3,
+    generationId: ids.qualityObjectGenerationV3,
+    jobId: ids.qualityJobV3,
+    attemptId: ids.qualityAttemptV3,
+    reportId: ids.qualityObjectReportV3,
+    previousSnapshotId: ids.qualityObjectSnapshotV2,
+  });
+  await withClient(adminConfig, (admin) => prepareQualityObjectVersion(admin, v3));
+  const v3Result = await buildQualityObjectVersion(workerConfig, v3);
+  assert.equal(v3Result.outcome, "awaiting_confirmation");
+  const rejectionPool = new pg.Pool(apiConfig);
+  try {
+    const repository = new PostgresMaterializationQualityRepository(rejectionPool);
+    const current = await repository.getConfirmationScope({
+      projectId: ids.project,
+      generationId: v3.generationId,
+    });
+    const rejected = await postgresRowCountConfirmationService(
+      repository,
+      ids.qualityConfirmationV3,
+    ).confirm(qualityVerifiedIdentity(), {
+      projectId: ids.project,
+      generationId: v3.generationId,
+      expectedReportDigest: v3Result.reportDigest,
+      expectedPublicationControlSequence: current.publicationControlSequence,
+      decision: "rejected",
+    });
+    assert.equal(rejected.outcome, "failed");
+  } finally {
+    await rejectionPool.end();
+  }
+  await withClient(adminConfig, async (admin) => {
+    await finishQualityObjectJob(admin, v3, "dead_letter");
+    const state = await admin.query<{
+      readonly accepted_binding: string;
+      readonly accepted_generation: string;
+      readonly rejected_binding: string;
+      readonly rejected_generation: string;
+      readonly confirmation_count: number;
+    }>(
+      `SELECT
+         (SELECT state FROM runtime.materialization_quality_bindings
+           WHERE project_id = $1 AND generation_id = $2) AS accepted_binding,
+         (SELECT state FROM runtime.generations
+           WHERE project_id = $1 AND generation_id = $2) AS accepted_generation,
+         (SELECT state FROM runtime.materialization_quality_bindings
+           WHERE project_id = $1 AND generation_id = $3) AS rejected_binding,
+         (SELECT state FROM runtime.generations
+           WHERE project_id = $1 AND generation_id = $3) AS rejected_generation,
+         (SELECT count(*)::integer FROM runtime.materialization_confirmations
+           WHERE project_id = $1 AND generation_id IN ($2, $3)) AS confirmation_count`,
+      [ids.project, v2.generationId, v3.generationId],
+    );
+    assert.deepEqual(state.rows[0], {
+      accepted_binding: "confirmed",
+      accepted_generation: "ready",
+      rejected_binding: "failed",
+      rejected_generation: "failed",
+      confirmation_count: 2,
+    });
+  });
+}
+
+interface QualityObjectVersionFixture {
+  readonly groupVersion: number;
+  readonly rowCount: number;
+  readonly snapshotId: string;
+  readonly fileId: string;
+  readonly managedArtifactId: string;
+  readonly generationId: string;
+  readonly jobId: string;
+  readonly attemptId: string;
+  readonly reportId: string;
+  readonly previousSnapshotId: string;
+}
+
+async function prepareQualityObjectVersion(
+  client: pg.Client,
+  fixture: QualityObjectVersionFixture,
+): Promise<void> {
+  const runtimePlanDigest = sha256Digest(
+    `quality-object-runtime-plan-v${String(fixture.groupVersion)}`,
+  );
+  const contentDigest = sha256Digest(`quality-object-content-v${String(fixture.groupVersion)}`);
+  await client.query("BEGIN");
+  await client.query(
+    `INSERT INTO runtime.snapshot_group_versions
+       (project_id, snapshot_group_id, group_version, member_count, group_digest)
+     VALUES ($1, $2, $3, 1, $4)`,
+    [
+      ids.project,
+      ids.qualityGroup,
+      fixture.groupVersion,
+      sha256Digest(`quality-group-v${String(fixture.groupVersion)}`),
+    ],
+  );
+  await client.query(
+    `INSERT INTO runtime.dataset_snapshots (
+       project_id, snapshot_id, snapshot_group_id, group_version,
+       member_key, member_kind, target_resource_id, target_revision_id,
+       snapshot_schema_resource_id, snapshot_schema_revision_id,
+       mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+       content_digest, byte_count, row_count, file_count, previous_snapshot_id,
+       snapshot_digest
+     ) VALUES (
+       $1, $2, $3, $4, 'object:Order', 'object', $5, $6, $7, $8, $9, $10,
+       $11, $12, 0, $13, 1, $14, $15
+     )`,
+    [
+      ids.project,
+      fixture.snapshotId,
+      ids.qualityGroup,
+      fixture.groupVersion,
+      ids.objectResource,
+      ids.objectRevision,
+      ids.schemaResource,
+      ids.schemaRevision,
+      ids.mappingResource,
+      ids.mappingRevision,
+      runtimePlanDigest,
+      contentDigest,
+      fixture.rowCount,
+      fixture.previousSnapshotId,
+      sha256Digest(`quality-object-snapshot-v${String(fixture.groupVersion)}`),
+    ],
+  );
+  await client.query(
+    `INSERT INTO runtime.snapshot_files (
+       project_id, snapshot_id, file_id, managed_artifact_id, object_version,
+       ordinal, content_digest, byte_count, row_count, source_label, scan_status
+     ) VALUES ($1, $2, $3, $4, $5, 0, $6, 0, $7,
+               'G2-02-07 row-count fixture', 'complete')`,
+    [
+      ids.project,
+      fixture.snapshotId,
+      fixture.fileId,
+      fixture.managedArtifactId,
+      `quality-object-version-${String(fixture.groupVersion)}`,
+      contentDigest,
+      fixture.rowCount,
+    ],
+  );
+  await client.query(
+    `INSERT INTO runtime.snapshot_group_members (
+       project_id, snapshot_group_id, group_version, member_key, member_kind,
+       snapshot_id, target_resource_id, target_revision_id
+     ) VALUES ($1, $2, $3, 'object:Order', 'object', $4, $5, $6)`,
+    [
+      ids.project,
+      ids.qualityGroup,
+      fixture.groupVersion,
+      fixture.snapshotId,
+      ids.objectResource,
+      ids.objectRevision,
+    ],
+  );
+  await client.query("COMMIT");
+  for (const state of ["validated", "materializing", "ready"] as const) {
+    await client.query(
+      `UPDATE runtime.snapshot_group_versions
+       SET state = $4, changed_at = clock_timestamp()
+       WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = $3`,
+      [ids.project, ids.qualityGroup, fixture.groupVersion, state],
+    );
+    await client.query(
+      `UPDATE runtime.dataset_snapshots
+       SET state = $3, changed_at = clock_timestamp()
+       WHERE project_id = $1 AND snapshot_id = $2`,
+      [ids.project, fixture.snapshotId, state],
+    );
+  }
+  await client.query(
+    `INSERT INTO ops.materialization_jobs
+       (project_id, job_id, snapshot_group_id, group_version, idempotency_key, input_digest)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      ids.project,
+      fixture.jobId,
+      ids.qualityGroup,
+      fixture.groupVersion,
+      `g2-02-07-quality-job-v${String(fixture.groupVersion)}`,
+      sha256Digest(`quality-job-v${String(fixture.groupVersion)}`),
+    ],
+  );
+  await client.query(
+    `INSERT INTO runtime.generations (
+       project_id, generation_id, member_key, member_kind,
+       target_resource_id, target_revision_id, snapshot_id, snapshot_group_id, group_version,
+       snapshot_schema_resource_id, snapshot_schema_revision_id,
+       mapping_resource_id, mapping_revision_id, runtime_plan_digest, index_plan_digest
+     ) VALUES (
+       $1, $2, 'object:Order', 'object', $3, $4, $5, $6, $7,
+       $8, $9, $10, $11, $12, $13
+     )`,
+    [
+      ids.project,
+      fixture.generationId,
+      ids.objectResource,
+      ids.objectRevision,
+      fixture.snapshotId,
+      ids.qualityGroup,
+      fixture.groupVersion,
+      ids.schemaResource,
+      ids.schemaRevision,
+      ids.mappingResource,
+      ids.mappingRevision,
+      runtimePlanDigest,
+      digests.indexPlan,
+    ],
+  );
+}
+
+async function buildQualityObjectVersion(
+  workerConfig: pg.ClientConfig,
+  fixture: QualityObjectVersionFixture,
+) {
+  const claim = await withClient(workerConfig, async (worker) => {
+    const result = await worker.query<{ readonly fencing_token: string }>(
+      `SELECT fencing_token::text
+       FROM ops.claim_materialization_job($1, $2, 300)`,
+      [ids.worker2, fixture.attemptId],
+    );
+    return result.rows[0];
+  });
+  assert.ok(claim);
+  const scope = Object.freeze({
+    projectId: ids.project,
+    jobId: fixture.jobId,
+    attemptId: fixture.attemptId,
+    fencingToken: BigInt(claim.fencing_token),
+  });
+  const pool = new pg.Pool(workerConfig);
+  try {
+    const base = baseService(pool);
+    const receipt = await base.stageObjectBatch({
+      scope,
+      generation: Object.freeze({
+        generationId: fixture.generationId,
+        targetResourceId: ids.objectResource,
+        targetRevisionId: ids.objectRevision,
+        sourceSnapshotId: fixture.snapshotId,
+        sourceFileId: fixture.fileId,
+        mappingRevisionId: ids.mappingRevision,
+      }),
+      batchSequence: 1,
+      rows: Array.from({ length: fixture.rowCount }, (_, index) =>
+        baseObjectRow(index + 1, `quality-order-${String(index + 1)}`),
+      ),
+    });
+    await base.promoteGenerationBase({
+      scope,
+      generationId: fixture.generationId,
+      expectedRowCount: fixture.rowCount,
+      batchReceipts: [receipt],
+    });
+    const plan = capacityObjectMappingPlan();
+    if (plan.targetKind !== "object") throw new Error("quality Object plan required");
+    return await postgresQualityService(pool, [fixture.reportId], []).build({
+      scope,
+      generationId: fixture.generationId,
+      provenanceTemplates: provenanceTemplatesFromPlan(plan, {
+        digestCanonicalText: sha256Artifact,
+      }),
+    });
+  } finally {
+    await pool.end();
+  }
+}
+
+function postgresRowCountConfirmationService(
+  repository: PostgresMaterializationQualityRepository,
+  confirmationId: string,
+): RowCountConfirmationService {
+  return new RowCountConfirmationService({
+    principals: {
+      resolveVerifiedIdentity() {
+        return Promise.resolve({
+          principalId: ids.principal,
+          issuer: "https://issuer.db02.test",
+          subject: "db02-owner",
+          displayName: "DB-02 Owner",
+          state: "active" as const,
+        });
+      },
+    },
+    authorizer: {
+      authorize(_identity, request) {
+        assert.equal(request.projectId, ids.project);
+        assert.equal(request.permission, "release.publish");
+        return Promise.resolve(true);
+      },
+    },
+    repository,
+    crypto: {
+      randomId: () => confirmationId,
+      digestCanonicalText: sha256Artifact,
+      createStreamingDigest() {
+        const hash = createHash("sha256");
+        return {
+          update(chunk: Uint8Array) {
+            hash.update(chunk);
+          },
+          finish() {
+            return parseArtifactDigest(`sha256:${hash.digest("hex")}`);
+          },
+        };
+      },
+    },
+    clock: { now: currentCanonicalInstant },
+  });
+}
+
+function qualityVerifiedIdentity() {
+  return Object.freeze({
+    issuer: "https://issuer.db02.test",
+    subject: "db02-owner",
+    displayName: "DB-02 Owner",
+    claimsFingerprint: sha256Artifact("quality-owner-claims"),
+    authenticatedAt: currentCanonicalInstant(),
+  });
+}
+
+function futureCanonicalInstant(minutes: number) {
+  return parseCanonicalInstant(
+    new Date(Date.now() + minutes * 60_000).toISOString().replace(/Z$/u, "000Z"),
+  );
+}
+
+async function finishQualityObjectJob(
+  client: pg.Client,
+  fixture: QualityObjectVersionFixture,
+  state: "succeeded" | "dead_letter",
+): Promise<void> {
+  await client.query(
+    `UPDATE ops.materialization_attempts
+     SET state = $3, finished_at = clock_timestamp(), result_code = $4
+     WHERE project_id = $1 AND attempt_id = $2 AND state = 'leased'`,
+    [
+      ids.project,
+      fixture.attemptId,
+      state === "succeeded" ? "completed" : "failed",
+      state === "succeeded" ? "QUALITY_CONFIRMED" : "QUALITY_REJECTED",
+    ],
+  );
+  await client.query(
+    `UPDATE ops.materialization_jobs
+     SET state = $3, lease_owner_id = NULL, lease_expires_at = NULL,
+         result_code = $4, updated_at = clock_timestamp()
+     WHERE project_id = $1 AND job_id = $2`,
+    [
+      ids.project,
+      fixture.jobId,
+      state,
+      state === "succeeded" ? "QUALITY_CONFIRMED" : "QUALITY_REJECTED",
+    ],
+  );
+}
+
+interface QualityUploadRecord {
+  readonly objectKey: string;
+  readonly body: string;
+  readonly mediaType: string;
+}
+
+function postgresQualityService(
+  pool: pg.Pool,
+  randomIds: string[],
+  uploads: QualityUploadRecord[],
+): MaterializationQualityService {
+  return new MaterializationQualityService({
+    repository: new PostgresMaterializationQualityRepository(pool),
+    overlays: {
+      inspect() {
+        return Promise.resolve({ state: "known" as const, rowCount: 0 });
+      },
+    },
+    artifacts: {
+      async putVersion(input) {
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of input.body) chunks.push(chunk);
+        const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+        assert.equal(Buffer.byteLength(body), input.expectedByteCount);
+        uploads.push({ objectKey: input.objectKey, body, mediaType: input.mediaType });
+        return {
+          versionId: `quality-version-${String(uploads.length)}`,
+          byteCount: input.expectedByteCount,
+          mediaType: input.mediaType,
+        };
+      },
+    },
+    crypto: {
+      randomId() {
+        const value = randomIds.shift();
+        if (value === undefined) throw new Error("quality fixture exhausted IDs");
+        return value;
+      },
+      digestCanonicalText: sha256Artifact,
+      createStreamingDigest() {
+        const hash = createHash("sha256");
+        return {
+          update(chunk: Uint8Array) {
+            hash.update(chunk);
+          },
+          finish() {
+            return parseArtifactDigest(`sha256:${hash.digest("hex")}`);
+          },
+        };
+      },
+    },
+    clock: { now: currentCanonicalInstant },
+  });
+}
+
+function currentCanonicalInstant() {
+  return parseCanonicalInstant(new Date().toISOString().replace(/Z$/u, "000Z"));
+}
+
+async function prepareQualityCurrentFacts(client: pg.Client): Promise<void> {
+  const linkSchema = qualityLinkSchemaDefinition();
+  const linkMapping = qualityLinkMappingDefinition();
+  await createPublishedResource(client, {
+    resourceId: ids.linkSchemaResource,
+    revisionId: ids.linkSchemaRevision,
+    reportId: ids.linkSchemaValidation,
+    family: "snapshot_schema",
+    apiName: "QualityLinkCsvSchema",
+    contentDigest: definitionDigest(linkSchema),
+    content: linkSchema,
+  });
+  await createPublishedResource(client, {
+    resourceId: ids.linkMappingResource,
+    revisionId: ids.linkMappingRevision,
+    reportId: ids.linkMappingValidation,
+    family: "mapping",
+    apiName: "QualityLinkCsvMapping",
+    contentDigest: definitionDigest(linkMapping),
+    content: linkMapping,
+  });
+  const linkIndexDigest = sha256Digest("quality-link-index-plan");
+  const runtimePlanDigest = sha256Digest("quality-object-link-runtime-plan");
+  const objectContentDigest = sha256Digest("quality-object-snapshot-content");
+  const linkContentDigest = sha256Digest("quality-link-snapshot-content");
+  await client.query(
+    `INSERT INTO runtime.index_plans
+       (project_id, index_plan_id, target_resource_id, target_revision_id,
+        plan_digest, entry_count, compiler_version)
+     VALUES ($1, $2, $3, $4, $5, 0, 'index-plan-g2-02-v1')`,
+    [ids.project, ids.qualityLinkIndexPlan, ids.linkResource, ids.linkRevision, linkIndexDigest],
+  );
+  await client.query(
+    `INSERT INTO runtime.snapshot_groups (project_id, snapshot_group_id, group_key)
+     VALUES ($1, $2, 'quality-object-links')`,
+    [ids.project, ids.qualityGroup],
+  );
+  await client.query("BEGIN");
+  await client.query(
+    `INSERT INTO runtime.snapshot_group_versions
+       (project_id, snapshot_group_id, group_version, member_count, group_digest)
+     VALUES ($1, $2, 1, 2, $3)`,
+    [ids.project, ids.qualityGroup, sha256Digest("quality-group-v1")],
+  );
+  await client.query(
+    `INSERT INTO runtime.dataset_snapshots (
+       project_id, snapshot_id, snapshot_group_id, group_version,
+       member_key, member_kind, target_resource_id, target_revision_id,
+       snapshot_schema_resource_id, snapshot_schema_revision_id,
+       mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+       content_digest, byte_count, row_count, file_count, snapshot_digest
+     ) VALUES
+       ($1, $2, $3, 1, 'object:Order', 'object', $4, $5, $6, $7, $8, $9,
+        $10, $11, 0, $12, 1, $13),
+       ($1, $14, $3, 1, 'link:OrderRelation', 'link', $15, $16, $17, $18, $19, $20,
+        $10, $21, 0, 1, 1, $22)`,
+    [
+      ids.project,
+      ids.qualityObjectSnapshot,
+      ids.qualityGroup,
+      ids.objectResource,
+      ids.objectRevision,
+      ids.schemaResource,
+      ids.schemaRevision,
+      ids.mappingResource,
+      ids.mappingRevision,
+      runtimePlanDigest,
+      objectContentDigest,
+      qualityObjectRows,
+      sha256Digest("quality-object-snapshot-v1"),
+      ids.qualityLinkSnapshot,
+      ids.linkResource,
+      ids.linkRevision,
+      ids.linkSchemaResource,
+      ids.linkSchemaRevision,
+      ids.linkMappingResource,
+      ids.linkMappingRevision,
+      linkContentDigest,
+      sha256Digest("quality-link-snapshot-v1"),
+    ],
+  );
+  await client.query(
+    `INSERT INTO runtime.snapshot_files (
+       project_id, snapshot_id, file_id, managed_artifact_id, object_version,
+       ordinal, content_digest, byte_count, row_count, source_label, scan_status
+     ) VALUES
+       ($1, $2, $3, $4, 'quality-object-version-1', 0, $5, 0, $6,
+        'G2-02-07 Object quality fixture', 'complete'),
+       ($1, $7, $8, $9, 'quality-link-version-1', 0, $10, 0, 1,
+        'G2-02-07 Link quality fixture', 'complete')`,
+    [
+      ids.project,
+      ids.qualityObjectSnapshot,
+      ids.qualityObjectFile,
+      ids.qualityObjectArtifact,
+      objectContentDigest,
+      qualityObjectRows,
+      ids.qualityLinkSnapshot,
+      ids.qualityLinkFile,
+      ids.qualityLinkArtifact,
+      linkContentDigest,
+    ],
+  );
+  await client.query(
+    `INSERT INTO runtime.snapshot_group_members (
+       project_id, snapshot_group_id, group_version, member_key, member_kind,
+       snapshot_id, target_resource_id, target_revision_id
+     ) VALUES
+       ($1, $2, 1, 'object:Order', 'object', $3, $4, $5),
+       ($1, $2, 1, 'link:OrderRelation', 'link', $6, $7, $8)`,
+    [
+      ids.project,
+      ids.qualityGroup,
+      ids.qualityObjectSnapshot,
+      ids.objectResource,
+      ids.objectRevision,
+      ids.qualityLinkSnapshot,
+      ids.linkResource,
+      ids.linkRevision,
+    ],
+  );
+  await client.query("COMMIT");
+  for (const state of ["validated", "materializing", "ready"] as const) {
+    await client.query(
+      `UPDATE runtime.snapshot_group_versions
+       SET state = $4, changed_at = clock_timestamp()
+       WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = $3`,
+      [ids.project, ids.qualityGroup, 1, state],
+    );
+    await client.query(
+      `UPDATE runtime.dataset_snapshots
+       SET state = $4, changed_at = clock_timestamp()
+       WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = $3`,
+      [ids.project, ids.qualityGroup, 1, state],
+    );
+  }
+  await client.query(
+    `INSERT INTO ops.materialization_jobs
+       (project_id, job_id, snapshot_group_id, group_version, idempotency_key, input_digest)
+     VALUES ($1, $2, $3, 1, 'g2-02-07-quality-job-v1', $4)`,
+    [ids.project, ids.qualityJob, ids.qualityGroup, sha256Digest("quality-job-v1")],
+  );
+  await client.query(
+    `INSERT INTO runtime.generations (
+       project_id, generation_id, member_key, member_kind,
+       target_resource_id, target_revision_id, snapshot_id, snapshot_group_id, group_version,
+       snapshot_schema_resource_id, snapshot_schema_revision_id,
+       mapping_resource_id, mapping_revision_id, runtime_plan_digest, index_plan_digest
+     ) VALUES
+       ($1, $2, 'object:Order', 'object', $3, $4, $5, $6, 1,
+        $7, $8, $9, $10, $11, $12),
+       ($1, $13, 'link:OrderRelation', 'link', $14, $15, $16, $6, 1,
+        $17, $18, $19, $20, $11, $21)`,
+    [
+      ids.project,
+      ids.qualityObjectGeneration,
+      ids.objectResource,
+      ids.objectRevision,
+      ids.qualityObjectSnapshot,
+      ids.qualityGroup,
+      ids.schemaResource,
+      ids.schemaRevision,
+      ids.mappingResource,
+      ids.mappingRevision,
+      runtimePlanDigest,
+      digests.indexPlan,
+      ids.qualityLinkGeneration,
+      ids.linkResource,
+      ids.linkRevision,
+      ids.qualityLinkSnapshot,
+      ids.linkSchemaResource,
+      ids.linkSchemaRevision,
+      ids.linkMappingResource,
+      ids.linkMappingRevision,
+      linkIndexDigest,
+    ],
+  );
+  await client.query(
+    `INSERT INTO authz.role_bindings
+       (binding_id, project_id, principal_id, scope, resource_id, role)
+     VALUES ($1, $2, $3, 'project', NULL, 'owner')`,
+    [ids.qualityOwnerBinding, ids.project, ids.principal],
+  );
+}
+
+function qualityLinkSchemaDefinition() {
+  return {
+    schemaVersion: 1,
+    contractVersion: "snapshot-schema-v1",
+    format: "csv_utf8",
+    headerRow: true,
+    columns: [
+      { ordinal: 0, columnApiName: "sourceOrderId", valueType: "string", required: true },
+      { ordinal: 1, columnApiName: "targetOrderId", valueType: "string", required: true },
+    ],
+  } as const;
+}
+
+function qualityLinkMappingDefinition() {
+  return {
+    schemaVersion: 1,
+    mappingVersion: "mapping-v1",
+    targetKind: "link",
+    inputSchemaRevisionId: ids.linkSchemaRevision,
+    targetResourceId: ids.linkResource,
+    targetRevisionId: ids.linkRevision,
+    valueCodecVersion: "pk1",
+    propertyMappings: [],
+    sourceKeyMapping: {
+      objectTypeRevisionId: ids.objectRevision,
+      expression: { op: "column", columnApiName: "sourceOrderId" },
+      codecVersion: "pk1",
+    },
+    targetKeyMapping: {
+      objectTypeRevisionId: ids.objectRevision,
+      expression: { op: "column", columnApiName: "targetOrderId" },
+      codecVersion: "pk1",
+    },
+    qualityRules: objectMapping.qualityRules,
+  } as const;
 }
 
 async function assertConcurrentIdentityResolution(
@@ -1203,11 +2449,6 @@ async function exerciseLinkBase(
        WHERE project_id = $1 AND job_id = $2`,
       [ids.project, ids.linkJob],
     );
-    await admin.query(
-      `UPDATE runtime.generations SET state = 'ready', changed_at = clock_timestamp()
-       WHERE project_id = $1 AND generation_id = $2`,
-      [ids.project, ids.linkGeneration],
-    );
   });
   capacityMetrics.linkBatches = Math.ceil(capacityMetrics.linkRows / 5_000);
   capacityMetrics.linkMilliseconds = elapsedMilliseconds(linkStartedAt);
@@ -1328,35 +2569,8 @@ async function stageLinkUpload(
 }
 
 function capacityObjectMappingPlan() {
-  const schema = {
-    schemaVersion: 1,
-    contractVersion: "snapshot-schema-v1",
-    format: "csv_utf8",
-    headerRow: true,
-    columns: [
-      { ordinal: 0, columnApiName: "orderId", valueType: "string", required: true },
-      { ordinal: 1, columnApiName: "displayName", valueType: "string", required: true },
-    ],
-  } as const;
-  const mapping = {
-    schemaVersion: 1,
-    mappingVersion: "mapping-v1",
-    targetKind: "object",
-    inputSchemaRevisionId: ids.schemaRevision,
-    targetResourceId: ids.objectResource,
-    targetRevisionId: ids.objectRevision,
-    valueCodecVersion: "pk1",
-    propertyMappings: [
-      {
-        propertyApiName: "displayName",
-        required: true,
-        nullPolicy: "reject_row",
-        expression: { op: "column", columnApiName: "displayName" },
-      },
-    ],
-    primaryKeyExpression: { op: "column", columnApiName: "orderId" },
-    qualityRules: objectMapping.qualityRules,
-  } as const;
+  const schema = capacityObjectSchemaDefinition();
+  const mapping = capacityObjectMappingDefinition();
   return compileMapping(
     {
       mappingRevisionId: ids.mappingRevision,
@@ -1375,6 +2589,41 @@ function capacityObjectMappingPlan() {
     },
     sha256Artifact,
   );
+}
+
+function capacityObjectSchemaDefinition() {
+  return {
+    schemaVersion: 1,
+    contractVersion: "snapshot-schema-v1",
+    format: "csv_utf8",
+    headerRow: true,
+    columns: [
+      { ordinal: 0, columnApiName: "orderId", valueType: "string", required: true },
+      { ordinal: 1, columnApiName: "displayName", valueType: "string", required: true },
+    ],
+  } as const;
+}
+
+function capacityObjectMappingDefinition() {
+  return {
+    schemaVersion: 1,
+    mappingVersion: "mapping-v1",
+    targetKind: "object",
+    inputSchemaRevisionId: ids.schemaRevision,
+    targetResourceId: ids.objectResource,
+    targetRevisionId: ids.objectRevision,
+    valueCodecVersion: "pk1",
+    propertyMappings: [
+      {
+        propertyApiName: "displayName",
+        required: true,
+        nullPolicy: "reject_row",
+        expression: { op: "column", columnApiName: "displayName" },
+      },
+    ],
+    primaryKeyExpression: { op: "column", columnApiName: "orderId" },
+    qualityRules: objectMapping.qualityRules,
+  } as const;
 }
 
 function capacityLinkMappingPlan() {
@@ -1635,6 +2884,7 @@ function baseLinkRow(
   sourceIdentity: string,
   targetIdentity: string,
   wrongSourceType = false,
+  caseSensitive = capacityMode,
 ) {
   return Object.freeze({
     kind: "link" as const,
@@ -1649,7 +2899,7 @@ function baseLinkRow(
         wrongSourceType ? ids.mappingRevision : ids.objectRevision,
       ),
       canonicalPrimaryKey: canonicalizePrimaryKey([sourceIdentity], {
-        components: [{ type: "string" as const, caseSensitive: capacityMode }],
+        components: [{ type: "string" as const, caseSensitive }],
       }),
       sourceColumnApiNames: Object.freeze(["sourceOrderId"]),
     }),
@@ -1657,7 +2907,7 @@ function baseLinkRow(
       objectTypeResourceId: parseOntosId(ids.objectResource),
       objectTypeRevisionId: parseOntosId(ids.objectRevision),
       canonicalPrimaryKey: canonicalizePrimaryKey([targetIdentity], {
-        components: [{ type: "string" as const, caseSensitive: capacityMode }],
+        components: [{ type: "string" as const, caseSensitive }],
       }),
       sourceColumnApiNames: Object.freeze(["targetOrderId"]),
     }),
@@ -1697,6 +2947,12 @@ function baseObjectRow(rowNumber: number, identity: string) {
       components: [{ type: "string" as const, caseSensitive: false }],
     }),
     properties: Object.freeze([
+      Object.freeze({
+        propertyApiName: "displayName",
+        valueType: "string" as const,
+        value: `Order ${identity}`,
+        sourceColumnApiNames: Object.freeze(["displayName"]),
+      }),
       Object.freeze({
         propertyApiName: "orderId",
         valueType: "string" as const,
@@ -2505,11 +3761,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 11);
+  assert.equal(left.applied.length + right.applied.length, 12);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 11)).length, 11);
+    assert.equal((await migrationLedger(client, 12)).length, 12);
   });
 }
 
@@ -2520,6 +3776,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
     [9, "ops.materialization_jobs"],
     [10, "runtime.snapshot_upload_sessions"],
     [11, "ops.materialization_generation_stages"],
+    [12, "runtime.materialization_quality_bindings"],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -2571,6 +3828,9 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     "ops.materialization_staged_batches",
     "ops.materialization_generation_stages",
     "ops.materialization_generation_stage_batches",
+    "ops.materialization_quality_observations",
+    "ops.materialization_quality_preparations",
+    "ops.materialization_provenance_templates",
     "ops.object_base_staging",
     "ops.link_base_staging",
     "runtime.compatibility_certificates",
@@ -2578,8 +3838,11 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     "runtime.generations",
     "runtime.link_base",
     "runtime.link_current",
+    "runtime.materialization_confirmations",
+    "runtime.materialization_quality_bindings",
     "runtime.object_base",
     "runtime.object_current",
+    "runtime.object_head_candidates",
     "runtime.object_identities",
     "runtime.snapshot_files",
     "runtime.snapshot_group_versions",
@@ -2700,7 +3963,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(11);
+  const directory = await migrationPrefixDirectory(12);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);
