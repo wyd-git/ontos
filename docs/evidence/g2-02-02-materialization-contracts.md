@@ -1,7 +1,7 @@
 # G2-02-02 Snapshot、Mapping、Generation 与 Job 合同 Evidence
 
 - 日期：2026-08-15
-- 结论：PASS（只代表 G2-02-02 合同 Gate；不代表 DB-02、上传/物化/激活闭环或完整 G2-02 已完成）
+- 结论：**PASS**（只代表 G2-02-02 合同 Gate；不代表 DB-02、上传/物化/激活闭环或完整 G2-02 已完成）
 - 任务合同：[G2-02 Materialization 任务包 § G2-02-02](../delivery/g2-02-materialization-task-pack.md#g2-02-02冻结-snapshotmappinggeneration-与-job-模块合同)
 - 治理：[Materialization v1 合同与兼容性治理](../architecture/materialization-contract-governance.md)
 

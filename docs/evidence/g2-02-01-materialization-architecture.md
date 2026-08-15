@@ -1,7 +1,7 @@
 # G2-02-01 Materialization 事务、DDL Executor 与 Overlay Seam Evidence
 
 - 日期：2026-08-15
-- 结论：PASS（仅代表 G2-02-01 架构与 Spike；不代表 DB-02、Materializer 或完整 G2-02 已完成）
+- 结论：**PASS**（仅代表 G2-02-01 架构与 Spike；不代表 DB-02、Materializer 或完整 G2-02 已完成）
 - 决策：[ADR-014](../architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md)
 - 专项红队：[ADR-014 红队](../reviews/adr-014-materialization-architecture-red-team.md)
 - 任务合同：[G2-02 Materialization 任务包 § G2-02-01](../delivery/g2-02-materialization-task-pack.md#g2-02-01冻结-materialization-事务ddl-executor-与-overlay-seam)

@@ -49,7 +49,7 @@
     "test:contracts": "node --test tools/contracts/*.test.ts",
     "test:metadata-contracts": "node --test tools/contracts/metadata*.test.ts",
     "test:database:unit": "node --test tools/database/definitions.test.ts tools/database/handler-boundary.test.ts tools/database/preflight.test.ts",
-    "test:database": "node --test --test-concurrency=1 tools/database/postgres.integration.test.ts tools/metadata-control-plane/integration/postgres.test.ts tools/metadata-control-plane/integration/release-postgres.test.ts tools/metadata-control-plane/integration/package-postgres.test.ts tools/materialization-control-plane/integration/postgres.test.ts",
+    "test:database": "node --test --test-concurrency=1 tools/database/postgres.integration.test.ts tools/database/materialization-postgres.integration.test.ts tools/metadata-control-plane/integration/postgres.test.ts tools/metadata-control-plane/integration/release-postgres.test.ts tools/metadata-control-plane/integration/package-postgres.test.ts tools/materialization-control-plane/integration/postgres.test.ts",
     "test:admin-api:postgres": "node --test tools/admin-api/integration/postgres-http.test.ts",
     "test:metadata-clean-room": "node --test tools/metadata-clean-room/postgres-http-clean-room.test.ts",
     "db:migrate": "node tools/database/cli.ts",

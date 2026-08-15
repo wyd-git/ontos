@@ -6,6 +6,7 @@
 - 决策范围：Snapshot、Action、Query、SDK 共用的 Property Value、Primary Key、排序与错误合同
 - 可执行合同：`packages/value-codec/`
 - 共享向量：`tools/value-codec/golden-vectors.json`
+- 实现推进：G2-02-03 已在正式 Object Identity/Object Current 表落 `text COLLATE "C"`、1,024-byte Gate 和 Generation-scoped Canonical PK Unique；Snapshot Mapping 真正调用 Codec 与跨进程数据向量仍由 G2-02-05/06 验收
 
 ## 1. 决策结论
 
@@ -210,4 +211,4 @@ Fixture 在 G2-00-02 的真实 PostgreSQL 16 容器执行。未来 DB Migration 
 - 不解决历史 `pk1` 数据向未来 Codec Version 的迁移；首次升级前必须新增 ADR；
 - 不宣称 test-only PostgreSQL Fixture 是生产数据库校验函数。
 
-G2-00-05 的产物是后续模块必须复用的可执行公共合同。DB-02、Snapshot、Action、Query 和 SDK 仍各自需要 Integration Gate，证明它们没有绕过这个包。
+G2-00-05 的产物是后续模块必须复用的可执行公共合同。G2-02-03 只关闭了 DB-02 存储 Unique/Collation 这一层；Snapshot、Action、Query 和 SDK 仍各自需要 Integration Gate，证明它们没有绕过这个包。
