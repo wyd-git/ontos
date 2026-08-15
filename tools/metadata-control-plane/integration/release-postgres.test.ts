@@ -291,22 +291,25 @@ void test(
         project.project.projectId,
         concurrentRevisionId,
       );
-      await assert.rejects(
-        pool.query(
-          `INSERT INTO meta.runtime_activations
-             (activation_id, release_id, activation_digest)
-           VALUES ($1, $2, $3)`,
-          [randomUUID(), orphanTarget.releaseId, `sha256:${"a".repeat(64)}`],
-        ),
-        isPostgresError("55000"),
+      const preparedActivationId = randomUUID();
+      await pool.query(
+        `INSERT INTO meta.runtime_activations
+           (activation_id, release_id, activation_digest)
+         VALUES ($1, $2, $3)`,
+        [preparedActivationId, orphanTarget.releaseId, `sha256:${"a".repeat(64)}`],
       );
-      const orphanCount = await pool.query<{ readonly count: number }>(
-        `SELECT count(*)::integer AS count
-         FROM meta.runtime_activations
-         WHERE release_id = $1`,
+      const prepared = await pool.query<{
+        readonly activation_count: number;
+        readonly serving_head_count: number;
+      }>(
+        `SELECT
+           (SELECT count(*)::integer FROM meta.runtime_activations
+            WHERE release_id = $1) AS activation_count,
+           (SELECT count(*)::integer FROM meta.release_serving_heads
+            WHERE release_id = $1) AS serving_head_count`,
         [orphanTarget.releaseId],
       );
-      assert.equal(orphanCount.rows[0]?.count, 0);
+      assert.deepEqual(prepared.rows[0], { activation_count: 1, serving_head_count: 0 });
 
       const staleRevision = await createValidatedChild(
         resources,
@@ -563,11 +566,6 @@ function identity(subject: string): VerifiedFoundationIdentity {
 
 function isApplicationError(code: MetadataApplicationError["code"]): (error: unknown) => boolean {
   return (error: unknown) => error instanceof MetadataApplicationError && error.code === code;
-}
-
-function isPostgresError(code: string): (error: unknown) => boolean {
-  return (error: unknown) =>
-    typeof error === "object" && error !== null && "code" in error && error.code === code;
 }
 
 function requireValue<T>(value: T | undefined): T {

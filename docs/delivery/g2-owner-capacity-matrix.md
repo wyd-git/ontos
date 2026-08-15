@@ -80,9 +80,17 @@
 - Dynamic DDL 的可行性停止条件未触发，但正式 Plan 不可变、Inventory Scanner/Revision、全部 Recipe、真实 Cutover 行锁和生产 Secret/Network 隔离仍是后续非可选 Gate；不能用本 Spike 宣称 DB-02 已落库。
 - G2-02 整体 **7–11 工程周单通道容量情景暂不缩短**。G2-02-02 可以开始；下一次正式重估仍按原计划在 G2-02-03 的真实 `R1/A0 → R2/A1` Migration 薄切片后执行。
 
+### G2-02-03 后检查点（2026-08-15）
+
+- G2-02-02 合同和 G2-02-03 逻辑 DB-02 Migration 已 PASS；连续账本现为 0001～0009，停在 0006 且预置 R1/A0 的真实 PostgreSQL 16 数据库已无损升级，R2 Plan → READY 空 Generation → A1 与双 Worker Lease/Fencing/Checkpoint Smoke 已完成。
+- 实现中关闭 8 类返工：复合 FK/Unique、Snapshot/Mapping DB Validator、逐表事实冻结、Deferred Trigger Definer 权限、PL/pgSQL 名称歧义、候选 Activation 历史测试语义、Base/Current 内容绑定，以及旧证据门禁硬编码“总共 6 个 Migration”。没有修改 PRD/ADR、历史 Migration 或 A0，也没有把 Owner/DDL 交给 Runtime。
+- 已完成的架构、合同和 Schema 降低了后续结构性返工，但 0 行 Generation 不提供吞吐依据；S3、CSV 流式、Mapping、10k/100k 首批数据、完整 Job 恢复、动态索引、Cutover/GC 和 100k/1m 总验收仍在关键路径。因此从当前检查点起，**剩余单通道容量情景为 6–10 工程周**，不是发布日期承诺。
+- 下一次强制重估仍在 G2-02-06 的 10k Object/100k Link 数据薄切片；必须记录 COPY/批次吞吐、Node Heap、PostgreSQL Heap/Index/WAL、失败重放和实际返工。缺少这些数据不得继续缩短区间。
+- 当前只放行 G2-02-04 Managed UTF-8 CSV Ingress；不得跳到 Mapping 后半段、Query、Action、UI 或把 DB Schema 宣称成生产闭环。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01 与 G2-02-01 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-02，不得跳到 DB-02、Query、页面或 Action。
+1. G2-00、G2-01 与 G2-02-01～03 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-04，不得跳到 Mapping 后半段、Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

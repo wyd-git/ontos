@@ -17,7 +17,10 @@
       "migrations/db-00/0003_resource_revision_guards.sql",
       "migrations/db-00/0004_dependency_validation_guards.sql",
       "migrations/db-00/0005_release_lifecycle_guards.sql",
-      "migrations/db-00/0006_package_lifecycle_guards.sql"
+      "migrations/db-00/0006_package_lifecycle_guards.sql",
+      "migrations/db-00/0007_materialization_control_facts.sql",
+      "migrations/db-00/0008_materialization_shared_projection.sql",
+      "migrations/db-00/0009_materialization_operations.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -31,14 +34,48 @@
       "meta.projects",
       "meta.release_channels",
       "meta.release_pins",
+      "meta.release_runtime_plan_members",
+      "meta.release_runtime_plans",
       "meta.release_serving_heads",
       "meta.releases",
       "meta.resource_dependencies",
       "meta.resource_revisions",
       "meta.resources",
+      "meta.runtime_activation_members",
       "meta.runtime_activations",
       "meta.validation_reports",
-      "ontos_migration.schema_migrations"
+      "ontos_migration.schema_migrations",
+      "ops.gc_plan_candidates",
+      "ops.gc_plans",
+      "ops.gc_runs",
+      "ops.materialization_attempts",
+      "ops.materialization_checkpoints",
+      "ops.materialization_error_samples",
+      "ops.materialization_jobs",
+      "ops.materialization_staged_batches",
+      "runtime.capacity_approvals",
+      "runtime.compatibility_certificates",
+      "runtime.dataset_snapshots",
+      "runtime.generation_measurements",
+      "runtime.generations",
+      "runtime.index_inventory",
+      "runtime.index_plan_entries",
+      "runtime.index_plans",
+      "runtime.link_base",
+      "runtime.link_current",
+      "runtime.materialization_report_reasons",
+      "runtime.materialization_reports",
+      "runtime.object_base",
+      "runtime.object_current",
+      "runtime.object_heads",
+      "runtime.object_identities",
+      "runtime.project_runtime_inventories",
+      "runtime.property_provenance",
+      "runtime.rejected_row_sets",
+      "runtime.snapshot_files",
+      "runtime.snapshot_group_members",
+      "runtime.snapshot_group_versions",
+      "runtime.snapshot_groups"
     ],
     "forbiddenTrackedPrefixes": ["apps/"],
     "allowedTrackedPrefixExceptions": ["apps/api/"],
@@ -87,6 +124,12 @@
       "path": "docs/architecture/adr/013-metadata-release-package-control-plane.md",
       "acceptedStatus": "Accepted for G2-01-01",
       "evidence": "docs/evidence/g2-01-01-metadata-control-plane.md"
+    },
+    {
+      "id": "ADR-014",
+      "path": "docs/architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md",
+      "acceptedStatus": "Accepted for G2-02-01",
+      "evidence": "docs/evidence/g2-02-01-materialization-architecture.md"
     }
   ],
   "requiredEvidence": [
@@ -114,7 +157,10 @@
     "docs/evidence/g2-01-09-package-lifecycle.md",
     "docs/evidence/g2-01-10-admin-api.md",
     "docs/evidence/g2-01-11-ci-testkit-metadata-evidence.md",
-    "docs/evidence/g2-01-12-clean-room-metadata-gate.md"
+    "docs/evidence/g2-01-12-clean-room-metadata-gate.md",
+    "docs/evidence/g2-02-01-materialization-architecture.md",
+    "docs/evidence/g2-02-02-materialization-contracts.md",
+    "docs/evidence/g2-02-03-db02-migrations.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

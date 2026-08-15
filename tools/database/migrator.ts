@@ -11,9 +11,12 @@ import {
 import { DatabaseMigrationError, isDatabaseMigrationError } from "./errors.ts";
 import { inspectDatabasePreflight, type PreflightOptions } from "./preflight.ts";
 
-export const db00MigrationDirectory = fileURLToPath(
+export const databaseMigrationDirectory = fileURLToPath(
   new URL("../../migrations/db-00/", import.meta.url),
 );
+
+/** @deprecated Use databaseMigrationDirectory; DB-00/01/02 share one immutable ledger. */
+export const db00MigrationDirectory = databaseMigrationDirectory;
 
 export interface MigrationRunOptions extends PreflightOptions {
   readonly directory?: string;
@@ -32,7 +35,9 @@ export async function runDatabaseMigrations(
   client: pg.Client,
   options: MigrationRunOptions = {},
 ): Promise<MigrationRunResult> {
-  const definitions = await loadMigrationDefinitions(options.directory ?? db00MigrationDirectory);
+  const definitions = await loadMigrationDefinitions(
+    options.directory ?? databaseMigrationDirectory,
+  );
   const preflight = await inspectDatabasePreflight(client, options);
   const applied: MigrationDefinition[] = [];
 

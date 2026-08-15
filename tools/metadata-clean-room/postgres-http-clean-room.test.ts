@@ -15,7 +15,8 @@ import {
 import pg from "pg";
 
 import { startAdminApi, type RunningAdminApi } from "../../apps/api/src/runtime.ts";
-import { runDatabaseMigrations } from "../database/migrator.ts";
+import { loadMigrationDefinitions } from "../database/definitions.ts";
+import { databaseMigrationDirectory, runDatabaseMigrations } from "../database/migrator.ts";
 import { resolvePostgresTestImage } from "../database/postgres-test-image.ts";
 import {
   buildMetadataPackageFixtures,
@@ -68,13 +69,17 @@ void test(
         application_name: "ontos-g2-01-12-admin",
       };
       await waitForPostgreSql(adminConfig);
+      const expectedMigrations = await loadMigrationDefinitions(databaseMigrationDirectory);
       const firstMigration = await withClient(adminConfig, async (client) => {
         const result = await runDatabaseMigrations(client);
         await client.query(`ALTER ROLE api_runtime LOGIN PASSWORD '${runtimePassword}'`);
         return result;
       });
       assert.equal(firstMigration.noOp, false);
-      assert.equal(firstMigration.applied.length, 6);
+      assert.deepEqual(
+        firstMigration.applied.map(({ fileName }) => fileName),
+        expectedMigrations.map(({ fileName }) => fileName),
+      );
       assert.equal(firstMigration.serverVersionNum, 160_014);
       admin = new pg.Pool(adminConfig);
 

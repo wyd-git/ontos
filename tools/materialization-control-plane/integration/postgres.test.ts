@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { copyFile, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { promisify } from "node:util";
 
 import pg from "pg";
 
-import { runDatabaseMigrations } from "../../database/migrator.ts";
+import { databaseMigrationDirectory, runDatabaseMigrations } from "../../database/migrator.ts";
 import { resolvePostgresTestImage } from "../../database/postgres-test-image.ts";
 import { compileReleaseIndexPlan } from "../../projection-capacity/index-plan.ts";
 import {
@@ -34,6 +37,7 @@ void test(
   { timeout: 180_000 },
   async () => {
     const containerName = `ontos-g20201-${process.pid}-${randomUUID().slice(0, 8)}`;
+    const spikeMigrationDirectory = await migrationPrefixDirectory(6);
     await docker([
       "run",
       "--detach",
@@ -69,7 +73,7 @@ void test(
       };
       await waitForPostgreSql(adminConfig);
       await withClient(adminConfig, async (admin) => {
-        await runDatabaseMigrations(admin);
+        await runDatabaseMigrations(admin, { directory: spikeMigrationDirectory });
         await createSpikeFixture(admin);
         await assertExecutorRoleAndOwnership(admin);
       });
@@ -125,10 +129,22 @@ void test(
         );
       });
     } finally {
+      await rm(spikeMigrationDirectory, { recursive: true, force: true });
       await docker(["rm", "--force", "--volumes", containerName], true);
     }
   },
 );
+
+async function migrationPrefixDirectory(through: number): Promise<string> {
+  const directory = await mkdtemp(resolve(tmpdir(), `ontos-g20201-migrations-`));
+  for (const file of (await readdir(databaseMigrationDirectory)).sort()) {
+    const version = Number(file.slice(0, 4));
+    if (Number.isInteger(version) && version <= through && file.endsWith(".sql")) {
+      await copyFile(resolve(databaseMigrationDirectory, file), resolve(directory, file));
+    }
+  }
+  return directory;
+}
 
 async function createSpikeFixture(admin: pg.Client): Promise<void> {
   await admin.query(`

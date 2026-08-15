@@ -5,6 +5,7 @@
 - Owner：Runtime / Database
 - 决策范围：共享 Current Projection、Property Index Plan、Generation 容量准入与 GC 合同；不创建 DB-02 业务表
 - 可执行模型：`tools/projection-capacity/`
+- 实现推进：G2-02-03 已把 Shared Object/Link PK、Canonical PK/Endpoint Unique、Generation/Revision/Project 复合 FK 与 Plan/Inventory 表落入 0007～0009；全部动态 Recipe、真实字节/WAL/VACUUM 与 100k/1m 容量仍未证明
 
 ## 1. 决策结论
 
@@ -350,10 +351,9 @@ Health 必须展示 steady/peak、分类字节、各 Release serving bytes、Ind
 - `capacity.ts`：分类、字节预算、审批、GC dry-run 与 stale commit；
 - `*.test.ts`：固定场景和固定种子 property-based 测试。
 
-本模型已经可以证明有限上界与 fail-closed 规则，但尚未证明：
+G2-02-03 已证明正式 Migration 的共享键、Link Endpoint Unique、复合租户/Revision 约束和最小权限与本合同一致；仍未证明：
 
-- DB-02 真实 Migration 的约束和 DDL 与合同完全一致；
-- 新 Link Endpoint 唯一约束、复合租户键和 Revision Predicate 的实际额外字节；
+- 新 Link Endpoint 唯一约束、复合租户键和 Revision Predicate 的实际额外字节与 Planner 成本；
 - `CREATE/DROP INDEX CONCURRENTLY`、VACUUM、WAL 和磁盘水位下的运维时间；
 - 故障注入与并发 Cutover/GC 下仍保持同样不变量。
 

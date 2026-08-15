@@ -109,4 +109,4 @@ Report 原因码冻结为 Primary Key Null/Duplicate、Required/Optional Propert
 
 ## 8. 本 Gate 没有宣称的能力
 
-G2-02-02 只冻结并验证跨模块合同。它没有创建 DB-02 表、Migration、S3 上传、CSV Reader、Materializer、Worker Lease、Index Executor 生产部署、Cutover、GC 执行或 HTTP Endpoint。下一步 G2-02-03 必须把这些合同映射到连续 `0007+` Migration、Trigger 和最小权限，并用真实 PostgreSQL 16 证明不可变/Fencing 边界；不得把“合同可解析”冒充“数据闭环已经运行”。
+G2-02-02 只冻结并验证跨模块合同。G2-02-03 已把合同映射到连续 0007～0009 Migration、Trigger、复合约束、最小权限和单批 Worker Fencing/Checkpoint，但仍没有 S3 上传、CSV Reader、真实 Materializer、全部 Index Recipe、Cutover、GC 执行或 HTTP Endpoint。下一步 G2-02-04 只实现 Managed CSV Ingress；不得把“Schema 与最小 Job Smoke 已通过”冒充“数据闭环已经运行”。
