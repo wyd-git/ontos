@@ -240,7 +240,8 @@ function validateCatalog(
     const gate = requireString(family.latestFreezeGate, `${name}.latestFreezeGate`);
     if (!/^G2-0[1-4]$/u.test(gate)) throw new Error(`${name} has an invalid latest freeze Gate.`);
     const isActivatedMetadataFamily = name === "ResourceRevisionReleasePackage";
-    if (family.fieldsFrozen !== isActivatedMetadataFamily) {
+    const isActivatedMaterializationFamily = name === "SnapshotMappingValidationJob";
+    if (family.fieldsFrozen !== (isActivatedMetadataFamily || isActivatedMaterializationFamily)) {
       throw new Error(
         `${name} fieldsFrozen must reflect whether its owning Gate has activated it.`,
       );
@@ -258,6 +259,33 @@ function validateCatalog(
           JSON.stringify(["LinkTypeDefinition", "ObjectTypeDefinition", "PropertyDefinition"])
       ) {
         throw new Error(`${name} activated Metadata definitions are incomplete.`);
+      }
+    }
+    if (isActivatedMaterializationFamily) {
+      const activated = Array.isArray(family.activatedDefinitions)
+        ? family.activatedDefinitions.map((definition, index) =>
+            requireString(definition, `${name}.activatedDefinitions[${index}]`),
+          )
+        : undefined;
+      const expected = [
+        "CompatibilityCertificate",
+        "DatasetSnapshot",
+        "GcPlan",
+        "Generation",
+        "IndexCapacity",
+        "MappingDefinition",
+        "MaterializationJob",
+        "MaterializationReport",
+        "RuntimeActivation",
+        "RuntimeMemberPlan",
+        "SnapshotGroup",
+        "SnapshotSchemaDefinition",
+      ];
+      if (
+        activated === undefined ||
+        JSON.stringify([...activated].sort()) !== JSON.stringify(expected)
+      ) {
+        throw new Error(`${name} activated Materialization definitions are incomplete.`);
       }
     }
     if (!Array.isArray(family.semanticInvariants) || family.semanticInvariants.length < 2) {

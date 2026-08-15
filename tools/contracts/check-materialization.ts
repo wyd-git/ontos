@@ -3,35 +3,30 @@ import { join } from "node:path";
 
 import {
   ContractValidationError,
+  MATERIALIZATION_CONTRACT_NAMES,
+  MATERIALIZATION_OPERATION_ERROR_CODE_VALUES,
+  MATERIALIZATION_REASON_CODE_VALUES,
   RESOURCE_FAMILY_REGISTRY,
-  parseCompatibilityReport,
-  parseLinkTypeDefinition,
-  parseManagementRoleBinding,
-  parseObjectTypeDefinition,
-  parsePackageManifest,
-  parseProjectContract,
-  parsePropertyDefinition,
-  parseReleaseManifest,
-  parseResourceDependency,
-  parseResourceEnvelope,
-  parseResourceRevision,
-  parseValidationReport,
+  parseMaterializationContract,
+  type MaterializationContractName,
 } from "../../packages/contracts/src/index.ts";
 import { diffContractSchemas } from "./compatibility.ts";
-import { assertMetadataRuntimeSchemaAgreement } from "./metadata-runtime-schema-agreement.ts";
+import { assertMaterializationRuntimeSchemaAgreement } from "./materialization-runtime-schema-agreement.ts";
 import { assertSupportedSchema, validateSchemaDefinition } from "./schema.ts";
 
-export interface MetadataContractCheckResult {
-  readonly metadataContractCount: number;
+export interface MaterializationContractCheckResult {
+  readonly materializationContractCount: number;
   readonly goldenCaseCount: number;
   readonly structuralRejectionCount: number;
   readonly semanticRejectionCount: number;
+  readonly stableReasonCodeCount: number;
+  readonly stableOperationErrorCodeCount: number;
   readonly activeResourceFamilyCount: number;
   readonly deferredResourceFamilyCount: number;
   readonly compatibilityFindingCount: number;
 }
 
-interface MetadataGoldenCase {
+interface MaterializationGoldenCase {
   readonly name: string;
   readonly contract: string;
   readonly classification: "boundary" | "rejected" | "valid";
@@ -40,39 +35,32 @@ interface MetadataGoldenCase {
   readonly expectedErrorCode?: string;
 }
 
-const parsers: Readonly<Record<string, (value: unknown) => unknown>> = Object.freeze({
-  Project: parseProjectContract,
-  ResourceEnvelope: parseResourceEnvelope,
-  PropertyDefinition: parsePropertyDefinition,
-  ObjectTypeDefinition: parseObjectTypeDefinition,
-  LinkTypeDefinition: parseLinkTypeDefinition,
-  ResourceRevision: parseResourceRevision,
-  ResourceDependency: parseResourceDependency,
-  ValidationReport: parseValidationReport,
-  CompatibilityReport: parseCompatibilityReport,
-  ReleaseManifest: parseReleaseManifest,
-  PackageManifest: parsePackageManifest,
-  ManagementRoleBinding: parseManagementRoleBinding,
-});
+const requiredSecurityFixtures = Object.freeze([
+  "mapping-rejects-raw-sql",
+  "mapping-rejects-join-op",
+  "snapshot-rejects-arbitrary-path",
+  "snapshot-rejects-loose-date",
+  "certificate-rejects-client-compatible-flag",
+]);
 
-export async function runMetadataContractChecks(
+export async function runMaterializationContractChecks(
   repositoryRoot: string,
-): Promise<MetadataContractCheckResult> {
+): Promise<MaterializationContractCheckResult> {
   const [currentSchema, baselineSchema, catalogValue, goldenValue] = await Promise.all([
-    readJson(join(repositoryRoot, "packages/contracts/schemas/metadata.schema.json")),
-    readJson(join(repositoryRoot, "tools/contracts/baseline/metadata.v1.schema.json")),
+    readJson(join(repositoryRoot, "packages/contracts/schemas/materialization.schema.json")),
+    readJson(join(repositoryRoot, "tools/contracts/baseline/materialization.v1.schema.json")),
     readJson(join(repositoryRoot, "packages/contracts/catalog.json")),
-    readJson(join(repositoryRoot, "packages/contracts/fixtures/metadata-golden.json")),
+    readJson(join(repositoryRoot, "packages/contracts/fixtures/materialization-golden.json")),
   ]);
   assertSupportedSchema(currentSchema);
   assertSupportedSchema(baselineSchema);
-  assertMetadataRuntimeSchemaAgreement(currentSchema);
+  assertMaterializationRuntimeSchemaAgreement(currentSchema);
 
   const compatibility = diffContractSchemas(baselineSchema, currentSchema);
   const breaking = compatibility.findings.filter((finding) => finding.severity === "breaking");
   if (breaking.length > 0) {
     throw new Error(
-      `Metadata contract contains breaking changes:\n${breaking
+      `Materialization contract contains breaking changes:\n${breaking
         .map((finding) => `${finding.code} ${finding.path}`)
         .join("\n")}`,
     );
@@ -81,15 +69,17 @@ export async function runMetadataContractChecks(
   const catalog = requireRecord(catalogValue, "$catalog");
   const golden = requireRecord(goldenValue, "$golden");
   if (catalog.schemaVersion !== 1 || golden.schemaVersion !== 1) {
-    throw new Error("Metadata Catalog and Golden Fixture must use schemaVersion 1.");
+    throw new Error("Materialization Catalog and Golden Fixture must use schemaVersion 1.");
   }
-  const metadataContracts = requireRecordArray(
-    catalog.metadataContracts,
-    "$catalog.metadataContracts",
+  const contracts = requireRecordArray(
+    catalog.materializationContracts,
+    "$catalog.materializationContracts",
   );
-  validateMetadataCatalog(metadataContracts, catalog.deferredModuleContracts, currentSchema);
+  validateCatalog(contracts, catalog.deferredModuleContracts, currentSchema);
   const cases = parseGoldenCases(golden.cases);
-  validateGoldenCoverage(cases, metadataContracts);
+  validateCoverage(cases, contracts);
+  validateStableReasonCodes(golden.stableReasonCodes);
+  validateStableOperationErrorCodes(golden.stableOperationErrorCodes);
   const rejectionCounts = validateGoldenCases(cases, currentSchema);
 
   const registrations = Object.values(RESOURCE_FAMILY_REGISTRY);
@@ -97,40 +87,48 @@ export async function runMetadataContractChecks(
     (registration) => registration.status === "active",
   ).length;
   const deferredResourceFamilyCount = registrations.length - activeResourceFamilyCount;
-  if (activeResourceFamilyCount !== 4 || deferredResourceFamilyCount !== 6) {
+  if (
+    activeResourceFamilyCount !== 4 ||
+    deferredResourceFamilyCount !== 6 ||
+    RESOURCE_FAMILY_REGISTRY.mapping.status !== "active" ||
+    RESOURCE_FAMILY_REGISTRY.mapping.freezeGate !== "G2-02" ||
+    RESOURCE_FAMILY_REGISTRY.snapshot_schema.status !== "active" ||
+    RESOURCE_FAMILY_REGISTRY.snapshot_schema.freezeGate !== "G2-02"
+  ) {
     throw new Error("G2-02 Resource Family Registry activation boundary drifted.");
   }
 
   return Object.freeze({
-    metadataContractCount: metadataContracts.length,
+    materializationContractCount: contracts.length,
     goldenCaseCount: cases.length,
     structuralRejectionCount: rejectionCounts.structural,
     semanticRejectionCount: rejectionCounts.semantic,
+    stableReasonCodeCount: MATERIALIZATION_REASON_CODE_VALUES.length,
+    stableOperationErrorCodeCount: MATERIALIZATION_OPERATION_ERROR_CODE_VALUES.length,
     activeResourceFamilyCount,
     deferredResourceFamilyCount,
     compatibilityFindingCount: compatibility.findings.length,
   });
 }
 
-function validateMetadataCatalog(
+function validateCatalog(
   contracts: readonly Readonly<Record<string, unknown>>[],
   deferredValue: unknown,
   schemaValue: unknown,
 ): void {
   const schema = requireRecord(schemaValue, "$schema");
   const definitions = requireRecord(schema.$defs, "$schema.$defs");
-  const expectedNames = Object.keys(parsers).sort();
   const actualNames: string[] = [];
   for (const contract of contracts) {
-    const name = requireString(contract.name, "$catalog.metadataContracts[].name");
+    const name = requireString(contract.name, "$catalog.materializationContracts[].name");
     actualNames.push(name);
     if (
       contract.status !== "frozen" ||
-      contract.direction !== "write" ||
+      (contract.direction !== "internal" && contract.direction !== "server-issued") ||
       contract.unknownFields !== "reject" ||
       contract.fieldsFrozen !== true
     ) {
-      throw new Error(`${name} Metadata catalog policy is not frozen and strict.`);
+      throw new Error(`${name} Materialization catalog policy is not frozen and strict.`);
     }
     requireString(contract.owner, `${name}.owner`);
     const schemaDefinition = requireString(contract.schemaDefinition, `${name}.schemaDefinition`);
@@ -139,45 +137,69 @@ function validateMetadataCatalog(
       throw new Error(`${name} JSON Schema must reject unknown fields.`);
     }
   }
-  assertStringSet(actualNames, expectedNames, "$catalog.metadataContracts");
+  assertStringSet(actualNames, MATERIALIZATION_CONTRACT_NAMES, "$catalog.materializationContracts");
 
   const families = requireRecordArray(deferredValue, "$catalog.deferredModuleContracts");
-  for (const family of families) {
-    const name = requireString(family.family, "$catalog.deferredModuleContracts[].family");
-    const expectedFrozen =
-      name === "ResourceRevisionReleasePackage" || name === "SnapshotMappingValidationJob";
-    if (family.fieldsFrozen !== expectedFrozen) {
-      throw new Error(`${name} fieldsFrozen does not match the G2-02 activation boundary.`);
-    }
+  const moduleFamily = families.find((family) => family.family === "SnapshotMappingValidationJob");
+  if (moduleFamily === undefined || moduleFamily.fieldsFrozen !== true) {
+    throw new Error("SnapshotMappingValidationJob must be frozen at G2-02.");
   }
+  assertStringSet(
+    stringArray(moduleFamily.activatedDefinitions),
+    MATERIALIZATION_CONTRACT_NAMES,
+    "$catalog.deferredModuleContracts.SnapshotMappingValidationJob.activatedDefinitions",
+  );
+  assertStringSet(
+    stringArray(moduleFamily.stableErrorCodes),
+    MATERIALIZATION_OPERATION_ERROR_CODE_VALUES,
+    "$catalog.deferredModuleContracts.SnapshotMappingValidationJob.stableErrorCodes",
+  );
 }
 
-function validateGoldenCoverage(
-  cases: readonly MetadataGoldenCase[],
+function validateCoverage(
+  cases: readonly MaterializationGoldenCase[],
   contracts: readonly Readonly<Record<string, unknown>>[],
 ): void {
   for (const contract of contracts) {
-    const name = requireString(contract.name, "$catalog.metadataContracts[].name");
-    const classifications = new Set(
-      cases.filter((fixture) => fixture.contract === name).map((fixture) => fixture.classification),
-    );
-    for (const expected of ["valid", "boundary", "rejected"] as const) {
-      if (!classifications.has(expected)) {
-        throw new Error(`${name} is missing a ${expected} Metadata Golden Fixture.`);
-      }
+    const name = requireString(contract.name, "$catalog.materializationContracts[].name");
+    if (
+      !cases.some((fixture) => fixture.contract === name && fixture.classification !== "rejected")
+    ) {
+      throw new Error(`${name} is missing an accepted Materialization Golden Fixture.`);
     }
+  }
+  const names = new Set(cases.map((fixture) => fixture.name));
+  for (const fixture of requiredSecurityFixtures) {
+    if (!names.has(fixture)) throw new Error(`Required security Fixture ${fixture} is missing.`);
   }
 }
 
+function validateStableReasonCodes(value: unknown): void {
+  assertStringSet(
+    stringArray(value),
+    MATERIALIZATION_REASON_CODE_VALUES,
+    "$golden.stableReasonCodes",
+  );
+}
+
+function validateStableOperationErrorCodes(value: unknown): void {
+  assertStringSet(
+    stringArray(value),
+    MATERIALIZATION_OPERATION_ERROR_CODE_VALUES,
+    "$golden.stableOperationErrorCodes",
+  );
+}
+
 function validateGoldenCases(
-  cases: readonly MetadataGoldenCase[],
+  cases: readonly MaterializationGoldenCase[],
   schema: unknown,
 ): Readonly<{ structural: number; semantic: number }> {
   let structural = 0;
   let semantic = 0;
   for (const fixture of cases) {
-    const parser = parsers[fixture.contract];
-    if (parser === undefined) throw new Error(`${fixture.name} has no runtime parser.`);
+    if (!isMaterializationContractName(fixture.contract)) {
+      throw new Error(`${fixture.name} has no runtime parser.`);
+    }
     const schemaResult = validateSchemaDefinition(schema, fixture.contract, fixture.value);
     if (schemaResult.valid !== (fixture.schemaDisposition === "accept")) {
       throw new Error(
@@ -186,13 +208,13 @@ function validateGoldenCases(
     }
     if (fixture.classification !== "rejected") {
       if (!schemaResult.valid) throw new Error(`${fixture.name} must pass JSON Schema.`);
-      parser(fixture.value);
+      parseMaterializationContract(fixture.contract, fixture.value);
       continue;
     }
     if (schemaResult.valid) semantic += 1;
     else structural += 1;
     try {
-      parser(fixture.value);
+      parseMaterializationContract(fixture.contract, fixture.value);
     } catch (error) {
       if (error instanceof ContractValidationError && error.code === fixture.expectedErrorCode) {
         continue;
@@ -206,14 +228,18 @@ function validateGoldenCases(
   return Object.freeze({ structural, semantic });
 }
 
-function parseGoldenCases(value: unknown): readonly MetadataGoldenCase[] {
+function isMaterializationContractName(value: string): value is MaterializationContractName {
+  return (MATERIALIZATION_CONTRACT_NAMES as readonly string[]).includes(value);
+}
+
+function parseGoldenCases(value: unknown): readonly MaterializationGoldenCase[] {
   const records = requireRecordArray(value, "$golden.cases");
   const names = new Set<string>();
   return Object.freeze(
-    records.map((record, index): MetadataGoldenCase => {
+    records.map((record, index): MaterializationGoldenCase => {
       const path = `$golden.cases[${index}]`;
       const name = requireString(record.name, `${path}.name`);
-      if (names.has(name)) throw new Error(`Duplicate Metadata Golden Fixture ${name}.`);
+      if (names.has(name)) throw new Error(`Duplicate Materialization Golden Fixture ${name}.`);
       names.add(name);
       const contract = requireString(record.contract, `${path}.contract`);
       const classification = record.classification;
@@ -258,15 +284,22 @@ function assertStringSet(
   expected: readonly string[],
   path: string,
 ): void {
-  const actualSorted = [...actual].sort();
-  const expectedSorted = [...expected].sort();
-  if (JSON.stringify(actualSorted) !== JSON.stringify(expectedSorted)) {
-    throw new Error(`${path} does not match the runtime parser catalog.`);
+  const left = [...actual].sort();
+  const right = [...expected].sort();
+  if (JSON.stringify(left) !== JSON.stringify(right)) {
+    throw new Error(`${path} does not match the frozen Materialization contract.`);
   }
 }
 
 async function readJson(path: string): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8")) as unknown;
+}
+
+function stringArray(value: unknown): readonly string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error("Expected a string array.");
+  }
+  return value as readonly string[];
 }
 
 function requireRecordArray(

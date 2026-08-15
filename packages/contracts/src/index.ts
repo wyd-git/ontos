@@ -39,6 +39,7 @@ export {
 } from "./correlation.ts";
 export { RELEASE_BINDING_FIELDS, parseReleaseBinding, type ReleaseBinding } from "./release.ts";
 export { canonicalizeContractForDigest, canonicalizeManifestForDigest } from "./canonical-json.ts";
+export * from "./materialization.ts";
 export {
   API_NAME_PATTERN,
   NAMESPACE_PATTERN,
@@ -120,6 +121,7 @@ export {
   type ResourceFamilyStatus,
   type ResourceFamilyRegistration,
   type ResourceFamilyRegistryErrorCode,
+  type PublishableResourceContent,
 } from "./resource-family-registry.ts";
 export {
   ARTIFACT_DIGEST_PATTERN,

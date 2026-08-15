@@ -206,6 +206,117 @@
       "fieldsFrozen": true
     }
   ],
+  "materializationContracts": [
+    {
+      "name": "SnapshotSchemaDefinition",
+      "owner": "Materialization / Contracts",
+      "status": "frozen",
+      "schemaDefinition": "SnapshotSchemaDefinition",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "MappingDefinition",
+      "owner": "Materialization / Contracts",
+      "status": "frozen",
+      "schemaDefinition": "MappingDefinition",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true,
+      "valueCodecContract": "@ontos/value-codec:pk1"
+    },
+    {
+      "name": "DatasetSnapshot",
+      "owner": "Materialization",
+      "status": "frozen",
+      "schemaDefinition": "DatasetSnapshot",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "SnapshotGroup",
+      "owner": "Materialization",
+      "status": "frozen",
+      "schemaDefinition": "SnapshotGroup",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "MaterializationJob",
+      "owner": "Materialization / Operations",
+      "status": "frozen",
+      "schemaDefinition": "MaterializationJob",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "MaterializationReport",
+      "owner": "Materialization / Data Quality",
+      "status": "frozen",
+      "schemaDefinition": "MaterializationReport",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "Generation",
+      "owner": "Object Runtime",
+      "status": "frozen",
+      "schemaDefinition": "Generation",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeMemberPlan",
+      "owner": "Metadata / Object Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeMemberPlan",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeActivation",
+      "owner": "Object Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeActivation",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "CompatibilityCertificate",
+      "owner": "Materialization / Object Runtime",
+      "status": "frozen",
+      "schemaDefinition": "CompatibilityCertificate",
+      "direction": "server-issued",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "IndexCapacity",
+      "owner": "Materialization / Database",
+      "status": "frozen",
+      "schemaDefinition": "IndexCapacity",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "GcPlan",
+      "owner": "Materialization / Operations",
+      "status": "frozen",
+      "schemaDefinition": "GcPlan",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    }
+  ],
   "deferredModuleContracts": [
     {
       "family": "ResourceRevisionReleasePackage",
@@ -223,7 +334,34 @@
       "family": "SnapshotMappingValidationJob",
       "owner": "Materialization",
       "latestFreezeGate": "G2-02",
-      "fieldsFrozen": false,
+      "fieldsFrozen": true,
+      "activatedDefinitions": [
+        "SnapshotSchemaDefinition",
+        "MappingDefinition",
+        "DatasetSnapshot",
+        "SnapshotGroup",
+        "MaterializationJob",
+        "MaterializationReport",
+        "Generation",
+        "RuntimeMemberPlan",
+        "RuntimeActivation",
+        "CompatibilityCertificate",
+        "IndexCapacity",
+        "GcPlan"
+      ],
+      "stableErrorCodes": [
+        "SNAPSHOT_CONTENT_MISMATCH",
+        "SNAPSHOT_SCHEMA_INVALID",
+        "MAPPING_CONTRACT_INVALID",
+        "MATERIALIZATION_IDEMPOTENCY_CONFLICT",
+        "MATERIALIZATION_VALIDATION_FAILED",
+        "MATERIALIZATION_CONFIRMATION_REQUIRED",
+        "MATERIALIZATION_JOB_FENCED",
+        "GENERATION_COMPATIBILITY_INVALID",
+        "RUNTIME_PLAN_MISMATCH",
+        "CAPACITY_HARD_LIMIT_EXCEEDED",
+        "GC_PLAN_STALE"
+      ],
       "semanticInvariants": [
         "A failed Snapshot never replaces the active Generation",
         "Base facts and Overlay writes remain distinct",
