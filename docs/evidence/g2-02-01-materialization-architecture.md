@@ -66,9 +66,12 @@ npm run test:projection-ddl:postgres
 
 npm run typecheck
 # PASS
+
+npm run verify
+# PASS — 22/22 Gates, 310 tests
 ```
 
-`test:unit` 已包含 `tools/materialization-control-plane/*.test.ts`，`test:database` 已包含真实 DDL Spike。最终统一 Gate、Lint、Format、Secret/Supply-chain 和 CI 结果在 PR 合并前补跑；本节不提前记录尚未执行的结果。
+`test:unit` 已包含 `tools/materialization-control-plane/*.test.ts`，`test:database` 已包含真实 DDL Spike。统一 Gate 在 clean commit 上从 `npm ci` 开始，覆盖 Format、Lint、Typecheck、合同/架构、Secret/Supply-chain、全部 PostgreSQL/OIDC/Clean-room、生产边界 Smoke 与 Teardown；22 道均 PASS。PR 仍必须在最终 Head 上通过同一远端必需检查后才能合并。
 
 ## 5. 错误与敏感信息边界
 
