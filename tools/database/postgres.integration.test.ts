@@ -12,10 +12,10 @@ import pg from "pg";
 import { loadMigrationDefinitions } from "./definitions.ts";
 import { isDatabaseMigrationError } from "./errors.ts";
 import { db00MigrationDirectory, runDatabaseMigrations } from "./migrator.ts";
+import { resolvePostgresTestImage } from "./postgres-test-image.ts";
 
 const execFileAsync = promisify(execFile);
-const postgresImage =
-  "postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8";
+const postgresImage = resolvePostgresTestImage();
 const database = "ontos_db00";
 const adminPassword = "local-only-db00-admin-secret";
 const runtimePassword = "local-only-db00-runtime-secret";
