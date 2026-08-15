@@ -108,6 +108,8 @@ void test(
       `POSTGRES_PASSWORD=${adminPassword}`,
       "--env",
       `POSTGRES_DB=${database}`,
+      "--tmpfs",
+      "/var/lib/postgresql/data:rw,noexec,nosuid,size=1g",
       "--publish",
       "127.0.0.1::5432",
       postgresImage,
@@ -195,7 +197,7 @@ void test(
         },
       );
     } finally {
-      await docker(["rm", "--force", containerName], true);
+      await docker(["rm", "--force", "--volumes", containerName], true);
     }
   },
 );
