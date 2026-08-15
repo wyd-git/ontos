@@ -1,7 +1,7 @@
 # ADR-014：Materialization 事务、Projection DDL Executor 与 Overlay Seam
 
 - 状态：Accepted for G2-02-01；只冻结架构与代表性 Spike，不表示 DB-02 或完整 Materialization 已实现
-- 实现状态：G2-02-01 状态/Overlay/锁 Harness 与代表性 DDL Spike 已通过；G2-02-03～06 已用连续 0007～0011 落正式 DB-02 表、复合约束、最小角色权限、Managed CSV Ingress、永久 Identity 和 Attempt-owned Base；Current/Quality、全部 Index Recipe、真实 Cutover、完整恢复与 Overlay Store 仍由后续拥有任务实现
+- 实现状态：G2-02-01～09 已用连续 0007～0014 落地 DB-02 表、Managed Ingress/Mapping/Base/Current/Quality、独立 Worker/Kill-Resume、Published Index Plan、全 Recipe DDL 与容量硬准入；真实 Certificate、Group Cutover/Refresh、GC/Drop 与 Overlay Store 仍由后续拥有任务实现
 - 日期：2026-08-15
 - Owner：Tech Lead / Database / Security
 - 上游：ADR-007、ADR-008、ADR-009、ADR-010、ADR-013 与 G2-02 可执行任务包
@@ -155,7 +155,7 @@ Executor 的唯一命令输入是严格 UUID `plan_id`；数据库连接只来�
 
 Plan Digest 对全部不可变字段做版本化 Canonical JSON + SHA-256。Executor 读取后自行重算，未知字段、未知 Recipe、非法 UUID/Index Name、Digest 不一致或 Inventory 陈旧均在执行 DDL 前 fail closed。
 
-G2-02-01 Spike 只实现并证明一个 ADR-008 严格 B-tree Recipe；其余 B-tree/Unique/Trigram/Array Recipe 由 G2-02-09 在同一协议上增加。Spike 不是允许通用 SQL 的后门。
+G2-02-01 Spike 只首先证明一个 ADR-008 严格 B-tree Recipe；G2-02-09 已在同一协议上落地全部 B-tree/Unique/Trigram/Array Recipe、Published Revision 绑定、Catalog 双向核验和 SIGKILL/Replay。该执行器仍不是允许通用 SQL 的后门。
 
 ### 6.2 执行与双向核验
 

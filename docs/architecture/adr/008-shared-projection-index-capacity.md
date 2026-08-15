@@ -5,7 +5,7 @@
 - Owner：Runtime / Database
 - 决策范围：共享 Current Projection、Property Index Plan、Generation 容量准入与 GC 合同；不创建 DB-02 业务表
 - 可执行模型：`tools/projection-capacity/`
-- 实现推进：G2-02-03 已把 Shared Object/Link PK、Canonical PK/Endpoint Unique、Generation/Revision/Project 复合 FK 与 Plan/Inventory 表落入 0007～0009；全部动态 Recipe、真实字节/WAL/VACUUM 与 100k/1m 容量仍未证明
+- 实现推进：G2-02-09 已把 Shared Object/Link、Published Index Plan、全 Recipe DDL、生产 Inventory/Capacity 准入与 100k Object / 1m Link 首轮实测落入连续 0007～0014；Certificate/Cutover/GC 与部署级 WAL/VACUUM 包络仍由后续 Gate 证明
 
 ## 1. 决策结论
 
@@ -167,7 +167,7 @@ Unit 是由 G1 六个 Metadata Index 折算出的保守写放大权重，不是 
 
 ### 5.2 物理签名与命名
 
-物理签名固定包含：表名、Object Type Resource ID、Object Type Revision ID、Index Kind、Unique、Key/JSON Path/Direction、`lifecycle_state=active` Predicate 和规范 Primary Key Tie-breaker。
+物理签名固定包含：表名、Object Type Resource ID、Object Type Revision ID、Index Kind、Unique、Key/JSON Path/Direction、`lifecycle_state=active` Predicate 和规范 Primary Key Tie-breaker。Unique Property 索引还必须把 `project_id,generation_id` 作为物理 Scope Key 和签名输入，使业务唯一只在同一 Project/Generation 内生效。
 
 Revision 必须出现在 Partial Index Predicate 中；否则两个类型转换不兼容的 Revision 可能错误共用同一个表达式索引。相同签名跨 Release 只计一份物理索引。
 

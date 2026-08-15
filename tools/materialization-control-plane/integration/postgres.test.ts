@@ -192,7 +192,7 @@ async function createSpikeFixture(admin: pg.Client): Promise<void> {
       property_key text NOT NULL,
       object_type_resource_id uuid NOT NULL,
       object_type_revision_id uuid NOT NULL,
-      physical_signature text NOT NULL CHECK (physical_signature ~ '^[0-9a-f]{64}$'),
+      physical_signature text NOT NULL CHECK (physical_signature ~ '^sha256:[0-9a-f]{64}$'),
       reference_count integer NOT NULL CHECK (reference_count >= 0),
       attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
       last_result_code text,

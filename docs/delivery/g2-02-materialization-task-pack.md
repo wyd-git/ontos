@@ -3,7 +3,7 @@
 - 版本：1.0
 - 日期：2026-08-15
 - 状态：Implementation Ready，仍受本任务包 Gate、红队修订与停止条件约束
-- 执行进度：G2-02-01～08 已 PASS（8/14）；当前唯一顺序工作项为 G2-02-09
+- 执行进度：G2-02-01～09 已 PASS（9/14）；当前唯一顺序工作项为 G2-02-10
 - 上游：[Ontology Kernel PRD](../product/ontology-kernel-prd.md)
 - 实现蓝图：[G2 生产实现蓝图](../product/ontology-kernel-implementation-blueprint.md)
 - 入口证据：[G2-01-12 Metadata clean-room 总验收](../evidence/g2-01-12-clean-room-metadata-gate.md)
@@ -477,6 +477,10 @@ Materialization 横跨对象存储、长批次和多个数据库事务，不可�
 - 100k Objects/1m Links 在记录硬件、PostgreSQL/S3/Node/DuckDB 版本、冷/热状态、WAL、Heap、Index、内存与配置后完成首轮构建；若超过 30 分钟或 Project Peak 超硬上限，本任务 FAIL，先收紧 Plan/优化实现；
 - 基准后再次从 `pg_total_relation_size`/Catalog 扫描实际库存，准入下界不能小于实测；
 - 非活动 Index Drop 仅生成待执行计划，直到 GC 证明所有引用消失；本任务不提前删除。
+
+**交付状态（2026-08-16）**
+
+G2-02-09 已按 [Evidence](../evidence/g2-02-09-index-capacity-ddl.md) 与 [专项红队](../reviews/g2-02-09-index-capacity-ddl-red-team.md) PASS：连续 Migration 到 0014，Published Revision/Release Pin 绑定、11 个 Recipe、隔离 DDL/SIGKILL 恢复、生产容量 Loader/Scanner 和真实 100k Object / 1m Link 首轮基准均已通过。Index Drop 仍被明确禁止，直到 G2-02-12 证明零引用。
 
 ### G2-02-10：实现 Runtime Member Plan 与受信兼容证书
 

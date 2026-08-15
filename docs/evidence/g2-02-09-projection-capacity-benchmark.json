@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-02-09",
+  "runKind": "formal-first-round-database-capacity",
+  "workload": {
+    "objectRows": 100000,
+    "linkRows": 1000000,
+    "objectBatches": 20,
+    "linkBatches": 200
+  },
+  "base": {
+    "objectMilliseconds": 643360,
+    "linkMilliseconds": 618011,
+    "rowsPerSecond": 872,
+    "peakNodeRssBytes": 330100736,
+    "contentDigest": "sha256:3fd5255a753fc9d6539d36801e0f1d059adc15b2d0a5fe644ba128ba3c6857fd",
+    "workerRestartDigestStable": true,
+    "apiRestartDigestStable": true,
+    "walBytes": "5103617288",
+    "objectHeapBytes": "51200000",
+    "objectIndexBytes": "49201152",
+    "linkHeapBytes": "315080704",
+    "linkIndexBytes": "508084224",
+    "identityHeapBytes": "11698176",
+    "identityIndexBytes": "41631744",
+    "stagingTotalBytes": "848830464"
+  },
+  "projection": {
+    "buildState": "cold-empty-postgresql-container-and-data-layer",
+    "buildMilliseconds": 1265885,
+    "qualityCurrentMilliseconds": 168626,
+    "dynamicIndexBuilds": [
+      {
+        "indexName": "ok_oc_trgm_c5f89d6c42_ac9123a7_545b13bdd623",
+        "observedBytes": "2973696",
+        "milliseconds": 726
+      },
+      {
+        "indexName": "ok_oc_uq_c5f89d6c42_ac9123a7_5c76a1404b19",
+        "observedBytes": "6922240",
+        "milliseconds": 273
+      },
+      {
+        "indexName": "ok_oc_bt_c5f89d6c42_ac9123a7_73c4bfd633dc",
+        "observedBytes": "5865472",
+        "milliseconds": 253
+      }
+    ],
+    "query": {
+      "firstState": "first-execution-after-cold-build-without-host-cache-drop",
+      "hotState": "same-index-second-execution",
+      "indexName": "ok_oc_bt_c5f89d6c42_ac9123a7_73c4bfd633dc",
+      "firstMilliseconds": 2.838,
+      "hotMilliseconds": 0.542
+    },
+    "bytes": {
+      "wal": "5138035216",
+      "projectHeap": "1261199360",
+      "projectIndex": "1564549120",
+      "projectToast": "770048",
+      "projectActual": "2826518528",
+      "capacityMeasuredLowerBound": "2826518528",
+      "capacityReserved": "4239777792",
+      "capacityPeak": "4239777792",
+      "dynamicIndexes": "15761408"
+    },
+    "memory": {
+      "peakNodeRssBytes": 330100736,
+      "postgresContainerAtCompletionBytes": 275565773,
+      "hostTotalBytes": 16768651264,
+      "hostFreeAtCompletionBytes": 15414870016
+    },
+    "inventory": {
+      "revision": "4",
+      "relationCount": 33,
+      "measurementDigest": "sha256:4eb68985846989ce6deee76a9d7421df887659ac01f7c02a72bd348fd7c5f106",
+      "prebuildPeakBytes": "781713408",
+      "lowerBoundCoversActual": true
+    }
+  },
+  "environment": {
+    "platform": "linux",
+    "arch": "x64",
+    "logicalCpuCount": 8,
+    "totalMemoryBytes": 16768651264,
+    "node": "v24.18.0",
+    "postgres": "16.14 (Debian 16.14-1.pgdg12+1)",
+    "s3": {
+      "implementation": "SeaweedFS",
+      "version": "4.41",
+      "image": "chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d",
+      "exercised": false
+    },
+    "duckdb": {
+      "version": null,
+      "exercised": false,
+      "reason": "DuckDB is not a G2-02-09 production runtime dependency"
+    },
+    "postgresConfiguration": {
+      "work_mem": "4MB",
+      "max_wal_size": "1GB",
+      "shared_buffers": "128MB",
+      "random_page_cost": "4",
+      "checkpoint_timeout": "5min",
+      "synchronous_commit": "on",
+      "effective_cache_size": "4GB",
+      "maintenance_work_mem": "64MB",
+      "effective_io_concurrency": "1"
+    }
+  }
+}

@@ -9,6 +9,7 @@
   "dependencies": {
     "@ontos/contracts": "0.0.0",
     "@ontos/materialization-application": "0.0.0",
+    "@ontos/materialization-domain": "0.0.0",
     "pg": "8.23.0"
   },
   "exports": {
