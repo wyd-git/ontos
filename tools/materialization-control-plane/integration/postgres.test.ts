@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import pg from "pg";
 
 import { runDatabaseMigrations } from "../../database/migrator.ts";
+import { resolvePostgresTestImage } from "../../database/postgres-test-image.ts";
 import { compileReleaseIndexPlan } from "../../projection-capacity/index-plan.ts";
 import {
   executeProjectionDdlPlan,
@@ -18,8 +19,7 @@ import {
 } from "../projection-ddl.ts";
 
 const execFileAsync = promisify(execFile);
-const postgresImage =
-  "postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8";
+const postgresImage = resolvePostgresTestImage();
 const database = "ontos_g20201";
 const adminPassword = "local-only-g20201-admin-secret";
 const runtimePassword = "local-only-g20201-runtime-secret";

@@ -16,6 +16,7 @@ import pg from "pg";
 
 import { startAdminApi, type RunningAdminApi } from "../../apps/api/src/runtime.ts";
 import { runDatabaseMigrations } from "../database/migrator.ts";
+import { resolvePostgresTestImage } from "../database/postgres-test-image.ts";
 import {
   buildMetadataPackageFixtures,
   type MetadataPackageFixture,
@@ -24,8 +25,7 @@ import { startTestOidcProvider } from "../admin-api/oidc-provider.ts";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const postgresImage =
-  "postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8";
+const postgresImage = resolvePostgresTestImage();
 const database = "ontos_g20112";
 const adminPassword = "local-only-g20110-admin-secret";
 const runtimePassword = "local-only-g20110-runtime-secret";
