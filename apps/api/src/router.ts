@@ -1,6 +1,7 @@
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 
 import { parseIdempotencyKey } from "@ontos/contracts";
+import type { MaterializationIngressService } from "@ontos/materialization-application";
 import type {
   MetadataApplicationService,
   PackageLifecycleApplicationService,
@@ -43,6 +44,10 @@ export interface AdminApiServices {
   readonly packages: Pick<
     PackageLifecycleApplicationService,
     "validatePackage" | "installPackage" | "upgradePackageInstallation" | "rollbackPackage"
+  >;
+  readonly materialization: Pick<
+    MaterializationIngressService,
+    "createUploadSession" | "uploadSessionContent" | "finalizeSnapshotGroup"
   >;
 }
 
@@ -95,6 +100,44 @@ async function route(
   const segments = pathSegments(url);
   if (!rootSegments.every((value, index) => segments[index] === value)) throw routeNotFound();
   const path = segments.slice(rootSegments.length);
+
+  if (method === "POST" && equalPath(path, ["snapshot-upload-sessions"])) {
+    requireNoQuery(url);
+    const body = strictBody(await readJsonBody(request), [
+      "projectId",
+      "releaseId",
+      "targetMemberKey",
+      "groupVersion",
+      "expectedByteCount",
+      "sourceLabel",
+    ]);
+    return created(await services.materialization.createUploadSession(identity, body));
+  }
+
+  if (
+    method === "PUT" &&
+    path[0] === "snapshot-upload-sessions" &&
+    path[2] === "content" &&
+    path.length === 3
+  ) {
+    requireNoQuery(url);
+    const sessionId = requireSegment(path[1]);
+    return ok(
+      await services.materialization.uploadSessionContent(identity, {
+        sessionId,
+        contentLength: requiredContentLength(request),
+        mediaType: request.headers["content-type"],
+        contentEncoding: request.headers["content-encoding"] ?? null,
+        body: request,
+      }),
+    );
+  }
+
+  if (method === "POST" && equalPath(path, ["snapshots"])) {
+    requireNoQuery(url);
+    const body = strictBody(await readJsonBody(request), ["projectId", "sessions"]);
+    return created(await services.materialization.finalizeSnapshotGroup(identity, body));
+  }
 
   if (method === "POST" && equalPath(path, ["projects"])) {
     requireNoQuery(url);
@@ -394,6 +437,18 @@ function requiredIdempotencyKey(request: IncomingMessage): string {
   } catch (error) {
     throw invalidRequest("A valid Idempotency-Key header is required.", error);
   }
+}
+
+function requiredContentLength(request: IncomingMessage): number {
+  const value = request.headers["content-length"];
+  if (typeof value !== "string" || !/^[1-9][0-9]*$/u.test(value)) {
+    throw invalidRequest("A valid Content-Length header is required.");
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw invalidRequest("A valid Content-Length header is required.");
+  }
+  return parsed;
 }
 
 function pageLimit(value: string | undefined): number {

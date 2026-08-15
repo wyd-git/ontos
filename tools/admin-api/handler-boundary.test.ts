@@ -18,4 +18,6 @@ void test("Admin HTTP handler contains no SQL, repository composition, JWT parsi
   assert.match(source, /services\.resources/u);
   assert.match(source, /services\.releases/u);
   assert.match(source, /services\.packages/u);
+  assert.match(source, /services\.materialization/u);
+  assert.doesNotMatch(source, /S3ManagedObjectStore|objectKey|accessKey|secretAccessKey/u);
 });

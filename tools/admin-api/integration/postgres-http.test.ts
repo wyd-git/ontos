@@ -70,8 +70,10 @@ void test(
           requiredScope: "ontos.admin",
         },
         cursorHmacSecret: cursorSecret,
+        managedCsvMaximumBytes: 1_048_576,
+        objectStore: inertObjectStoreConfig,
       } as const;
-      runtime = await startAdminApi(apiConfig);
+      runtime = await startAdminApi(apiConfig, { objectStore: inertObjectStore });
 
       const ownerToken = await oidc.token({ subject: "owner", name: "Project Owner" });
       const editorToken = await oidc.token({ subject: "editor", name: "Metadata Editor" });
@@ -403,7 +405,7 @@ void test(
 
       await runtime.close();
       runtime = null;
-      runtime = await startAdminApi(apiConfig);
+      runtime = await startAdminApi(apiConfig, { objectStore: inertObjectStore });
       const afterRestart = await api(
         runtime,
         viewerToken,
@@ -417,10 +419,13 @@ void test(
       );
 
       await assert.rejects(
-        startAdminApi({
-          ...apiConfig,
-          databaseUrl: `postgresql://postgres:${adminPassword}@127.0.0.1:${String(port)}/${database}`,
-        }),
+        startAdminApi(
+          {
+            ...apiConfig,
+            databaseUrl: `postgresql://postgres:${adminPassword}@127.0.0.1:${String(port)}/${database}`,
+          },
+          { objectStore: inertObjectStore },
+        ),
         /api_runtime least-privilege boundary/u,
       );
     } finally {
@@ -431,6 +436,26 @@ void test(
     }
   },
 );
+
+const inertObjectStoreConfig = Object.freeze({
+  endpoint: "http://127.0.0.1:1",
+  region: "us-east-1",
+  bucket: "integration-unused",
+  accessKeyId: "unused",
+  secretAccessKey: "unused",
+  forcePathStyle: true,
+  maxAttempts: 1,
+});
+
+const inertObjectStore = Object.freeze({
+  assertVersioningEnabled: () => Promise.resolve(),
+  putVersion: () => Promise.reject(new Error("unused")),
+  headLatestVersion: () => Promise.reject(new Error("unused")),
+  readVersion: () => Promise.reject(new Error("unused")),
+  deleteVersion: () => Promise.reject(new Error("unused")),
+  deleteUnregisteredVersions: () => Promise.reject(new Error("unused")),
+  destroy: () => undefined,
+});
 
 interface ApiResponse {
   readonly status: number;

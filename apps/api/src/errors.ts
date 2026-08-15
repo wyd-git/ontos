@@ -10,6 +10,7 @@ import {
   type ErrorEnvelope,
 } from "@ontos/contracts";
 import { MetadataApplicationError } from "@ontos/metadata-application";
+import { MaterializationIngressError } from "@ontos/materialization-application";
 
 import { RequestBodyError } from "./body.ts";
 import { CursorError } from "./cursor.ts";
@@ -105,6 +106,31 @@ function mapProblem(error: unknown): HttpProblem {
       message: "The administrator request is invalid.",
       category: "validation",
     });
+  }
+  if (error instanceof MaterializationIngressError) {
+    switch (error.code) {
+      case "ADMIN_REQUEST_INVALID":
+        return new HttpProblem({
+          status: 400,
+          code: error.code,
+          message: error.message,
+          category: "validation",
+        });
+      case "OBJECT_NOT_ACCESSIBLE":
+        return coreProblem(error.code, error.message);
+      case "OBJECT_VERSION_CONFLICT":
+        return coreProblem(error.code, error.message);
+      case "DEPENDENCY_UNAVAILABLE":
+        return coreProblem(error.code, error.message);
+      case "SNAPSHOT_CONTENT_MISMATCH":
+      case "SNAPSHOT_SCHEMA_INVALID":
+        return new HttpProblem({
+          status: 422,
+          code: error.code,
+          message: error.message,
+          category: "validation",
+        });
+    }
   }
   if (error instanceof MetadataApplicationError) {
     switch (error.code) {

@@ -1,0 +1,16 @@
+{
+  "name": "@ontos/object-store-s3",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "adapter"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1109.0",
+    "@ontos/materialization-domain": "0.0.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
