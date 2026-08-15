@@ -78,6 +78,11 @@ const gates: readonly GateDefinition[] = [
   },
   { name: "postgres-integration", command: "npm", arguments: ["run", "test:database"] },
   {
+    name: "materialization-worker-postgres",
+    command: "npm",
+    arguments: ["run", "test:materialization-worker:postgres"],
+  },
+  {
     name: "admin-api-oidc-postgres",
     command: "npm",
     arguments: ["run", "test:admin-api:postgres"],

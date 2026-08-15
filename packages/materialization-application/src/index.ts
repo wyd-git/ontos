@@ -29,6 +29,7 @@ import {
 
 export * from "./base.ts";
 export * from "./quality.ts";
+export * from "./worker.ts";
 
 export type MaterializationIngressErrorCode =
   | "ADMIN_REQUEST_INVALID"

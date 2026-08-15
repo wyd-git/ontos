@@ -104,6 +104,13 @@ const ids = {
   baseAttempt1: "10000000-0000-4000-8000-000000001303",
   baseAttempt2: "10000000-0000-4000-8000-000000001304",
   checkpoint: "10000000-0000-4000-8000-000000001401",
+  checkpoint2: "10000000-0000-4000-8000-000000001402",
+  checkpoint3: "10000000-0000-4000-8000-000000001403",
+  checkpoint4: "10000000-0000-4000-8000-000000001404",
+  checkpointOutput1: "10000000-0000-4000-8000-000000001411",
+  checkpointOutput2: "10000000-0000-4000-8000-000000001412",
+  checkpointOutput3: "10000000-0000-4000-8000-000000001413",
+  checkpointOutput4: "10000000-0000-4000-8000-000000001414",
   ingressSession: "10000000-0000-4000-8000-000000001501",
   ingressExpiredSession: "10000000-0000-4000-8000-000000001502",
   ingressArtifact: "10000000-0000-4000-8000-000000001601",
@@ -242,7 +249,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12],
+          [7, 8, 9, 10, 11, 12, 13],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -703,7 +710,7 @@ async function exercisePermanentIdentityAndObjectBase(
       readonly fencing_token: string;
     }>(
       `SELECT job_id, fencing_token::text
-       FROM ops.claim_materialization_job($1, $2, 300)`,
+       FROM ops.claim_materialization_job_v2($1, $2, 300)`,
       [ids.worker1, ids.baseAttempt1],
     );
     assert.equal(result.rows[0]?.job_id, ids.job);
@@ -748,6 +755,13 @@ async function exercisePermanentIdentityAndObjectBase(
        WHERE project_id = $1 AND job_id = $2`,
       [ids.project, ids.job],
     );
+    await admin.query("SELECT ops.reap_expired_materialization_jobs(32)");
+    await admin.query(
+      `UPDATE ops.materialization_jobs
+       SET available_at = clock_timestamp(), updated_at = clock_timestamp()
+       WHERE project_id = $1 AND job_id = $2 AND state = 'retry_wait'`,
+      [ids.project, ids.job],
+    );
   });
 
   const secondClaim = await withClient(worker2Config, async (worker) => {
@@ -756,7 +770,7 @@ async function exercisePermanentIdentityAndObjectBase(
       readonly fencing_token: string;
     }>(
       `SELECT job_id, fencing_token::text
-       FROM ops.claim_materialization_job($1, $2, 300)`,
+       FROM ops.claim_materialization_job_v2($1, $2, 300)`,
       [ids.worker2, ids.baseAttempt2],
     );
     assert.equal(result.rows[0]?.job_id, ids.job);
@@ -878,9 +892,10 @@ async function exercisePermanentIdentityAndObjectBase(
     await admin.query(
       `UPDATE ops.materialization_jobs
        SET state = 'succeeded', lease_owner_id = NULL, lease_expires_at = NULL,
-           result_code = 'BASE_PROMOTED', updated_at = clock_timestamp()
+           heartbeat_at = NULL, result_code = 'SUCCEEDED', result_digest = $3,
+           updated_at = clock_timestamp()
        WHERE project_id = $1 AND job_id = $2`,
-      [ids.project, ids.job],
+      [ids.project, ids.job, digests.checkpoint],
     );
     await admin.query(
       `UPDATE runtime.generations SET state = 'ready', changed_at = clock_timestamp()
@@ -1047,7 +1062,7 @@ async function exerciseQualityCurrentAndRequiredDangling(
   const claim = await withClient(workerConfig, async (worker) => {
     const result = await worker.query<{ readonly fencing_token: string }>(
       `SELECT fencing_token::text
-       FROM ops.claim_materialization_job($1, $2, 300)`,
+       FROM ops.claim_materialization_job_v2($1, $2, 300)`,
       [ids.worker2, ids.qualityAttempt],
     );
     return result.rows[0];
@@ -1308,7 +1323,7 @@ async function exerciseQualityCurrentAndRequiredDangling(
     await admin.query(
       `UPDATE ops.materialization_jobs
        SET state = 'dead_letter', lease_owner_id = NULL, lease_expires_at = NULL,
-           result_code = 'QUALITY_FAILED', updated_at = clock_timestamp()
+           heartbeat_at = NULL, result_code = 'QUALITY_FAILED', updated_at = clock_timestamp()
        WHERE project_id = $1 AND job_id = $2`,
       [ids.project, ids.qualityJob],
     );
@@ -1657,7 +1672,7 @@ async function buildQualityObjectVersion(
   const claim = await withClient(workerConfig, async (worker) => {
     const result = await worker.query<{ readonly fencing_token: string }>(
       `SELECT fencing_token::text
-       FROM ops.claim_materialization_job($1, $2, 300)`,
+       FROM ops.claim_materialization_job_v2($1, $2, 300)`,
       [ids.worker2, fixture.attemptId],
     );
     return result.rows[0];
@@ -1785,13 +1800,15 @@ async function finishQualityObjectJob(
   await client.query(
     `UPDATE ops.materialization_jobs
      SET state = $3, lease_owner_id = NULL, lease_expires_at = NULL,
-         result_code = $4, updated_at = clock_timestamp()
+         heartbeat_at = NULL, result_code = $4, result_digest = $5,
+         updated_at = clock_timestamp()
      WHERE project_id = $1 AND job_id = $2`,
     [
       ids.project,
       fixture.jobId,
       state,
-      state === "succeeded" ? "QUALITY_CONFIRMED" : "QUALITY_REJECTED",
+      state === "succeeded" ? "SUCCEEDED" : "QUALITY_REJECTED",
+      state === "succeeded" ? sha256Artifact(`quality-job-${fixture.jobId}`) : null,
     ],
   );
 }
@@ -2325,7 +2342,7 @@ async function exerciseLinkBase(
   const claim = await withClient(workerConfig, async (worker) => {
     const result = await worker.query<{ readonly fencing_token: string }>(
       `SELECT fencing_token::text
-       FROM ops.claim_materialization_job($1, $2, 300)`,
+       FROM ops.claim_materialization_job_v2($1, $2, 300)`,
       [ids.worker1, ids.linkAttempt],
     );
     return result.rows[0];
@@ -2445,9 +2462,10 @@ async function exerciseLinkBase(
     await admin.query(
       `UPDATE ops.materialization_jobs
        SET state = 'succeeded', lease_owner_id = NULL, lease_expires_at = NULL,
-           result_code = 'BASE_PROMOTED', updated_at = clock_timestamp()
+           heartbeat_at = NULL, result_code = 'SUCCEEDED', result_digest = $3,
+           updated_at = clock_timestamp()
        WHERE project_id = $1 AND job_id = $2`,
-      [ids.project, ids.linkJob],
+      [ids.project, ids.linkJob, digests.checkpoint],
     );
   });
   capacityMetrics.linkBatches = Math.ceil(capacityMetrics.linkRows / 5_000);
@@ -3281,17 +3299,17 @@ async function exerciseRealWorkerFencing(
 ): Promise<void> {
   await withClient(apiConfig, async (api) => {
     await api.query(
-      `INSERT INTO ops.materialization_jobs
-         (project_id, job_id, snapshot_group_id, group_version, idempotency_key, input_digest)
-       VALUES ($1, $2, $3, 1, 'db02-worker-smoke-0001', $4)`,
-      [ids.project, ids.leaseJob, ids.snapshotGroup, digestOf("1")],
+      `SELECT * FROM ops.enqueue_materialization_job(
+         $1, $2, $3, 1, 'db02-worker-smoke-0001', $4, $5, 0
+       )`,
+      [ids.project, ids.leaseJob, ids.snapshotGroup, digestOf("1"), ids.leaseJob],
     );
   });
 
   let firstToken = 0n;
   await withClient(worker1Config, async (worker1) => {
     const claim = await worker1.query<{ readonly fencing_token: string }>(
-      `SELECT * FROM ops.claim_materialization_job($1, $2, 1)`,
+      `SELECT * FROM ops.claim_materialization_job_v2($1, $2, 1)`,
       [ids.worker1, ids.attempt1],
     );
     firstToken = BigInt(claim.rows[0]?.fencing_token ?? "0");
@@ -3310,11 +3328,18 @@ async function exerciseRealWorkerFencing(
     );
     assert.equal(beforeCheckpoint.rows[0]?.complete, 0);
     await admin.query("SELECT pg_sleep(1.2)");
+    await admin.query("SELECT ops.reap_expired_materialization_jobs(32)");
+    await admin.query(
+      `UPDATE ops.materialization_jobs
+       SET available_at = clock_timestamp(), updated_at = clock_timestamp()
+       WHERE project_id = $1 AND job_id = $2 AND state = 'retry_wait'`,
+      [ids.project, ids.leaseJob],
+    );
   });
 
   await withClient(worker2Config, async (worker2) => {
     const claim = await worker2.query<{ readonly fencing_token: string }>(
-      `SELECT * FROM ops.claim_materialization_job($1, $2, 30)`,
+      `SELECT * FROM ops.claim_materialization_job_v2($1, $2, 30)`,
       [ids.worker2, ids.attempt2],
     );
     assert.equal(BigInt(claim.rows[0]?.fencing_token ?? "0"), 2n);
@@ -3324,12 +3349,30 @@ async function exerciseRealWorkerFencing(
       ids.attempt2,
       digests.batch2,
     ]);
-    await worker2.query(
-      `SELECT ops.checkpoint_materialization_job(
-         $1, $2, $3, 2, $4, 1, 'build_stage', $5, 1
-       )`,
-      [ids.project, ids.leaseJob, ids.attempt2, ids.checkpoint, digests.checkpoint],
-    );
+    const stages = [
+      [1, "scan", ids.checkpoint, ids.checkpointOutput1],
+      [2, "map", ids.checkpoint2, ids.checkpointOutput2],
+      [3, "validate", ids.checkpoint3, ids.checkpointOutput3],
+      [4, "build_stage", ids.checkpoint4, ids.checkpointOutput4],
+    ] as const;
+    for (const [sequence, stage, checkpointId, outputReferenceId] of stages) {
+      await worker2.query(
+        `SELECT * FROM ops.complete_materialization_stage(
+           $1, $2, $3, $4, 2, $5, $6, $7, $8, $9
+         )`,
+        [
+          ids.project,
+          ids.leaseJob,
+          ids.attempt2,
+          ids.worker2,
+          checkpointId,
+          sequence,
+          stage,
+          outputReferenceId,
+          sha256Digest(`worker-${stage}`),
+        ],
+      );
+    }
   });
 
   await withClient(worker1Config, async (staleWorker) => {
@@ -3347,17 +3390,20 @@ async function exerciseRealWorkerFencing(
 
   await withClient(worker2Config, async (restartedWorker) => {
     const rows = await restartedWorker.query<{
-      readonly complete: number;
-      readonly incomplete: number;
+      readonly checkpoints: number;
+      readonly batches: number;
+      readonly staleCheckpoints: number;
     }>(
       `SELECT
-         count(*) FILTER (WHERE checkpoint_id IS NOT NULL)::integer AS complete,
-         count(*) FILTER (WHERE checkpoint_id IS NULL)::integer AS incomplete
-       FROM ops.materialization_staged_batches
-       WHERE project_id = $1 AND job_id = $2`,
-      [ids.project, ids.leaseJob],
+         (SELECT count(*)::integer FROM ops.materialization_checkpoints
+           WHERE project_id = $1 AND job_id = $2) AS checkpoints,
+         (SELECT count(*)::integer FROM ops.materialization_staged_batches
+           WHERE project_id = $1 AND job_id = $2) AS batches,
+         (SELECT count(*)::integer FROM ops.materialization_checkpoints
+           WHERE project_id = $1 AND job_id = $2 AND attempt_id = $3) AS "staleCheckpoints"`,
+      [ids.project, ids.leaseJob, ids.attempt1],
     );
-    assert.deepEqual(rows.rows[0], { complete: 1, incomplete: 1 });
+    assert.deepEqual(rows.rows[0], { checkpoints: 4, batches: 2, staleCheckpoints: 0 });
   });
 }
 
@@ -3390,6 +3436,15 @@ async function assertRuntimePrivilegeMatrix(
         `INSERT INTO runtime.compatibility_certificates
            (project_id, certificate_id, generation_id) VALUES ($1, $2, $3)`,
         [ids.project, randomUUID(), ids.generation],
+      ),
+      "42501",
+    );
+    await assertPgCode(
+      api.query(
+        `INSERT INTO ops.materialization_jobs
+           (project_id, job_id, snapshot_group_id, group_version, idempotency_key, input_digest)
+         VALUES ($1, $2, $3, 1, 'raw-job-insert-denied-0001', $4)`,
+        [ids.project, randomUUID(), ids.snapshotGroup, digestOf("9")],
       ),
       "42501",
     );
@@ -3761,11 +3816,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 12);
+  assert.equal(left.applied.length + right.applied.length, 13);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 12)).length, 12);
+    assert.equal((await migrationLedger(client, 13)).length, 13);
   });
 }
 
@@ -3777,6 +3832,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
     [10, "runtime.snapshot_upload_sessions"],
     [11, "ops.materialization_generation_stages"],
     [12, "runtime.materialization_quality_bindings"],
+    [13, "ops.materialization_job_error_samples"],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -3825,6 +3881,7 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     "ops.materialization_attempts",
     "ops.materialization_checkpoints",
     "ops.materialization_jobs",
+    "ops.materialization_job_error_samples",
     "ops.materialization_staged_batches",
     "ops.materialization_generation_stages",
     "ops.materialization_generation_stage_batches",
@@ -3963,7 +4020,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(12);
+  const directory = await migrationPrefixDirectory(13);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);

@@ -105,9 +105,17 @@
 - 容量不再是当前最大未知，但剩余 8 项仍包含 Current/质量、真实 Worker、Index、Cutover、GC、HTTP/CI 和 clean-room；剩余单通道容量情景调整为 **5–9 工程周**，不是上线日期承诺。
 - 当前只放行 G2-02-07 Staging Current、质量报告与最小血缘；不得跳到 Query/UI，也不得让 API 直读 Base 伪装成已可服务。
 
+### G2-02-08 后检查点（2026-08-16）
+
+- G2-02-07 与 G2-02-08 已 PASS，当前进度为 **8/14**。连续账本到 0013，独立 `apps/worker`、数据库时间 Lease/Fence、八阶段 Checkpoint、Retry/Replay/Cancel/Terminal 和最小权限已进入正式实现。
+- 真实 Ubuntu 24 / x86_64 / 8C16G / PostgreSQL 16 测试以两个真实 Worker PID 完成 16 个阶段前后 SIGKILL：16 个 Attempt、3 次人工 Replay、8 个唯一 Checkpoint，最终 Digest 与无故障运行一致；Graceful、临时依赖、永久错误、连接终止和安全取消均通过。
+- 实际返工包括 Migration 不可变 Trigger 回填、旧终态 Fixture、API 列级 INSERT 残留、Priority 饥饿、Heartbeat Abort 分类、数据库连接断开时 `unref()` 导致 Node code 13、自身登录提权检查和 Error Sample 复合 FK。这些问题已在本 Gate 内关闭，没有移动到运维手工步骤。
+- 该结果降低恢复协议不确定性，但 Dynamic Index 全 Recipe/Inventory、容量硬准入、Certificate、真实 Group Cutover、GC、Admin HTTP 和 clean-room 仍有 6 项。剩余单通道容量情景保持 **4–7 工程周**，不是上线日期承诺。
+- 当前只放行 G2-02-09 Index Plan、容量准入与受信 DDL 执行；`worker:start` 在 09～11 的生产 Stage 组合完成前继续 fail closed，不得用测试 Adapter 启动生产调度。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01 与 G2-02-01～06 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-07，不得跳到 Worker、Cutover、Query、页面或 Action。
+1. G2-00、G2-01 与 G2-02-01～08 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-09，不得跳到 Certificate、Cutover、Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。
