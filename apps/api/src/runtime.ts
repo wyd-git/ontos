@@ -4,11 +4,26 @@ import { performance } from "node:perf_hooks";
 
 import { parseArtifactDigest, parseCanonicalInstant } from "@ontos/contracts";
 import {
+  GarbageCollectionService,
+  MaterializationAdminService,
   MaterializationIngressService,
+  RowCountConfirmationService,
+  RuntimeCompatibilityCoordinator,
+  SnapshotGroupCutoverCoordinator,
+  type GarbageCollectionCrypto,
   type ManagedSnapshotObjectStore,
+  type MaterializationAdminCrypto,
   type MaterializationIngressCrypto,
+  type MaterializationQualityCrypto,
 } from "@ontos/materialization-application";
-import { PostgresSnapshotUploadSessionRepository } from "@ontos/materialization-postgres";
+import {
+  PostgresGarbageCollectionRepository,
+  PostgresMaterializationAdminRepository,
+  PostgresMaterializationQualityRepository,
+  PostgresRuntimeCompatibilityRepository,
+  PostgresSnapshotGroupCutoverRepository,
+  PostgresSnapshotUploadSessionRepository,
+} from "@ontos/materialization-postgres";
 import {
   MetadataApplicationService,
   PackageLifecycleApplicationService,
@@ -97,6 +112,29 @@ export async function startAdminApi(
     monotonicClock: { nowMilliseconds: () => performance.now() },
     maximumUploadBytes: config.managedCsvMaximumBytes,
   });
+  const materializationAdmin = new MaterializationAdminService({
+    principals: metadataStore,
+    authorizer,
+    repository: new PostgresMaterializationAdminRepository(pool),
+    activation: new SnapshotGroupCutoverCoordinator(
+      new PostgresSnapshotGroupCutoverRepository(pool),
+    ),
+    refresh: new RuntimeCompatibilityCoordinator(new PostgresRuntimeCompatibilityRepository(pool)),
+    confirmations: new RowCountConfirmationService({
+      principals: metadataStore,
+      authorizer,
+      repository: new PostgresMaterializationQualityRepository(pool),
+      crypto: nodeMaterializationCrypto,
+      clock: { now: canonicalNow },
+    }),
+    garbageCollection: new GarbageCollectionService({
+      repository: new PostgresGarbageCollectionRepository(pool),
+      crypto: nodeMaterializationCrypto,
+      objectStore,
+    }),
+    crypto: nodeMaterializationCrypto,
+    clock: { now: canonicalNow },
+  });
   try {
     await materialization.assertReady();
   } catch (error) {
@@ -131,6 +169,7 @@ export async function startAdminApi(
         digestCanonicalText: sha256CanonicalText,
       }),
       materialization,
+      materializationAdmin,
     },
   });
   const server = createServer(handler);
@@ -173,10 +212,15 @@ function configureServer(server: Server): void {
   server.maxHeadersCount = 64;
 }
 
-const nodeMaterializationCrypto: MaterializationIngressCrypto = Object.freeze({
+const nodeMaterializationCrypto: MaterializationIngressCrypto &
+  MaterializationAdminCrypto &
+  MaterializationQualityCrypto &
+  GarbageCollectionCrypto = Object.freeze({
   randomId: randomUUID,
   randomToken: () => randomBytes(32).toString("base64url"),
   digestText: (value: string) =>
+    parseArtifactDigest(`sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`),
+  digestCanonicalText: (value: string) =>
     parseArtifactDigest(`sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`),
   createStreamingDigest: () => {
     const hash = createHash("sha256");

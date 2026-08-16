@@ -380,7 +380,7 @@ export class MaterializationBaseService {
       (left, right) => left.batchSequence - right.batchSequence,
     );
     if (
-      receipts.length < 1 ||
+      (receipts.length === 0 && input.expectedRowCount !== 0) ||
       receipts.some(
         (receipt, index) =>
           !Number.isSafeInteger(receipt.batchSequence) ||

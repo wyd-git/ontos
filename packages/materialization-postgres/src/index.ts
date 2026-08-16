@@ -25,6 +25,8 @@ export * from "./projection-ddl.ts";
 export * from "./runtime-plan.ts";
 export * from "./cutover.ts";
 export * from "./garbage-collection.ts";
+export * from "./admin.ts";
+export * from "./production-pipeline.ts";
 
 interface SessionRow extends pg.QueryResultRow {
   readonly projectId: string;

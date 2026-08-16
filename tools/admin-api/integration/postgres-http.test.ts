@@ -195,6 +195,186 @@ void test(
       const resourceId = stringField(resource, "resourceId");
       const revisionId = stringField(initialDraft, "revisionId");
 
+      const materializationFixture = await seedMaterializationAdminFixture(admin, {
+        projectId,
+        principalId: editorId,
+        resourceId,
+        revisionId,
+      });
+      const groupRead = await api(
+        runtime,
+        viewerToken,
+        "GET",
+        `/api/v1/admin/projects/${projectId}/snapshot-groups/${materializationFixture.snapshotGroupId}/versions/1`,
+      );
+      assert.equal(groupRead.status, 200);
+      assert.equal(record(groupRead.json)["memberCount"], 1);
+      const snapshotRead = await api(
+        runtime,
+        viewerToken,
+        "GET",
+        `/api/v1/admin/projects/${projectId}/snapshots/${materializationFixture.snapshotId}`,
+      );
+      assert.equal(snapshotRead.status, 200);
+      assert.equal(record(snapshotRead.json)["sourceLabel"], "orders.csv");
+
+      const viewerCannotStart = await api(
+        runtime,
+        viewerToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/materialization-jobs`,
+        {
+          headers: { "idempotency-key": "materialization-http-0001" },
+          body: { snapshotGroupId: materializationFixture.snapshotGroupId, groupVersion: 1 },
+        },
+      );
+      assert.equal(viewerCannotStart.status, 404);
+      const startedJob = await api(
+        runtime,
+        editorToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/materialization-jobs`,
+        {
+          headers: { "idempotency-key": "materialization-http-0001" },
+          body: { snapshotGroupId: materializationFixture.snapshotGroupId, groupVersion: 1 },
+        },
+      );
+      assert.equal(startedJob.status, 202);
+      assert.ok(startedJob.headers.get("etag"));
+      const jobId = stringField(record(startedJob.json), "jobId");
+      const replayedJob = await api(
+        runtime,
+        editorToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/materialization-jobs`,
+        {
+          headers: { "idempotency-key": "materialization-http-0001" },
+          body: { snapshotGroupId: materializationFixture.snapshotGroupId, groupVersion: 1 },
+        },
+      );
+      assert.equal(replayedJob.status, 202);
+      assert.equal(stringField(record(replayedJob.json), "jobId"), jobId);
+      assert.equal(record(replayedJob.json)["reused"], true);
+      const viewerJobRead = await api(
+        runtime,
+        viewerToken,
+        "GET",
+        `/api/v1/admin/projects/${projectId}/materialization-jobs/${jobId}`,
+      );
+      assert.equal(viewerJobRead.status, 200);
+      const jobVersion = viewerJobRead.headers.get("etag");
+      assert.ok(jobVersion);
+      const viewerCannotCancel = await api(
+        runtime,
+        viewerToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/materialization-jobs/${jobId}/cancel`,
+        { headers: { "if-match": jobVersion }, body: {} },
+      );
+      assert.equal(viewerCannotCancel.status, 404);
+      const cancelledJob = await api(
+        runtime,
+        editorToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/materialization-jobs/${jobId}/cancel`,
+        { headers: { "if-match": jobVersion }, body: {} },
+      );
+      assert.equal(cancelledJob.status, 202);
+      assert.equal(record(cancelledJob.json)["state"], "cancelled");
+      const staleCancel = await api(
+        runtime,
+        editorToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/materialization-jobs/${jobId}/cancel`,
+        { headers: { "if-match": jobVersion }, body: {} },
+      );
+      assert.equal(staleCancel.status, 409);
+      assert.equal(errorCode(staleCancel), "OBJECT_VERSION_CONFLICT");
+
+      const capacityExpiry = canonicalFutureInstant(24 * 60 * 60 * 1_000);
+      const editorCannotApproveCapacity = await api(
+        runtime,
+        editorToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/capacity-approvals`,
+        {
+          headers: { "if-match": '"7"' },
+          body: {
+            scope: "project_peak",
+            scopeId: null,
+            approvedLimitBytes: "11811160064",
+            expiresAt: capacityExpiry,
+          },
+        },
+      );
+      assert.equal(editorCannotApproveCapacity.status, 404);
+      const hardLimitRejected = await api(
+        runtime,
+        ownerToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/capacity-approvals`,
+        {
+          headers: { "if-match": '"7"' },
+          body: {
+            scope: "project_peak",
+            scopeId: null,
+            approvedLimitBytes: "12884901889",
+            expiresAt: capacityExpiry,
+          },
+        },
+      );
+      assert.equal(hardLimitRejected.status, 400);
+      const capacityApproval = await api(
+        runtime,
+        ownerToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/capacity-approvals`,
+        {
+          headers: { "if-match": '"7"' },
+          body: {
+            scope: "project_peak",
+            scopeId: null,
+            approvedLimitBytes: "11811160064",
+            expiresAt: capacityExpiry,
+          },
+        },
+      );
+      assert.equal(capacityApproval.status, 201);
+      assert.equal(record(capacityApproval.json)["hardLimitBytes"], "12884901888");
+      const replayedApproval = await api(
+        runtime,
+        ownerToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/capacity-approvals`,
+        {
+          headers: { "if-match": '"7"' },
+          body: {
+            scope: "project_peak",
+            scopeId: null,
+            approvedLimitBytes: "11811160064",
+            expiresAt: capacityExpiry,
+          },
+        },
+      );
+      assert.equal(replayedApproval.status, 201);
+      assert.equal(record(replayedApproval.json)["reused"], true);
+      const staleCapacityApproval = await api(
+        runtime,
+        ownerToken,
+        "POST",
+        `/api/v1/admin/projects/${projectId}/capacity-approvals`,
+        {
+          headers: { "if-match": '"6"' },
+          body: {
+            scope: "project_peak",
+            scopeId: null,
+            approvedLimitBytes: "11811160064",
+            expiresAt: capacityExpiry,
+          },
+        },
+      );
+      assert.equal(staleCapacityApproval.status, 409);
+
       const secondResource = await api(
         runtime,
         editorToken,
@@ -348,6 +528,24 @@ void test(
         body: { apiName: "Private", displayName: "Private Project" },
       });
       const otherProjectId = stringField(record(record(otherProject.json)["project"]), "projectId");
+      const crossProjectJob = await api(
+        runtime,
+        ownerToken,
+        "GET",
+        `/api/v1/admin/projects/${otherProjectId}/materialization-jobs/${jobId}`,
+      );
+      const missingProjectJob = await api(
+        runtime,
+        ownerToken,
+        "GET",
+        `/api/v1/admin/projects/${otherProjectId}/materialization-jobs/${randomUUID()}`,
+      );
+      assert.equal(crossProjectJob.status, 404);
+      assert.equal(missingProjectJob.status, 404);
+      assert.deepEqual(
+        record(crossProjectJob.json)["error"],
+        record(missingProjectJob.json)["error"],
+      );
       const privateResource = await api(
         runtime,
         ownerToken,
@@ -533,6 +731,127 @@ function nested(depth: number): unknown {
   let value: unknown = "leaf";
   for (let index = 0; index < depth; index += 1) value = { child: value };
   return value;
+}
+
+async function seedMaterializationAdminFixture(
+  admin: pg.Pool,
+  input: {
+    readonly projectId: string;
+    readonly principalId: string;
+    readonly resourceId: string;
+    readonly revisionId: string;
+  },
+): Promise<{ readonly snapshotGroupId: string; readonly snapshotId: string }> {
+  const snapshotGroupId = randomUUID();
+  const snapshotId = randomUUID();
+  const fileId = randomUUID();
+  const managedArtifactId = randomUUID();
+  const schemaResourceId = randomUUID();
+  const schemaRevisionId = randomUUID();
+  const mappingResourceId = randomUUID();
+  const mappingRevisionId = randomUUID();
+  const client = await admin.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO runtime.project_runtime_inventories (
+         project_id, state_revision, inventory_revision, measurement_complete, inventory_digest
+       ) VALUES ($1::uuid, 7, 7, true, $2)`,
+      [input.projectId, digestFor("1")],
+    );
+    await client.query(
+      `INSERT INTO meta.resources (resource_id, project_id, namespace, api_name, family)
+       VALUES
+         ($1::uuid, $3::uuid, 'admin.http.fixture', 'OrderCsvSchema', 'snapshot_schema'),
+         ($2::uuid, $3::uuid, 'admin.http.fixture', 'OrderCsvMapping', 'mapping')`,
+      [schemaResourceId, mappingResourceId, input.projectId],
+    );
+    await client.query(
+      `INSERT INTO meta.resource_revisions (
+         revision_id, resource_id, revision_number, family, content_digest, content,
+         created_by_principal_id
+       ) VALUES
+         ($1::uuid, $2::uuid, 1, 'snapshot_schema', $5, '{}'::jsonb, $7::uuid),
+         ($3::uuid, $4::uuid, 1, 'mapping', $6, '{}'::jsonb, $7::uuid)`,
+      [
+        schemaRevisionId,
+        schemaResourceId,
+        mappingRevisionId,
+        mappingResourceId,
+        digestFor("6"),
+        digestFor("7"),
+        input.principalId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO runtime.snapshot_groups (project_id, snapshot_group_id, group_key)
+       VALUES ($1::uuid, $2::uuid, 'admin-http-orders')`,
+      [input.projectId, snapshotGroupId],
+    );
+    await client.query(
+      `INSERT INTO runtime.snapshot_group_versions (
+         project_id, snapshot_group_id, group_version, member_count, state, group_digest
+       ) VALUES ($1::uuid, $2::uuid, 1, 1, 'registered', $3)`,
+      [input.projectId, snapshotGroupId, digestFor("2")],
+    );
+    await client.query(
+      `INSERT INTO runtime.dataset_snapshots (
+         project_id, snapshot_id, snapshot_group_id, group_version, member_key, member_kind,
+         target_resource_id, target_revision_id,
+         snapshot_schema_resource_id, snapshot_schema_revision_id,
+         mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+         content_digest, byte_count, row_count, file_count, state, snapshot_digest
+       ) VALUES (
+         $1::uuid, $2::uuid, $3::uuid, 1, 'object:Order', 'object',
+         $4::uuid, $5::uuid, $6::uuid, $7::uuid, $8::uuid, $9::uuid, $10,
+         $11, 32, 1, 1, 'registered', $12
+       )`,
+      [
+        input.projectId,
+        snapshotId,
+        snapshotGroupId,
+        input.resourceId,
+        input.revisionId,
+        schemaResourceId,
+        schemaRevisionId,
+        mappingResourceId,
+        mappingRevisionId,
+        digestFor("3"),
+        digestFor("4"),
+        digestFor("5"),
+      ],
+    );
+    await client.query(
+      `INSERT INTO runtime.snapshot_files (
+         project_id, snapshot_id, file_id, managed_artifact_id, object_version, ordinal,
+         content_digest, byte_count, row_count, source_label, scan_status
+       ) VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, 'fixture-version-1', 0,
+                 $5, 32, 1, 'orders.csv', 'complete')`,
+      [input.projectId, snapshotId, fileId, managedArtifactId, digestFor("4")],
+    );
+    await client.query(
+      `INSERT INTO runtime.snapshot_group_members (
+         project_id, snapshot_group_id, group_version, member_key, member_kind,
+         snapshot_id, target_resource_id, target_revision_id
+       ) VALUES ($1::uuid, $2::uuid, 1, 'object:Order', 'object', $3::uuid, $4::uuid, $5::uuid)`,
+      [input.projectId, snapshotGroupId, snapshotId, input.resourceId, input.revisionId],
+    );
+    await client.query("COMMIT");
+    return Object.freeze({ snapshotGroupId, snapshotId });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function digestFor(character: string): string {
+  return `sha256:${character.repeat(64)}`;
+}
+
+function canonicalFutureInstant(offsetMilliseconds: number): string {
+  return new Date(Date.now() + offsetMilliseconds).toISOString().replace(/Z$/u, "000Z");
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> {

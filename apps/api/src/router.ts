@@ -1,7 +1,10 @@
 import type { IncomingMessage, RequestListener, ServerResponse } from "node:http";
 
 import { parseIdempotencyKey } from "@ontos/contracts";
-import type { MaterializationIngressService } from "@ontos/materialization-application";
+import type {
+  MaterializationAdminService,
+  MaterializationIngressService,
+} from "@ontos/materialization-application";
 import type {
   MetadataApplicationService,
   PackageLifecycleApplicationService,
@@ -48,6 +51,22 @@ export interface AdminApiServices {
   readonly materialization: Pick<
     MaterializationIngressService,
     "createUploadSession" | "uploadSessionContent" | "finalizeSnapshotGroup"
+  >;
+  readonly materializationAdmin: Pick<
+    MaterializationAdminService,
+    | "getSnapshotGroup"
+    | "getSnapshot"
+    | "startJob"
+    | "getJob"
+    | "cancelJob"
+    | "getReport"
+    | "activate"
+    | "refresh"
+    | "confirmRowCount"
+    | "getCapacityStatus"
+    | "approveCapacity"
+    | "dryRunGarbageCollection"
+    | "commitGarbageCollection"
   >;
 }
 
@@ -152,6 +171,177 @@ async function route(
       requireNoQuery(url);
       const result = await services.metadata.getProject(identity, { projectId });
       return ok(result, { etag: strongEtag(result.authorizationEpoch) });
+    }
+    if (
+      method === "GET" &&
+      path[2] === "snapshot-groups" &&
+      path[4] === "versions" &&
+      path.length === 6
+    ) {
+      requireNoQuery(url);
+      return ok(
+        await services.materializationAdmin.getSnapshotGroup(identity, {
+          projectId,
+          snapshotGroupId: requireSegment(path[3]),
+          groupVersion: positivePathInteger(path[5]),
+        }),
+      );
+    }
+    if (method === "GET" && path[2] === "snapshots" && path.length === 4) {
+      requireNoQuery(url);
+      return ok(
+        await services.materializationAdmin.getSnapshot(identity, {
+          projectId,
+          snapshotId: requireSegment(path[3]),
+        }),
+      );
+    }
+    if (path[2] === "materialization-jobs") {
+      if (method === "POST" && path.length === 3) {
+        requireNoQuery(url);
+        const body = strictBody(
+          await readJsonBody(request),
+          ["snapshotGroupId", "groupVersion"],
+          ["priority"],
+        );
+        const result = await services.materializationAdmin.startJob(identity, {
+          projectId,
+          ...body,
+          idempotencyKey: requiredIdempotencyKey(request),
+        });
+        return accepted(result, { etag: strongOpaqueEtag(result.version) });
+      }
+      if (method === "GET" && path.length === 4) {
+        requireNoQuery(url);
+        const result = await services.materializationAdmin.getJob(identity, {
+          projectId,
+          jobId: requireSegment(path[3]),
+        });
+        return ok(result, { etag: strongOpaqueEtag(result.version) });
+      }
+      if (method === "POST" && path[4] === "cancel" && path.length === 5) {
+        requireNoQuery(url);
+        await assertEmptyActionBody(request);
+        const result = await services.materializationAdmin.cancelJob(identity, {
+          projectId,
+          jobId: requireSegment(path[3]),
+          expectedVersion: requiredOpaqueIfMatch(request),
+        });
+        return accepted(result, { etag: strongOpaqueEtag(result.version) });
+      }
+    }
+    if (method === "GET" && path[2] === "materialization-reports" && path.length === 4) {
+      requireNoQuery(url);
+      return ok(
+        await services.materializationAdmin.getReport(identity, {
+          projectId,
+          reportId: requireSegment(path[3]),
+        }),
+      );
+    }
+    if (
+      method === "POST" &&
+      path[2] === "snapshot-groups" &&
+      path[4] === "versions" &&
+      (path[6] === "activate" || path[6] === "refresh") &&
+      path.length === 7
+    ) {
+      requireNoQuery(url);
+      const snapshotGroupId = requireSegment(path[3]);
+      const groupVersion = positivePathInteger(path[5]);
+      const idempotencyKey = requiredIdempotencyKey(request);
+      if (path[6] === "activate") {
+        const body = strictBody(await readJsonBody(request), ["expectedControlRevision"]);
+        return ok(
+          await services.materializationAdmin.activate(identity, {
+            projectId,
+            snapshotGroupId,
+            groupVersion,
+            idempotencyKey,
+            ...body,
+          }),
+        );
+      }
+      await assertEmptyActionBody(request);
+      return accepted(
+        await services.materializationAdmin.refresh(identity, {
+          projectId,
+          snapshotGroupId,
+          groupVersion,
+          idempotencyKey,
+        }),
+      );
+    }
+    if (path[2] === "generations" && path.length === 5) {
+      const generationId = requireSegment(path[3]);
+      if (method === "POST" && path[4] === "row-count-confirmation") {
+        requireNoQuery(url);
+        const body = strictBody(await readJsonBody(request), [
+          "expectedReportDigest",
+          "expectedPublicationControlSequence",
+          "decision",
+        ]);
+        return ok(
+          await services.materializationAdmin.confirmRowCount(identity, {
+            projectId,
+            generationId,
+            ...body,
+          }),
+        );
+      }
+      if (method === "GET" && path[4] === "capacity") {
+        requireNoQuery(url);
+        const result = await services.materializationAdmin.getCapacityStatus(identity, {
+          projectId,
+          generationId,
+        });
+        return ok(result, { etag: strongEtag(result.inventoryRevision) });
+      }
+    }
+    if (method === "POST" && path[2] === "capacity-approvals" && path.length === 3) {
+      requireNoQuery(url);
+      const body = strictBody(await readJsonBody(request), [
+        "scope",
+        "scopeId",
+        "approvedLimitBytes",
+        "expiresAt",
+      ]);
+      return created(
+        await services.materializationAdmin.approveCapacity(identity, {
+          projectId,
+          ...body,
+          expectedInventoryRevision: requiredIfMatch(request).toString(),
+        }),
+      );
+    }
+    if (method === "POST" && path[2] === "gc" && path[3] === "dry-run" && path.length === 4) {
+      requireNoQuery(url);
+      await assertEmptyActionBody(request);
+      const result = await services.materializationAdmin.dryRunGarbageCollection(identity, {
+        projectId,
+        idempotencyKey: requiredIdempotencyKey(request),
+      });
+      return ok(
+        result,
+        result.planDigest === null ? undefined : { etag: strongOpaqueEtag(result.planDigest) },
+      );
+    }
+    if (
+      method === "POST" &&
+      path[2] === "gc" &&
+      path[3] === "plans" &&
+      path[5] === "commit" &&
+      path.length === 6
+    ) {
+      requireNoQuery(url);
+      await assertEmptyActionBody(request);
+      return accepted(
+        await services.materializationAdmin.commitGarbageCollection(identity, {
+          projectId,
+          planId: requireSegment(path[4]),
+          expectedPlanDigest: requiredOpaqueIfMatch(request),
+        }),
+      );
     }
     if (path[2] === "resources" && path.length === 3) {
       if (method === "POST") {
@@ -430,6 +620,13 @@ function requiredIfMatch(request: IncomingMessage): bigint {
   return decimalBigint(match[1], false);
 }
 
+function requiredOpaqueIfMatch(request: IncomingMessage): string {
+  const value = request.headers["if-match"];
+  const match = typeof value === "string" ? /^"([^"\\]{1,128})"$/u.exec(value) : null;
+  if (match?.[1] === undefined) throw invalidRequest("A strong If-Match value is required.");
+  return match[1];
+}
+
 function requiredIdempotencyKey(request: IncomingMessage): string {
   const value = request.headers["idempotency-key"];
   try {
@@ -470,8 +667,27 @@ function decimalBigint(value: unknown, allowZero: boolean): bigint {
   return parsed;
 }
 
+function positivePathInteger(value: string | undefined): number {
+  if (value === undefined || !/^[1-9][0-9]{0,15}$/u.test(value)) throw routeNotFound();
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw routeNotFound();
+  return parsed;
+}
+
 function strongEtag(value: bigint): string {
   return `"${value.toString()}"`;
+}
+
+function strongOpaqueEtag(value: string): string {
+  if (value.length < 1 || value.length > 128 || /["\\]/u.test(value)) {
+    throw new HttpProblem({
+      status: 500,
+      code: "ADMIN_INTERNAL_ERROR",
+      message: "The administrator response could not be encoded.",
+      category: "internal",
+    });
+  }
+  return `"${value}"`;
 }
 
 function requireSegment(value: string | undefined): string {
@@ -493,8 +709,8 @@ function created(value: unknown, headers?: Readonly<Record<string, string>>): Ro
   return { status: 201, value, ...(headers === undefined ? {} : { headers }) };
 }
 
-function accepted(value: unknown): RouteResponse {
-  return { status: 202, value };
+function accepted(value: unknown, headers?: Readonly<Record<string, string>>): RouteResponse {
+  return { status: 202, value, ...(headers === undefined ? {} : { headers }) };
 }
 
 function routeNotFound(): HttpProblem {

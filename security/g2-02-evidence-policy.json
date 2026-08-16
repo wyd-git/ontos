@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-02",
+  "baselineCommit": "b6f69d7dc16940642158c9f87f9fd9f34c7c68b9",
+  "requiredEvidence": [
+    "docs/evidence/g2-02-01-materialization-architecture.md",
+    "docs/evidence/g2-02-02-materialization-contracts.md",
+    "docs/evidence/g2-02-03-db02-migrations.md",
+    "docs/evidence/g2-02-04-managed-csv-ingress.md",
+    "docs/evidence/g2-02-05-deterministic-mapping.md",
+    "docs/evidence/g2-02-06-object-identity-base.md",
+    "docs/evidence/g2-02-07-quality-current-provenance.md",
+    "docs/evidence/g2-02-08-materialization-worker.md",
+    "docs/evidence/g2-02-09-index-capacity-ddl.md",
+    "docs/evidence/g2-02-10-runtime-plan-compatibility.md",
+    "docs/evidence/g2-02-11-snapshot-group-cutover.md",
+    "docs/evidence/g2-02-12-generation-index-gc.md",
+    "docs/evidence/g2-02-13-admin-testkit-ci.md"
+  ],
+  "requiredReviews": [
+    "docs/reviews/g2-02-13-admin-testkit-ci-red-team.md",
+    "docs/reviews/g2-02-13-intended-vs-implemented.md"
+  ],
+  "scope": {
+    "allowedExactPaths": [
+      ".github/workflows/foundation-ci.yml",
+      "docs/README.md",
+      "migrations/db-00/0018_materialization_admin_boundary.sql",
+      "package-lock.json",
+      "package.json",
+      "packages/metadata-postgres/src/release.ts",
+      "security/g2-00-evidence-policy.json",
+      "security/g2-02-evidence-policy.json"
+    ],
+    "allowedPrefixes": [
+      "apps/api/src/",
+      "apps/worker/",
+      "docs/delivery/",
+      "docs/evidence/g2-02-",
+      "docs/operations/",
+      "docs/reviews/g2-02-",
+      "packages/materialization-application/",
+      "packages/materialization-domain/",
+      "packages/materialization-postgres/",
+      "packages/testkit/",
+      "tools/admin-api/",
+      "tools/ci/",
+      "tools/database/",
+      "tools/materialization-",
+      "tools/projection-capacity/",
+      "tools/projection-ddl/",
+      "tools/testkit/"
+    ],
+    "forbiddenPrefixes": [
+      "apps/web/",
+      "packages/action/",
+      "packages/overlay/",
+      "packages/policy/",
+      "packages/query/",
+      "packages/sdk/",
+      "tools/action/",
+      "tools/overlay/",
+      "tools/policy/",
+      "tools/query/",
+      "tools/sdk/"
+    ]
+  },
+  "fixtures": {
+    "digest": "sha256:b516136d11968f9f75ed1af0d26e9f1cc760dcd065fb1ca4a6cd807f5f8860bf",
+    "domainCount": 2,
+    "memberCount": 6,
+    "negativeFixtureIds": [
+      "bad_csv_unclosed_quote",
+      "primary_key_collision",
+      "quality_threshold_exceeded",
+      "required_link_dangling"
+    ],
+    "benchmarkObjectCount": 100000,
+    "benchmarkLinkCount": 1000000
+  },
+  "productionStages": [
+    "scan",
+    "map",
+    "validate",
+    "build_stage",
+    "build_index",
+    "ready_for_activation",
+    "catch_up",
+    "activate"
+  ],
+  "mutationChecks": [
+    {
+      "id": "oidc",
+      "source": "tools/admin-api/integration/postgres-http.test.ts",
+      "marker": "await oidc.token({ scope: \"openid\" })",
+      "script": "test:admin-api:postgres",
+      "routeFragment": "tools/admin-api/integration/postgres-http.test.ts",
+      "requiredGate": "admin-api-oidc-postgres"
+    },
+    {
+      "id": "migration",
+      "source": "tools/database/materialization-postgres.integration.test.ts",
+      "marker": "G2-02-03 upgrades A0 safely and enforces DB-02 facts, fencing and least privilege",
+      "script": "test:database",
+      "routeFragment": "tools/database/materialization-postgres.integration.test.ts",
+      "requiredGate": "postgres-integration"
+    },
+    {
+      "id": "job_fencing",
+      "source": "tools/materialization-worker/integration/postgres-process.test.ts",
+      "marker": "G2-02-08 real Worker PIDs fence, kill and resume every stage",
+      "script": "test:materialization-worker:postgres",
+      "routeFragment": "tools/materialization-worker/integration/postgres-process.test.ts",
+      "requiredGate": "materialization-worker-postgres"
+    },
+    {
+      "id": "staging_visibility",
+      "source": "tools/database/materialization-postgres.integration.test.ts",
+      "marker": "const invisible = await admin.query",
+      "script": "test:database",
+      "routeFragment": "tools/database/materialization-postgres.integration.test.ts",
+      "requiredGate": "postgres-integration"
+    },
+    {
+      "id": "plan_digest",
+      "source": "tools/materialization-control-plane/projection-ddl.test.ts",
+      "marker": "DDL Plan digest is deterministic and binds every immutable execution field",
+      "script": "test:unit",
+      "routeFragment": "tools/materialization-control-plane/*.test.ts",
+      "requiredGate": "unit"
+    },
+    {
+      "id": "capacity",
+      "source": "tools/projection-capacity/production.test.ts",
+      "marker": "production Index service fails closed on an incomplete physical inventory",
+      "script": "test:unit",
+      "routeFragment": "tools/projection-capacity/*.test.ts",
+      "requiredGate": "unit"
+    },
+    {
+      "id": "cutover_atomicity",
+      "source": "tools/database/materialization-postgres.integration.test.ts",
+      "marker": "for (const [index, faultPoint] of [",
+      "script": "test:database",
+      "routeFragment": "tools/database/materialization-postgres.integration.test.ts",
+      "requiredGate": "postgres-integration"
+    },
+    {
+      "id": "scope",
+      "source": "tools/ci/materialization-evidence.test.ts",
+      "marker": "rejects an out-of-scope Query path mutation",
+      "script": "test:unit",
+      "routeFragment": "tools/ci/*.test.ts",
+      "requiredGate": "unit"
+    }
+  ],
+  "requiredGates": [
+    "lockfile-install",
+    "toolchain",
+    "format",
+    "lint",
+    "typecheck",
+    "unit",
+    "materialization-mapping-capacity",
+    "materialization-base-capacity",
+    "admin-api-unit",
+    "contract-golden-diff",
+    "architecture-dependency",
+    "testkit-provenance",
+    "metadata-fixtures",
+    "materialization-fixtures",
+    "metadata-negative-fixtures",
+    "secret-private-key",
+    "foundation-scope-evidence",
+    "metadata-scope-evidence",
+    "license-sbom-vulnerability",
+    "materialization-ingress-integration",
+    "postgres-integration",
+    "projection-ddl-production-postgres",
+    "projection-capacity-postgres-smoke",
+    "materialization-worker-postgres",
+    "admin-api-oidc-postgres",
+    "materialization-production",
+    "materialization-scope-evidence",
+    "metadata-clean-room",
+    "production-boundary-up",
+    "production-boundary-smoke",
+    "production-boundary-down"
+  ],
+  "owner": "wyd-git",
+  "residualRisks": [
+    {
+      "id": "RISK-G2-02-13-01",
+      "risk": "The production-boundary scenario proves the full small-fixture path; the 100k Object / 1m Link end-to-end run remains a G2-02-14 clean-room obligation.",
+      "owner": "Runtime / Quality (accountable: wyd-git)",
+      "nextGate": "G2-02-14"
+    },
+    {
+      "id": "RISK-G2-02-13-02",
+      "risk": "Production only accepts zero-overlay evidence; real PostgreSQL W0/W1 overlay replay remains owned by G2-04.",
+      "owner": "Runtime / Data (accountable: wyd-git)",
+      "nextGate": "G2-04"
+    }
+  ]
+}

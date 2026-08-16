@@ -10,7 +10,14 @@ import {
   type ErrorEnvelope,
 } from "@ontos/contracts";
 import { MetadataApplicationError } from "@ontos/metadata-application";
-import { MaterializationIngressError } from "@ontos/materialization-application";
+import {
+  GarbageCollectionApplicationError,
+  MaterializationAdminError,
+  MaterializationIngressError,
+  MaterializationQualityError,
+  RuntimeCompatibilityError,
+  SnapshotGroupCutoverError,
+} from "@ontos/materialization-application";
 
 import { RequestBodyError } from "./body.ts";
 import { CursorError } from "./cursor.ts";
@@ -107,6 +114,105 @@ function mapProblem(error: unknown): HttpProblem {
       category: "validation",
     });
   }
+  if (error instanceof MaterializationAdminError) {
+    switch (error.code) {
+      case "ADMIN_REQUEST_INVALID":
+        return invalidAdminRequest();
+      case "FORBIDDEN":
+      case "OBJECT_NOT_ACCESSIBLE":
+        return coreProblem("OBJECT_NOT_ACCESSIBLE", "The requested resource is not accessible.");
+      case "OBJECT_VERSION_CONFLICT":
+        return coreProblem("OBJECT_VERSION_CONFLICT", "The resource version has changed.");
+      case "JOB_NOT_CANCELLABLE":
+        return conflictProblem(
+          "MATERIALIZATION_JOB_NOT_CANCELLABLE",
+          "The materialization Job cannot be cancelled in its current state.",
+        );
+      case "DEPENDENCY_UNAVAILABLE":
+        return coreProblem(
+          "DEPENDENCY_UNAVAILABLE",
+          "A materialization dependency is temporarily unavailable.",
+        );
+    }
+  }
+  if (error instanceof SnapshotGroupCutoverError) {
+    switch (error.code) {
+      case "CUTOVER_INPUT_INVALID":
+        return invalidAdminRequest();
+      case "CUTOVER_CONCURRENT_MODIFICATION":
+      case "CUTOVER_IDEMPOTENCY_CONFLICT":
+        return coreProblem("OBJECT_VERSION_CONFLICT", "The activation context has changed.");
+      case "CUTOVER_NOT_READY":
+        return conflictProblem(
+          "MATERIALIZATION_NOT_READY",
+          "The Snapshot Group is not ready for activation.",
+        );
+      case "CUTOVER_DEPENDENCY_UNAVAILABLE":
+        return coreProblem(
+          "DEPENDENCY_UNAVAILABLE",
+          "A materialization dependency is temporarily unavailable.",
+        );
+    }
+  }
+  if (error instanceof RuntimeCompatibilityError) {
+    switch (error.code) {
+      case "RUNTIME_COMPATIBILITY_INPUT_INVALID":
+        return invalidAdminRequest();
+      case "RUNTIME_COMPATIBILITY_STALE":
+      case "RUNTIME_GENERATION_INCOMPATIBLE":
+        return coreProblem("OBJECT_VERSION_CONFLICT", "The runtime compatibility context changed.");
+      case "RUNTIME_COMPATIBILITY_DEPENDENCY_UNAVAILABLE":
+        return coreProblem(
+          "DEPENDENCY_UNAVAILABLE",
+          "A materialization dependency is temporarily unavailable.",
+        );
+    }
+  }
+  if (error instanceof MaterializationQualityError) {
+    switch (error.code) {
+      case "FORBIDDEN":
+        return coreProblem("OBJECT_NOT_ACCESSIBLE", "The requested resource is not accessible.");
+      case "QUALITY_REQUEST_INVALID":
+        return invalidAdminRequest();
+      case "QUALITY_CONFIRMATION_INVALID":
+      case "MATERIALIZATION_ATTEMPT_FENCED":
+      case "STAGING_CURRENT_CONFLICT":
+        return coreProblem("OBJECT_VERSION_CONFLICT", "The quality context has changed.");
+      case "PROVENANCE_INCOMPLETE":
+      case "REJECTED_ARTIFACT_TOO_LARGE":
+      case "ZERO_OVERLAY_REQUIRED":
+        return new HttpProblem({
+          status: 422,
+          code: "MATERIALIZATION_VALIDATION_FAILED",
+          message: "The materialization quality gate did not pass.",
+          category: "validation",
+        });
+      case "DEPENDENCY_UNAVAILABLE":
+        return coreProblem(
+          "DEPENDENCY_UNAVAILABLE",
+          "A materialization dependency is temporarily unavailable.",
+        );
+    }
+  }
+  if (error instanceof GarbageCollectionApplicationError) {
+    switch (error.code) {
+      case "GC_INPUT_INVALID":
+        return invalidAdminRequest();
+      case "GC_PLAN_STALE":
+      case "GC_PROTOCOL_CONFLICT":
+        return coreProblem("OBJECT_VERSION_CONFLICT", "The garbage-collection plan has changed.");
+      case "GC_REFERENCE_SCAN_INCOMPLETE":
+        return conflictProblem(
+          "GC_REFERENCE_SCAN_INCOMPLETE",
+          "Garbage collection is blocked until every active reference provider is complete.",
+        );
+      case "GC_DEPENDENCY_UNAVAILABLE":
+        return coreProblem(
+          "DEPENDENCY_UNAVAILABLE",
+          "A materialization dependency is temporarily unavailable.",
+        );
+    }
+  }
   if (error instanceof MaterializationIngressError) {
     switch (error.code) {
       case "ADMIN_REQUEST_INVALID":
@@ -167,6 +273,19 @@ function mapProblem(error: unknown): HttpProblem {
     message: "The administrator request could not be completed.",
     category: "internal",
   });
+}
+
+function invalidAdminRequest(): HttpProblem {
+  return new HttpProblem({
+    status: 400,
+    code: "ADMIN_REQUEST_INVALID",
+    message: "The administrator request is invalid.",
+    category: "validation",
+  });
+}
+
+function conflictProblem(code: string, message: string): HttpProblem {
+  return new HttpProblem({ status: 409, code, message, category: "conflict" });
 }
 
 function coreProblem(code: keyof typeof CORE_ERROR_CLASSIFICATIONS, message: string): HttpProblem {

@@ -13,7 +13,7 @@ void test("independently reproduces the frozen G1 source and migration-group fin
   const result = await auditG1Provenance(repositoryRoot);
   assert.deepEqual(result.violations, []);
   assert.equal(result.sourceFileCount, 47);
-  assert.equal(result.groupCount, 7);
+  assert.equal(result.groupCount, 8);
   assert.equal(
     result.sourceDigest,
     "sha256:dff360ddb4c6683ab0481eb6d3d5f122aea6ad4e8039c51e57634ba894bd4aa1",

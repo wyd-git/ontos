@@ -91,17 +91,29 @@ export class PostgresMaterializationBaseRepository implements MaterializationBas
   ): Promise<MaterializationBasePromotion> {
     try {
       const result = await this.#pool.query<PromotionRow>(
-        `SELECT row_count::text AS "rowCount", stage_digest AS "stageDigest", reused
-           FROM ops.promote_materialization_base($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          input.scope.projectId,
-          input.scope.jobId,
-          input.scope.attemptId,
-          input.scope.fencingToken.toString(),
-          input.generationId,
-          input.expectedRowCount,
-          input.expectedStageDigest,
-        ],
+        input.expectedRowCount === 0
+          ? `SELECT row_count::text AS "rowCount", stage_digest AS "stageDigest", reused
+               FROM ops.promote_empty_materialization_base($1, $2, $3, $4, $5, $6)`
+          : `SELECT row_count::text AS "rowCount", stage_digest AS "stageDigest", reused
+               FROM ops.promote_materialization_base($1, $2, $3, $4, $5, $6, $7)`,
+        input.expectedRowCount === 0
+          ? [
+              input.scope.projectId,
+              input.scope.jobId,
+              input.scope.attemptId,
+              input.scope.fencingToken.toString(),
+              input.generationId,
+              input.expectedStageDigest,
+            ]
+          : [
+              input.scope.projectId,
+              input.scope.jobId,
+              input.scope.attemptId,
+              input.scope.fencingToken.toString(),
+              input.generationId,
+              input.expectedRowCount,
+              input.expectedStageDigest,
+            ],
       );
       const row = result.rows[0];
       if (result.rows.length !== 1 || row === undefined) {

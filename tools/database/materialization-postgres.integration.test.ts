@@ -348,7 +348,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -7220,11 +7220,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 17);
+  assert.equal(left.applied.length + right.applied.length, 18);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 17)).length, 17);
+    assert.equal((await migrationLedger(client, 18)).length, 18);
   });
 }
 
@@ -7241,6 +7241,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
     [15, "runtime.snapshot_group_definition_members"],
     [16, "runtime.snapshot_group_cutover_preparations"],
     [17, "ops.gc_plan_entries"],
+    [18, "ops.materialization_admin_report_samples"],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -7455,7 +7456,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(17);
+  const directory = await migrationPrefixDirectory(18);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);

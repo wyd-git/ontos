@@ -515,8 +515,7 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
            FROM meta.runtime_activations AS activation
            WHERE activation.release_id = $1 AND activation.state = 'ready'
            ORDER BY activation.created_at DESC, activation.activation_id
-           LIMIT 1
-           FOR SHARE`,
+           LIMIT 1`,
           [release.release_id],
         );
         const row = candidate.rows[0];

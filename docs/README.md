@@ -7,7 +7,7 @@
 1. [Ontology Kernel PRD](product/ontology-kernel-prd.md)：产品能力、范围、语义和最终验收。
 2. [G2 生产实现蓝图](product/ontology-kernel-implementation-blueprint.md)：从 PRD 到工程的实现约束。
 3. [G2 蓝图红队审查](reviews/g2-blueprint-red-team.md)：承重假设、验证、Kill Criteria 和 Conditional Go 结论。
-4. [G2-02 Materialization 任务包](delivery/g2-02-materialization-task-pack.md)：当前唯一获准实现的业务 Gate，覆盖受管 CSV、Mapping、Job/Lease、Generation、Base/Current、Staging/Cutover、Index/Capacity 与 GC；G2-02-01～12 已 PASS，下一顺序任务是 G2-02-13。
+4. [G2-02 Materialization 任务包](delivery/g2-02-materialization-task-pack.md)：当前唯一获准实现的业务 Gate，覆盖受管 CSV、Mapping、Job/Lease、Generation、Base/Current、Staging/Cutover、Index/Capacity 与 GC；G2-02-01～13 已 PASS，下一顺序任务是 G2-02-14 clean-room 总验收。
    - [ADR-014 Materialization 事务/DDL/Overlay](architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md)、[专项红队](reviews/adr-014-materialization-architecture-red-team.md)与 [G2-02-01 Evidence](evidence/g2-02-01-materialization-architecture.md)：逻辑 DB-02 边界、全局锁/CAS、隔离 DDL Executor、Kill/Replay 与 zero-overlay Seam。
    - [ADR-015 永久 Identity/Attempt Base](architecture/adr/015-permanent-object-identity-attempt-owned-base.md)、[专项红队](reviews/g2-02-06-object-identity-base-red-team.md)与 [G2-02-06 Evidence](evidence/g2-02-06-object-identity-base.md)：永久 RID、类型化 Link、隔离 Staging、原子 Base 提升与 10k/100k 薄切片。
    - [ADR-017 Materialization Worker 恢复](architecture/adr/017-materialization-worker-recovery.md)、[专项红队](reviews/g2-02-08-materialization-worker-red-team.md)与 [G2-02-08 Evidence](evidence/g2-02-08-materialization-worker.md)：数据库时间租约、八阶段 Checkpoint、Retry/Cancel、最小权限与 16 点真实 PID Kill/Resume。
@@ -15,6 +15,7 @@
    - [G2-02-10 Runtime Plan/Compatibility Evidence](evidence/g2-02-10-runtime-plan-compatibility.md)与[专项红队](reviews/g2-02-10-runtime-plan-compatibility-red-team.md)：服务器派生不可变 Plan、Group 完整性、受信证书、动态失效、跨 Release 复用和多成员 100k/1m Closure。
    - [ADR-018 Snapshot Group Cutover](architecture/adr/018-immutable-head-set-snapshot-group-cutover.md)、[专项红队](reviews/g2-02-11-snapshot-cutover-red-team.md)与 [G2-02-11 Evidence](evidence/g2-02-11-snapshot-group-cutover.md)：不可变 Head Set、短事务 Pointer CAS、原子 Activation/Refresh 与 100k/1m 容量证据。
    - [ADR-019 Generation/Index GC](architecture/adr/019-generation-index-mark-plan-commit-gc.md)、[专项红队](reviews/g2-02-12-generation-index-gc-red-team.md)与 [G2-02-12 Evidence](evidence/g2-02-12-generation-index-gc.md)：完整 Root/Inventory、单调 Root Epoch、分批 Kill/Resume、精确对象版本删除与 GC-bound Index Drop。
+   - [G2-02-13 Admin/Testkit/CI Evidence](evidence/g2-02-13-admin-testkit-ci.md)、[意图对照](reviews/g2-02-13-intended-vs-implemented.md)与[专项红队](reviews/g2-02-13-admin-testkit-ci-red-team.md)：最小 Admin HTTP、生产 Worker 八阶段、真 OIDC/PG/S3/API/DDL 闭环、两领域 Testkit 与统一 CI Manifest。
 5. [G2-02 任务包红队](reviews/g2-02-task-pack-red-team.md)：Dynamic DDL、零成员 A0 前向兼容、Kill/Resume、100k/1m 与 Overlay Seam 的 Kill Criteria。
 6. [G2-01 Metadata 任务包](delivery/g2-01-metadata-task-pack.md)：已完成的 DB-01、Metadata/Release/Package Store、最小管理授权和 Admin API Gate。
 7. [G2-01 任务包红队](reviews/g2-01-task-pack-red-team.md)：零成员 Activation、Package/Release 原子性、渐进冻结、授权边界和单通道工期的 Kill Criteria。

@@ -88,6 +88,34 @@
         "Retain Object metadata only; omit Action, Policy, View, migration and secret capabilities that are outside G2-01."
       ]
     },
+    "materialization": {
+      "groupDigest": "sha256:4000677f90514eacf4ccd4adf8aff1bca298da82e1760942ba79ecdf592d6f77",
+      "sources": [
+        {
+          "path": "packages/commerce/package.json",
+          "sha256": "12cebc3d1ae3e25ab3bd8ef70cf3b020481652a3ba74e6fb1db4342eb11ee08c"
+        },
+        {
+          "path": "packages/work-management/package.json",
+          "sha256": "dcae4da2aea7d9446989d54445c976158c9356095b9eb53d92d9b32f102944da"
+        },
+        {
+          "path": "src/fixtures/benchmark-schema.js",
+          "sha256": "65921c1e365776cefa2ebb041ef8640d4b5f80c048ab379d078a5aca96c83949"
+        }
+      ],
+      "targets": [
+        {
+          "path": "src/materialization.ts",
+          "sha256": "f5d4844a399a4f9018a924922a60caf29140100b4d396602c9bdc1adf83bb783"
+        }
+      ],
+      "intentionalTransforms": [
+        "Derive two G2-02 domains with two Object members, one Link member, strict Snapshot Schemas, deterministic Mappings and small managed CSV inputs.",
+        "Represent malformed CSV, Primary Key collision, dangling Link, quality threshold and adversarial W0/W1 Delta cases without importing the G1 runtime.",
+        "Keep the 100k Object / 1m Link dataset as a deterministic streaming generator and stable digest rather than committing generated bulk files."
+      ]
+    },
     "query": {
       "groupDigest": "sha256:62c0be70852444df816604026eec2d4ae8a5fc9cb5e9c21bc9cf874f9b45c131",
       "sources": [
