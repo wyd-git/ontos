@@ -1,6 +1,8 @@
 import { DATASET_PRESETS } from "./generator.ts";
 
 export const MATERIALIZATION_FIXTURE_VERSION = "materialization-testkit-v1" as const;
+export const MATERIALIZATION_FIXTURE_DIGEST =
+  "sha256:b516136d11968f9f75ed1af0d26e9f1cc760dcd065fb1ca4a6cd807f5f8860bf" as const;
 
 const qualityRules = Object.freeze({
   primaryKeyNullMaximumCount: 0,

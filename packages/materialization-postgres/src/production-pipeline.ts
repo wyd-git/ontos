@@ -195,11 +195,7 @@ export class PostgresProductionMaterializationPipelineRepository implements Prod
         `SELECT ops.has_current_materialization_capacity_admission(
            $1, $2, $3, $4, $5, $6
          ) AS present`,
-        [
-          ...scopeParameters(input.scope),
-          parseOntosId(input.generationId),
-          input.phase,
-        ],
+        [...scopeParameters(input.scope), parseOntosId(input.generationId), input.phase],
       );
       return required(result.rows[0]).present;
     } catch (error) {

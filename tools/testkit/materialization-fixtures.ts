@@ -19,12 +19,12 @@ import {
   MATERIALIZATION_BENCHMARK_FIXTURE,
   MATERIALIZATION_CONCURRENT_DELTA_FIXTURE,
   MATERIALIZATION_DOMAINS,
+  MATERIALIZATION_FIXTURE_DIGEST,
   MATERIALIZATION_NEGATIVE_FIXTURES,
   datasetDigest,
 } from "@ontos/testkit";
 
-export const EXPECTED_MATERIALIZATION_FIXTURE_DIGEST =
-  "sha256:b516136d11968f9f75ed1af0d26e9f1cc760dcd065fb1ca4a6cd807f5f8860bf";
+export const EXPECTED_MATERIALIZATION_FIXTURE_DIGEST = MATERIALIZATION_FIXTURE_DIGEST;
 
 export interface MaterializationFixtureAudit {
   readonly schemaVersion: 1;
@@ -48,7 +48,7 @@ export interface MaterializationFixtureAudit {
 
 export async function auditMaterializationFixtures(
   repositoryRoot: string,
-  expectedFixtureDigest = EXPECTED_MATERIALIZATION_FIXTURE_DIGEST,
+  expectedFixtureDigest: string = EXPECTED_MATERIALIZATION_FIXTURE_DIGEST,
 ): Promise<MaterializationFixtureAudit> {
   const violations: string[] = [];
   const provenance: { path: string; sha256: string }[] = [];

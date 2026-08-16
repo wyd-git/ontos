@@ -22,6 +22,7 @@
     "check:testkit-provenance": "node tools/testkit/provenance.ts",
     "check:metadata-fixtures": "node tools/testkit/metadata-fixtures.ts",
     "check:materialization-fixtures": "node tools/testkit/materialization-fixtures.ts",
+    "check:materialization-evidence": "node tools/ci/materialization-evidence.ts",
     "check:metadata-negative-fixtures": "node tools/ci/metadata-negative-fixtures.ts",
     "check:metadata-evidence": "node tools/ci/metadata-evidence.ts",
     "check:secrets": "node tools/ci/secret-scan.ts",

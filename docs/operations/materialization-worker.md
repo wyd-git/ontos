@@ -2,9 +2,9 @@
 
 ## 当前启用边界
 
-G2-02-08 已完成独立 Worker Runtime、数据库租约和进程恢复协议，但生产阶段处理器仍由 G2-02-09～11 顺序接入。当前直接执行 `npm run worker:start` 会以 exit code 78 fail closed；在 Index、Certificate 和真实 Cutover 组合完成前，不得绕过这一保护启动生产调度。
+G2-02-13 已启用正式 Worker Composition Root。`npm run worker:start` 会用 `worker_runtime` 登录、受管版本化 S3、Base/Quality/Capacity Repository 和真实 Cutover 处理器，顺序执行 Scan、Map、Validate、Build Stage、Build Index、Ready for Activation、Catch-up 和 Activate。
 
-进程级验收使用同一正式 Runtime 与 `worker_runtime` 登录，只把确定性 Stage/Fault Adapter 从测试入口注入；它不是内存队列，也不会在生产入口注册。
+Worker 只消费服务器固结的 Snapshot/Mapping/Plan 事实；不处理用户 Bearer/Claims，不执行任意 SQL，也不持有 Migration Owner 或 DDL Executor 凭据。生产目前只接受受信 zero-overlay，真实 Overlay 属于 G2-04。
 
 ## 配置
 
@@ -18,15 +18,23 @@ G2-02-08 已完成独立 Worker Runtime、数据库租约和进程恢复协议�
 | `ONTOS_WORKER_DEPENDENCY_BACKOFF_MILLISECONDS` |  1000 | 100～60000；仅用于进程依赖重连，Job 退避由数据库决定 |
 | `ONTOS_WORKER_SHUTDOWN_GRACE_MILLISECONDS`     | 15000 | 1000～120000                                         |
 | `ONTOS_WORKER_DATABASE_POOL_MAXIMUM`           |     4 | 1～16                                                |
+| `ONTOS_S3_ENDPOINT`                            |    无 | 必填；只能由受信部署配置提供                         |
+| `ONTOS_S3_REGION`                              |    无 | 必填                                                 |
+| `ONTOS_S3_BUCKET`                              |    无 | 必填；Bucket 必须已开启 Versioning                   |
+| `ONTOS_S3_ACCESS_KEY_ID`                       |    无 | 必填；仅限受管 Bucket                                |
+| `ONTOS_S3_SECRET_ACCESS_KEY`                   |    无 | 必填；不得写入日志                                   |
+| `ONTOS_S3_FORCE_PATH_STYLE`                    | false | `true` / `false`                                     |
+| `ONTOS_S3_MAX_ATTEMPTS`                        |     2 | 1～5                                                 |
 
-进程环境中不得出现 Admin/Worker Bearer Token、OIDC Client Secret、Migration Database URL 或 DDL Executor Database URL。Worker 不需要 S3 任意 Endpoint、用户 Token 或客户端路径；后续 Stage Adapter 只能消费服务器冻结的受管对象引用。
+进程环境中不得出现 Admin/Worker Bearer Token、OIDC Client Secret、Migration Database URL 或 DDL Executor Database URL。S3 Endpoint 和凭据是受信部署配置，不能来自 Job、HTTP Body 或 Snapshot 内容；Worker 只按数据库中固结的受管对象引用读取。
 
 ## 启动前检查
 
-1. 用 Migration Owner 执行 `npm run db:migrate`，确认账本连续到 `0013` 且重复执行为 no-op。
+1. 用 Migration Owner 执行 `npm run db:migrate`，确认账本连续到 `0018` 且重复执行为 no-op。
 2. 创建专用 LOGIN，只 `GRANT worker_runtime TO <login>`；不要授予表 Owner、Schema CREATE 或其他 Runtime Role。
 3. 用该 URL 启动时，Worker 会再次检查 Current/Session Role、危险 Role Attribute、Migration Usage、Schema CREATE 和 Serving Pointer 写权限；任一不符合即关闭 Pool 并拒绝启动。
-4. 09～11 完成前保持生产调度禁用；不要用测试 Fixture Entry 代替生产 Composition Root。
+4. 用受管 S3 凭据校验 Bucket Versioning；未开启 Versioning 时 Worker 必须拒绝启动。
+5. 就绪后进程输出 `{"kind":"ready","pipeline":"production"}`；不要用测试 Fixture Executor 代替生产 Composition Root。
 
 ## 状态诊断
 
@@ -66,6 +74,6 @@ G2-02-08 已完成独立 Worker Runtime、数据库租约和进程恢复协议�
 
 - 不直接 UPDATE/DELETE/TRUNCATE Job、Attempt、Checkpoint、Staging 或 Serving Pointer；
 - 不向 Worker 注入 Migration/DDL/API/OIDC 凭据；
-- 不修改任何已应用的 0001～0013 来修复线上状态，只能新增向前 Migration；
+- 不修改任何已应用的 0001～0018 来修复线上状态，只能新增向前 Migration；
 - 不把测试用的 Availability 加速、Stage Fixture 或固定故障开关带入部署；
-- 不把 G2-02-08 PASS 解释为 Index、Certificate、Cutover、GC 或完整产品已完成。
+- 不把 G2-02-13 PASS 解释为 clean-room、100k/1m 端到端、Query、Overlay 或完整产品已完成。

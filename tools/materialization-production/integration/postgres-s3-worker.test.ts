@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -10,7 +11,6 @@ import { HeadBucketCommand, PutBucketVersioningCommand, S3Client } from "@aws-sd
 import {
   canonicalizeContractForDigest,
   parseArtifactDigest,
-  parseErrorEnvelope,
   type ArtifactDigest,
 } from "@ontos/contracts";
 import {
@@ -19,6 +19,7 @@ import {
 } from "@ontos/materialization-application";
 import { PostgresIndexPlanAdmissionRepository } from "@ontos/materialization-postgres";
 import type { ReleaseIndexPlanInput } from "@ontos/materialization-domain";
+import { MATERIALIZATION_FIXTURE_DIGEST } from "@ontos/testkit";
 import pg from "pg";
 
 import { startAdminApi, type RunningAdminApi } from "../../../apps/api/src/runtime.ts";
@@ -47,8 +48,9 @@ void test(
   "G2-02-13 real Admin, OIDC, PostgreSQL, S3, DDL and production Worker close the loop",
   { timeout: 300_000 },
   async () => {
+    const productionStartedAt = new Date();
     const suffix = `${process.pid}-${randomUUID().slice(0, 8)}`;
-    const postgresContainer = `ontos-g20213-pg-${suffix}`;
+    const containerName = `ontos-g20213-pg-${suffix}`;
     const s3Container = `ontos-g20213-s3-${suffix}`;
     const bucket = `ontos-g20213-${process.pid}`;
     const s3Port = await reserveLoopbackPort();
@@ -62,7 +64,7 @@ void test(
       "--detach",
       "--rm",
       "--name",
-      postgresContainer,
+      containerName,
       "--env",
       `POSTGRES_PASSWORD=${adminPassword}`,
       "--env",
@@ -94,7 +96,7 @@ void test(
     ]);
 
     try {
-      const postgresPort = await publishedPostgreSqlPort(postgresContainer);
+      const postgresPort = await publishedPostgreSqlPort(containerName);
       const s3Endpoint = `http://127.0.0.1:${String(s3Port)}`;
       const adminConfig: pg.ClientConfig = {
         host: "127.0.0.1",
@@ -311,6 +313,16 @@ void test(
       }
       assert.equal(terminal.state, "succeeded", JSON.stringify(terminal));
       assert.equal(terminal.currentStage, "activate");
+      assert.deepEqual(terminal.completedStages, [
+        "scan",
+        "map",
+        "validate",
+        "build_stage",
+        "build_index",
+        "ready_for_activation",
+        "catch_up",
+        "activate",
+      ]);
 
       const build = await readBuildEvidence(admin, projectId, jobId);
       assert.deepEqual(
@@ -430,8 +442,15 @@ void test(
         servingHeads: 1,
         channelCount: 1,
       });
+      await writeProductionEvidence({
+        startedAt: productionStartedAt,
+        completedStages: terminal.completedStages,
+        objectRows: build.objectRows,
+        prebuildAdmissions: build.prebuildAdmissions,
+        postbuildAdmissions: build.postbuildAdmissions,
+      });
     } catch (error) {
-      const { stdout, stderr } = await execFileAsync("docker", ["logs", postgresContainer]).catch(
+      const { stdout, stderr } = await execFileAsync("docker", ["logs", containerName]).catch(
         () => ({ stdout: "", stderr: "" }),
       );
       process.stderr.write(`${stdout}${stderr}`);
@@ -441,7 +460,7 @@ void test(
       if (admin !== null) await admin.end();
       s3?.destroy();
       await docker(["rm", "--force", "--volumes", s3Container], true);
-      await docker(["rm", "--force", "--volumes", postgresContainer], true);
+      await docker(["rm", "--force", "--volumes", containerName], true);
       await oidc.close();
     }
   },
@@ -978,4 +997,55 @@ function required<T>(value: T | null | undefined): T {
   return value;
 }
 
-void parseErrorEnvelope;
+async function writeProductionEvidence(input: {
+  readonly startedAt: Date;
+  readonly completedStages: readonly string[];
+  readonly objectRows: number;
+  readonly prebuildAdmissions: number;
+  readonly postbuildAdmissions: number;
+}): Promise<void> {
+  const completedAt = new Date();
+  const [{ stdout: commit }, { stdout: status }] = await Promise.all([
+    execFileAsync("git", ["rev-parse", "HEAD"]),
+    execFileAsync("git", ["status", "--porcelain"]),
+  ]);
+  const outputDirectory = new URL("../../../generated/ci-report/", import.meta.url);
+  await mkdir(outputDirectory, { recursive: true });
+  const report = Object.freeze({
+    schemaVersion: 1,
+    gate: "G2-02-13",
+    status: "PASS",
+    commit: commit.trim(),
+    cleanCheckout: status.trim().length === 0,
+    startedAt: input.startedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    durationMs: completedAt.getTime() - input.startedAt.getTime(),
+    environment: Object.freeze({ node: process.versions.node, platform: process.platform }),
+    dependencies: Object.freeze({
+      postgresImage,
+      objectStoreImage: s3Image,
+      identity: "real-local-oidc-jwks",
+      apiDatabaseRole: "api_runtime",
+      workerDatabaseRole: "worker_runtime",
+      ddlDatabaseRole: "dedicated-noinherit-login",
+    }),
+    fixtureDigest: MATERIALIZATION_FIXTURE_DIGEST,
+    completedStages: input.completedStages,
+    assertions: Object.freeze({
+      oidcAdminHttp: true,
+      managedVersionedObjectStore: true,
+      productionWorker: true,
+      ddlExecutor: true,
+      servingPointerBeforeOwner: 0,
+      ownerActivationChanged: true,
+      releasePublished: true,
+      objectRows: input.objectRows,
+      prebuildAdmissions: input.prebuildAdmissions,
+      postbuildAdmissions: input.postbuildAdmissions,
+    }),
+  });
+  await writeFile(
+    new URL("materialization-production.json", outputDirectory),
+    `${JSON.stringify(report, null, 2)}\n`,
+  );
+}

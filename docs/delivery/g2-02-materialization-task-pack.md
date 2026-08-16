@@ -3,7 +3,7 @@
 - 版本：1.0
 - 日期：2026-08-15
 - 状态：Implementation Ready，仍受本任务包 Gate、红队修订与停止条件约束
-- 执行进度：G2-02-01～12 已 PASS（12/14）；当前唯一顺序工作项为 G2-02-13
+- 执行进度：G2-02-01～13 已 PASS（13/14）；当前唯一顺序工作项为 G2-02-14
 - 上游：[Ontology Kernel PRD](../product/ontology-kernel-prd.md)
 - 实现蓝图：[G2 生产实现蓝图](../product/ontology-kernel-implementation-blueprint.md)
 - 入口证据：[G2-01-12 Metadata clean-room 总验收](../evidence/g2-01-12-clean-room-metadata-gate.md)
@@ -597,6 +597,8 @@ G2-02-12 已按 [ADR-019](../architecture/adr/019-generation-index-mark-plan-com
 - Scope/Dependency Gate 只加入本任务包允许的 App/Package/Migration/Table/Endpoint，明确阻止 Query/Policy/Action/Overlay/UI/SDK；
 - 统一 `npm run verify` 同时执行 G2-00、G2-01 与 G2-02 快速 Gate；真实 PG/S3/OIDC/API/Worker Gate 使用唯一 CI 入口并产生机器报告；
 - 故意破坏 OIDC、Migration、Job Fencing、Staging Visibility、Plan Digest、容量、Cutover Atomicity 和 Scope 的检查分别能让 CI 失败。
+
+G2-02-13 已按 [Evidence](../evidence/g2-02-13-admin-testkit-ci.md)、[Intended-vs-Implemented](../reviews/g2-02-13-intended-vs-implemented.md) 与 [专项红队](../reviews/g2-02-13-admin-testkit-ci-red-team.md) PASS：最小 Materialization Admin HTTP、真实 OIDC/PG/S3/API/Worker/DDL 八阶段闭环、两领域 Testkit、范围策略、8 类 Mutation Guard 和 31 步统一 `npm run verify` 已进入正式实现。全新 Clone/空卷、整体重启、100k/1m 端到端和总 Manifest 仍为 G2-02-14，本关不把生产边界 PASS 写成完整产品上线。
 
 ### G2-02-14：执行 clean-room Materialization 总验收
 
