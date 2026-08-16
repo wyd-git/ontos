@@ -7,11 +7,13 @@ import { promisify } from "node:util";
 
 import { parseArtifactDigest, type ArtifactDigest } from "@ontos/contracts";
 import {
+  GarbageCollectionService,
   IndexPlanAdmissionService,
   type IndexCapacityCrypto,
 } from "@ontos/materialization-application";
 import {
   executeProjectionDdlRequest,
+  PostgresGarbageCollectionRepository,
   PostgresIndexPlanAdmissionRepository,
   ProjectionDdlExecutorError,
   scanAndRecordProjectPhysicalInventory,
@@ -247,6 +249,7 @@ void test(
       } finally {
         await secondPool.end();
       }
+      await exerciseGcAuthorizedDrops(adminConfig, apiConfig, ddlConfig, requests.length);
     } finally {
       await docker(["rm", "--force", "--volumes", containerName], true);
     }
@@ -259,6 +262,108 @@ interface QueuedRequest {
   readonly indexPlanId: string;
   readonly entryKey: string;
   readonly indexName: string;
+}
+
+async function exerciseGcAuthorizedDrops(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  ddlConfig: pg.ClientConfig,
+  expectedIndexCount: number,
+): Promise<void> {
+  const apiPool = new pg.Pool(apiConfig);
+  try {
+    const service = new GarbageCollectionService({
+      repository: new PostgresGarbageCollectionRepository(apiPool),
+      crypto: productionCrypto(),
+      objectStore: { deleteVersion: () => Promise.resolve() },
+      batchSize: 2,
+    });
+    await withClient(adminConfig, (admin) =>
+      admin.query(
+        `SET ROLE migration_owner;
+         UPDATE ops.gc_root_provider_registry
+         SET capability_state = 'ACTIVE', changed_at = clock_timestamp()
+         WHERE capability_key = 'runtime.query-lease';
+         RESET ROLE`,
+      ),
+    );
+    const incomplete = await service.dryRun({
+      projectId,
+      idempotencyKey: "g2-02-12-provider-missing-0000",
+    });
+    assert.equal(incomplete.analysis.status, "BLOCKED");
+    assert.deepEqual(incomplete.analysis.candidates, []);
+    assert.equal(
+      incomplete.analysis.blockedReasons.includes("PROVIDER_MISSING:runtime.query-lease"),
+      true,
+    );
+    await withClient(adminConfig, (admin) =>
+      admin.query(
+        `SET ROLE migration_owner;
+         UPDATE ops.gc_root_provider_registry
+         SET capability_state = 'INACTIVE', changed_at = clock_timestamp()
+         WHERE capability_key = 'runtime.query-lease';
+         RESET ROLE`,
+      ),
+    );
+    const dryRun = await service.dryRun({
+      projectId,
+      idempotencyKey: "g2-02-12-projection-drop-0001",
+    });
+    assert.ok(dryRun.planId);
+    assert.equal(dryRun.analysis.status, "READY");
+    assert.equal(
+      dryRun.analysis.candidates.filter((entry) => entry.kind === "INDEX").length,
+      expectedIndexCount,
+    );
+    const planId = required(dryRun.planId);
+    let executed = 0;
+    for (;;) {
+      const batch = await service.commitNext({ projectId, planId });
+      for (const requestId of batch.indexRequestIds) {
+        if (executed === 0) {
+          await exerciseKilledDropExecutor(adminConfig, ddlConfig, requestId);
+        }
+        const result = await withClient(ddlConfig, (client) =>
+          executeProjectionDdlRequest(client, requestId),
+        );
+        assert.equal(["DROPPED", "ABSENT"].includes(result.outcome), true);
+        const replay = await withClient(ddlConfig, (client) =>
+          executeProjectionDdlRequest(client, requestId),
+        );
+        assert.deepEqual(replay, result);
+        executed += 1;
+      }
+      if (batch.state === "COMMITTED") break;
+    }
+    assert.equal(executed, expectedIndexCount);
+    const status = await withClient(adminConfig, async (admin) => {
+      const result = await admin.query<{
+        readonly planState: string;
+        readonly retired: number;
+        readonly physical: number;
+      }>(
+        `SELECT
+           (SELECT state FROM ops.gc_plans
+             WHERE project_id = $1::uuid AND gc_plan_id = $2::uuid) AS "planState",
+           (SELECT count(*)::integer FROM runtime.index_inventory
+             WHERE project_id = $1::uuid AND state = 'retired') AS retired,
+           (SELECT count(*)::integer
+              FROM pg_class AS class
+              JOIN pg_namespace AS namespace ON namespace.oid = class.relnamespace
+             WHERE namespace.nspname = 'runtime' AND class.relname LIKE 'ok_oc_%') AS physical`,
+        [projectId, planId],
+      );
+      return required(result.rows[0]);
+    });
+    assert.deepEqual(status, {
+      planState: "committed",
+      retired: expectedIndexCount,
+      physical: 0,
+    });
+  } finally {
+    await apiPool.end();
+  }
 }
 
 async function seedFixture(admin: pg.Client): Promise<void> {
@@ -656,6 +761,78 @@ async function exerciseKilledExecutor(
     ),
     true,
   );
+}
+
+async function exerciseKilledDropExecutor(
+  adminConfig: pg.ClientConfig,
+  ddlConfig: pg.ClientConfig,
+  requestId: string,
+): Promise<void> {
+  const blocker = new pg.Client(adminConfig);
+  await blocker.connect();
+  await blocker.query("BEGIN");
+  await blocker.query("LOCK TABLE runtime.object_current IN ACCESS EXCLUSIVE MODE");
+  const childEnvironment = { ...process.env };
+  delete childEnvironment.ONTOS_DATABASE_URL;
+  delete childEnvironment.ONTOS_API_DATABASE_URL;
+  delete childEnvironment.ONTOS_WORKER_DATABASE_URL;
+  delete childEnvironment.ONTOS_MIGRATION_DATABASE_URL;
+  childEnvironment.ONTOS_PROJECTION_DDL_DATABASE_URL = postgresUrl(ddlConfig);
+  const child = spawn(process.execPath, [cliPath, "--plan-id", requestId], {
+    env: childEnvironment,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const output = collectOutput(child);
+  let backendPid: number | undefined;
+  try {
+    await waitUntil(async () =>
+      withClient(adminConfig, async (admin) => {
+        const result = await admin.query<{ readonly pid: number }>(
+          `SELECT pid FROM pg_stat_activity
+           WHERE application_name = 'ontos-projection-ddl-executor'
+             AND wait_event_type = 'Lock'
+           ORDER BY backend_start DESC LIMIT 1`,
+        );
+        backendPid = result.rows[0]?.pid;
+        return backendPid !== undefined;
+      }),
+    );
+    assert.equal(child.kill("SIGKILL"), true);
+    await waitForChild(child);
+    if (backendPid !== undefined) {
+      await withClient(adminConfig, (admin) =>
+        admin.query("SELECT pg_terminate_backend($1::integer)", [backendPid]),
+      );
+    }
+  } finally {
+    await blocker.query("ROLLBACK").catch(() => undefined);
+    await blocker.end().catch(() => undefined);
+  }
+  const captured = await output;
+  assert.equal(captured.stdout.includes(ddlPassword), false);
+  assert.equal(captured.stderr.includes(ddlPassword), false);
+  await withClient(adminConfig, async (admin) => {
+    const state = await admin.query<{
+      readonly requestState: string;
+      readonly inventoryState: string;
+      readonly physicalPresent: boolean;
+    }>(
+      `SELECT request.state AS "requestState", inventory.state AS "inventoryState",
+              to_regclass('runtime.' || inventory.index_name) IS NOT NULL AS "physicalPresent"
+       FROM ops.projection_ddl_requests AS request
+       JOIN runtime.index_inventory AS inventory
+         ON inventory.project_id = request.project_id
+        AND inventory.index_plan_id = request.index_plan_id
+        AND inventory.entry_key = request.entry_key
+       WHERE request.request_id = $1::uuid`,
+      [requestId],
+    );
+    assert.deepEqual(state.rows[0], {
+      requestState: "RUNNING",
+      inventoryState: "ready",
+      physicalPresent: true,
+    });
+  });
 }
 
 function releasePlan(releaseId: string): ReleaseIndexPlanInput {
