@@ -34,6 +34,7 @@ export * from "./index-capacity.ts";
 export * from "./runtime-plan.ts";
 export * from "./overlay.ts";
 export * from "./cutover.ts";
+export * from "./garbage-collection.ts";
 
 export type MaterializationIngressErrorCode =
   | "ADMIN_REQUEST_INVALID"

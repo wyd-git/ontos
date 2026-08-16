@@ -3,7 +3,7 @@
 - 版本：1.0
 - 日期：2026-08-15
 - 状态：Implementation Ready，仍受本任务包 Gate、红队修订与停止条件约束
-- 执行进度：G2-02-01～11 已 PASS（11/14）；当前唯一顺序工作项为 G2-02-12
+- 执行进度：G2-02-01～12 已 PASS（12/14）；当前唯一顺序工作项为 G2-02-13
 - 上游：[Ontology Kernel PRD](../product/ontology-kernel-prd.md)
 - 实现蓝图：[G2 生产实现蓝图](../product/ontology-kernel-implementation-blueprint.md)
 - 入口证据：[G2-01-12 Metadata clean-room 总验收](../evidence/g2-01-12-clean-room-metadata-gate.md)
@@ -567,6 +567,10 @@ G2-02-11 已按 [ADR-018](../architecture/adr/018-immutable-head-set-snapshot-gr
 - Index 只有在所有 Serving/Recent/Protected/Staging 均不再需要签名时才交给 DDL Executor；Executor 失败可重试且不把数据误标为完全 Collected；
 - 在每个批次 Kill 进程并重试，最终结果与一次完成相同；部分 GC 不破坏旧代读取 Harness、容量总账或后续计划；
 - 孤儿上传、Attempt Staging 与失败 Generation 使用各自保留策略；GC API 不成为任意 Object Key 删除接口。
+
+**交付状态（2026-08-17）**
+
+G2-02-12 已按 [ADR-019](../architecture/adr/019-generation-index-mark-plan-commit-gc.md)、[Evidence](../evidence/g2-02-12-generation-index-gc.md) 与 [专项红队](../reviews/g2-02-12-generation-index-gc-red-team.md) PASS：连续 Migration 到 0017，完整 Root Provider/Inventory、单调 Root Epoch、Generation/Head Set/Attempt/Orphan 分层保留、分批 Kill/Resume、精确对象版本删除和 GC-bound Index Drop 已进入正式实现。物理变化后容量测量会 fail closed 等待重扫；真实 OIDC/Admin HTTP 与统一 Materialization CI Manifest 仍属于 G2-02-13，本关不宣称完整生产入口。
 
 ### G2-02-13：接入 Admin API、Testkit 与统一 CI Gate
 

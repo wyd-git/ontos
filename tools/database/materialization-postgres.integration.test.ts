@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 import { arch, cpus, freemem, platform, tmpdir, totalmem } from "node:os";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import {
   canonicalizeContractForDigest,
@@ -16,6 +17,8 @@ import {
   type ArtifactDigest,
 } from "@ontos/contracts";
 import {
+  GarbageCollectionApplicationError,
+  GarbageCollectionService,
   IndexPlanAdmissionService,
   MaterializationBaseError,
   MaterializationBaseService,
@@ -40,6 +43,7 @@ import {
 } from "@ontos/materialization-domain";
 import {
   executeProjectionDdlRequest,
+  PostgresGarbageCollectionRepository,
   PostgresIndexPlanAdmissionRepository,
   PostgresMaterializationBaseRepository,
   PostgresMaterializationQualityRepository,
@@ -63,6 +67,9 @@ import { databaseMigrationDirectory, runDatabaseMigrations } from "./migrator.ts
 import { resolvePostgresTestImage } from "./postgres-test-image.ts";
 
 const execFileAsync = promisify(execFile);
+const gcCommitCliPath = fileURLToPath(
+  new URL("../materialization-gc/commit-cli.ts", import.meta.url),
+);
 const postgresImage = resolvePostgresTestImage();
 const database = "ontos_db02_upgrade";
 const adminPassword = "local-only-db02-admin-secret";
@@ -196,6 +203,12 @@ const ids = {
   refresh3CapacityAdmission: "40000000-0000-4000-8000-000000000018",
   refresh3Certificate2: "40000000-0000-4000-8000-000000000019",
   refresh3Certificate3: "40000000-0000-4000-8000-00000000001a",
+  gcGeneration: "50000000-0000-4000-8000-000000000001",
+  gcReport: "50000000-0000-4000-8000-000000000002",
+  gcHeadSet: "50000000-0000-4000-8000-000000000003",
+  gcOrphanSession: "50000000-0000-4000-8000-000000000004",
+  gcOrphanArtifact: "50000000-0000-4000-8000-000000000005",
+  gcStaleJob: "50000000-0000-4000-8000-000000000006",
   qualityGroup: "30000000-0000-4000-8000-000000000001",
   qualityObjectSnapshot: "30000000-0000-4000-8000-000000000002",
   qualityObjectFile: "30000000-0000-4000-8000-000000000003",
@@ -335,7 +348,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -427,6 +440,7 @@ void test(
       if (!projectionCapacityMode) {
         await exerciseCompatibilityStalenessVectors(adminConfig, apiConfig, worker1Config);
         await exerciseSnapshotGroupRefreshCutover(adminConfig, apiConfig, worker1Config);
+        await exerciseGenerationGarbageCollection(adminConfig, apiConfig);
       } else {
         await assertCapacityCutoverLinkSemantics(adminConfig);
       }
@@ -5143,6 +5157,570 @@ async function exerciseSnapshotGroupRefreshCutover(
   }
 }
 
+async function exerciseGenerationGarbageCollection(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+): Promise<void> {
+  await withClient(adminConfig, async (admin) => {
+    await admin.query("BEGIN");
+    try {
+      await admin.query("SET LOCAL ROLE migration_owner");
+      await admin.query(
+        `INSERT INTO runtime.materialization_reports (
+           project_id, report_id, snapshot_group_id, group_version, job_id, outcome,
+           total_rows, accepted_rows, rejected_rows, validator_version,
+           report_digest, created_at
+         )
+         SELECT project_id, $1::uuid, snapshot_group_id, group_version, job_id, outcome,
+                total_rows, accepted_rows, rejected_rows, 'g2-02-12-gc-fixture-v1',
+                $2, clock_timestamp() - interval '9 days'
+         FROM runtime.materialization_reports
+         WHERE project_id = $3::uuid AND report_id = $4::uuid`,
+        [ids.gcReport, sha256Digest("g2-02-12-gc-report"), ids.project, ids.refresh3Report],
+      );
+      await admin.query(
+        `INSERT INTO runtime.generations (
+           project_id, generation_id, member_key, member_kind,
+           target_resource_id, target_revision_id, snapshot_id, snapshot_group_id,
+           group_version, snapshot_schema_resource_id, snapshot_schema_revision_id,
+           mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+           index_plan_digest, report_id, report_digest, state, generation_digest,
+           created_at, changed_at
+         )
+         SELECT project_id, $1::uuid, member_key, member_kind,
+                target_resource_id, target_revision_id, snapshot_id, snapshot_group_id,
+                group_version, snapshot_schema_resource_id, snapshot_schema_revision_id,
+                mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+                index_plan_digest, $2::uuid, $3, 'building', $4,
+                clock_timestamp() - interval '9 days',
+                clock_timestamp() - interval '8 days'
+         FROM runtime.generations
+         WHERE project_id = $5::uuid AND generation_id = $6::uuid`,
+        [
+          ids.gcGeneration,
+          ids.gcReport,
+          sha256Digest("g2-02-12-gc-report"),
+          sha256Digest("g2-02-12-gc-generation"),
+          ids.project,
+          ids.refresh3Generation,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO runtime.object_base (
+           project_id, generation_id, object_type_resource_id, object_type_revision_id,
+           object_rid, canonical_primary_key, properties, source_snapshot_id,
+           source_file_id, source_row_number, mapping_revision_id, value_digest
+         )
+         SELECT project_id, $1::uuid, object_type_resource_id, object_type_revision_id,
+                object_rid, canonical_primary_key, properties, source_snapshot_id,
+                source_file_id, source_row_number, mapping_revision_id, value_digest
+         FROM runtime.object_base
+         WHERE project_id = $2::uuid AND generation_id = $3::uuid`,
+        [ids.gcGeneration, ids.project, ids.refresh3Generation],
+      );
+      await admin.query(
+        `INSERT INTO runtime.object_current (
+           project_id, generation_id, object_type_resource_id, object_type_revision_id,
+           object_rid, canonical_primary_key, properties, base_value_digest, lifecycle_state
+         )
+         SELECT project_id, $1::uuid, object_type_resource_id, object_type_revision_id,
+                object_rid, canonical_primary_key, properties, base_value_digest, lifecycle_state
+         FROM runtime.object_current
+         WHERE project_id = $2::uuid AND generation_id = $3::uuid`,
+        [ids.gcGeneration, ids.project, ids.refresh3Generation],
+      );
+      await admin.query(
+        `INSERT INTO runtime.property_provenance (
+           project_id, generation_id, object_type_resource_id, object_rid,
+           property_api_name, source_snapshot_id, source_file_id, source_row_number,
+           input_column_ordinal, mapping_revision_id, algorithm_version, value_digest,
+           source_index, source_kind, source_expression_digest
+         )
+         SELECT project_id, $1::uuid, object_type_resource_id, object_rid,
+                property_api_name, source_snapshot_id, source_file_id, source_row_number,
+                input_column_ordinal, mapping_revision_id, 'g2-02-12-gc-fixture-v1',
+                value_digest, source_index, source_kind, source_expression_digest
+         FROM runtime.property_provenance
+         WHERE project_id = $2::uuid AND generation_id = $3::uuid`,
+        [ids.gcGeneration, ids.project, ids.refresh3Generation],
+      );
+      await admin.query(
+        `UPDATE runtime.generations
+         SET state = 'failed', changed_at = clock_timestamp() - interval '8 days'
+         WHERE project_id = $1::uuid AND generation_id = $2::uuid`,
+        [ids.project, ids.gcGeneration],
+      );
+      await admin.query(
+        `INSERT INTO runtime.object_head_sets (
+           project_id, head_set_id, head_set_digest, state, head_count,
+           created_at, changed_at
+         )
+         SELECT $1::uuid, $2::uuid, $3, 'retired', count(*),
+                clock_timestamp() - interval '8 days',
+                clock_timestamp() - interval '8 days'
+         FROM runtime.object_current
+         WHERE project_id = $1::uuid AND generation_id = $4::uuid`,
+        [ids.project, ids.gcHeadSet, sha256Digest("g2-02-12-gc-head-set"), ids.gcGeneration],
+      );
+      await admin.query(
+        `INSERT INTO runtime.object_head_versions (
+           project_id, head_set_id, object_type_resource_id, object_rid,
+           current_generation_id, object_type_revision_id, head_version,
+           head_digest, base_value_digest, created_at, changed_at
+         )
+         SELECT project_id, $1::uuid, object_type_resource_id, object_rid,
+                $2::uuid, object_type_revision_id, 1, base_value_digest,
+                base_value_digest, clock_timestamp() - interval '8 days',
+                clock_timestamp() - interval '8 days'
+         FROM runtime.object_current
+         WHERE project_id = $3::uuid AND generation_id = $2::uuid`,
+        [ids.gcHeadSet, ids.gcGeneration, ids.project],
+      );
+      await admin.query(
+        "ALTER TABLE ops.materialization_attempts DISABLE TRIGGER materialization_attempts_controlled_update",
+      );
+      await admin.query(
+        `UPDATE ops.materialization_attempts
+         SET leased_at = clock_timestamp() - interval '3 days',
+             lease_expires_at = clock_timestamp() - interval '3 days' + interval '5 minutes',
+             heartbeat_at = clock_timestamp() - interval '3 days',
+             finished_at = clock_timestamp() - interval '2 days'
+         WHERE project_id = $1::uuid AND attempt_id = $2::uuid`,
+        [ids.project, ids.refresh2Attempt],
+      );
+      await admin.query(
+        "ALTER TABLE ops.materialization_attempts ENABLE TRIGGER materialization_attempts_controlled_update",
+      );
+      await admin.query(
+        "ALTER TABLE runtime.snapshot_upload_sessions DISABLE TRIGGER snapshot_upload_sessions_validate_insert",
+      );
+      await admin.query(
+        `INSERT INTO runtime.snapshot_upload_sessions (
+           project_id, session_id, created_by_principal_id, release_id,
+           snapshot_group_id, group_version, group_member_count, member_key, member_kind,
+           target_resource_id, target_revision_id, snapshot_schema_resource_id,
+           snapshot_schema_revision_id, mapping_resource_id, mapping_revision_id,
+           index_plan_digest, runtime_plan_digest, managed_artifact_id, object_key,
+           allowed_media_type, expected_byte_count, max_byte_count, source_label,
+           finalize_token_digest, state, uploaded_object_version, uploaded_byte_count,
+           failure_code, expires_at, cleanup_after, created_at, changed_at
+         )
+         SELECT project_id, $1::uuid, created_by_principal_id, release_id,
+                snapshot_group_id, group_version, group_member_count, member_key, member_kind,
+                target_resource_id, target_revision_id, snapshot_schema_resource_id,
+                snapshot_schema_revision_id, mapping_resource_id, mapping_revision_id,
+                index_plan_digest, runtime_plan_digest, $2::uuid, $3,
+                allowed_media_type, expected_byte_count, max_byte_count,
+                'G2-02-12 orphan fixture', $4, 'failed', 'gc-exact-version-1',
+                expected_byte_count, 'UPLOAD_ABORTED',
+                clock_timestamp() - interval '3 days' + interval '15 minutes',
+                clock_timestamp() - interval '2 days',
+                clock_timestamp() - interval '3 days',
+                clock_timestamp() - interval '2 days'
+         FROM runtime.snapshot_upload_sessions
+         WHERE project_id = $5::uuid AND session_id = $6::uuid`,
+        [
+          ids.gcOrphanSession,
+          ids.gcOrphanArtifact,
+          `ingress/50/${ids.gcOrphanArtifact}.csv`,
+          sha256Digest("g2-02-12-gc-finalize-token"),
+          ids.project,
+          ids.ingressSession,
+        ],
+      );
+      await admin.query(
+        "ALTER TABLE runtime.snapshot_upload_sessions ENABLE TRIGGER snapshot_upload_sessions_validate_insert",
+      );
+      await admin.query(
+        `INSERT INTO runtime.generation_measurements (
+           project_id, generation_id, measurement_id, object_row_count, link_row_count,
+           heap_bytes, fixed_index_bytes, dynamic_index_bytes, scanner_version,
+           inventory_revision, measurement_digest
+         )
+         SELECT generation.project_id, generation.generation_id, gen_random_uuid(),
+                (SELECT count(*) FROM runtime.object_base AS object_row
+                  WHERE object_row.project_id = generation.project_id
+                    AND object_row.generation_id = generation.generation_id),
+                (SELECT count(*) FROM runtime.link_base AS link_row
+                  WHERE link_row.project_id = generation.project_id
+                    AND link_row.generation_id = generation.generation_id),
+                COALESCE(physical.bytes, 0), 0, 0, 'g2-02-12-fixture-scanner-v1',
+                inventory.inventory_revision + 1,
+                'sha256:' || encode(sha256(convert_to(
+                  generation.project_id::text || ':' || generation.generation_id::text ||
+                  ':g2-02-12', 'UTF8')), 'hex')
+         FROM runtime.generations AS generation
+         JOIN runtime.project_runtime_inventories AS inventory
+           ON inventory.project_id = generation.project_id
+         LEFT JOIN LATERAL (
+           SELECT sum(bytes)::bigint AS bytes FROM (
+             SELECT pg_column_size(row_value)::bigint AS bytes
+             FROM runtime.object_base AS row_value
+             WHERE row_value.project_id = generation.project_id
+               AND row_value.generation_id = generation.generation_id
+             UNION ALL
+             SELECT pg_column_size(row_value)::bigint
+             FROM runtime.object_current AS row_value
+             WHERE row_value.project_id = generation.project_id
+               AND row_value.generation_id = generation.generation_id
+             UNION ALL
+             SELECT pg_column_size(row_value)::bigint
+             FROM runtime.link_base AS row_value
+             WHERE row_value.project_id = generation.project_id
+               AND row_value.generation_id = generation.generation_id
+             UNION ALL
+             SELECT pg_column_size(row_value)::bigint
+             FROM runtime.link_current AS row_value
+             WHERE row_value.project_id = generation.project_id
+               AND row_value.generation_id = generation.generation_id
+           ) AS rows
+         ) AS physical ON true
+         WHERE generation.project_id = $1::uuid
+           AND generation.state IN ('ready', 'active', 'retired')
+           AND NOT EXISTS (
+             SELECT 1 FROM runtime.generation_measurements AS measurement
+             WHERE measurement.project_id = generation.project_id
+               AND measurement.generation_id = generation.generation_id
+           )`,
+        [ids.project],
+      );
+      await admin.query(
+        `UPDATE runtime.project_runtime_inventories
+         SET state_revision = state_revision + 1,
+             inventory_revision = inventory_revision + 1,
+             measurement_complete = true,
+             inventory_digest = $2,
+             changed_at = clock_timestamp()
+         WHERE project_id = $1::uuid`,
+        [ids.project, sha256Digest("g2-02-12-complete-inventory")],
+      );
+      await admin.query("COMMIT");
+    } catch (error) {
+      await admin.query("ROLLBACK");
+      throw error;
+    }
+  });
+
+  const apiPool = new pg.Pool(apiConfig);
+  const deletedVersions: string[] = [];
+  try {
+    const repository = new PostgresGarbageCollectionRepository(apiPool);
+    let failFirstOrphanAcknowledgement = true;
+    const service = new GarbageCollectionService({
+      repository: {
+        readInventory: (projectId) => repository.readInventory(projectId),
+        persistDryRun: (input) => repository.persistDryRun(input),
+        claimOrphanUploadBatch: (input) => repository.claimOrphanUploadBatch(input),
+        acknowledgeOrphanUpload: async (input) => {
+          if (failFirstOrphanAcknowledgement) {
+            failFirstOrphanAcknowledgement = false;
+            throw new Error("injected orphan acknowledgement loss");
+          }
+          await repository.acknowledgeOrphanUpload(input);
+        },
+        commitNextRelationalBatch: (input) => repository.commitNextRelationalBatch(input),
+      },
+      crypto: projectionCapacityCrypto(),
+      objectStore: {
+        deleteVersion: (objectKey, objectVersion) => {
+          assert.equal(objectKey, `ingress/50/${ids.gcOrphanArtifact}.csv`);
+          assert.equal(objectVersion, "gc-exact-version-1");
+          deletedVersions.push(`${objectKey}:${objectVersion}`);
+          return Promise.resolve();
+        },
+      },
+      batchSize: 1,
+    });
+    const staleDryRun = await service.dryRun({
+      projectId: ids.project,
+      idempotencyKey: "g2-02-12-stale-plan-0001",
+    });
+    assert.equal(staleDryRun.analysis.status, "READY");
+    assert.ok(staleDryRun.planId);
+
+    await withClient(adminConfig, (admin) =>
+      admin.query(
+        `INSERT INTO ops.materialization_jobs (
+           project_id, job_id, snapshot_group_id, group_version,
+           idempotency_key, input_digest, correlation_id
+         ) VALUES ($1::uuid, $2::uuid, $3::uuid, 4,
+                   'g2-02-12-stale-root-job', $4, gen_random_uuid())`,
+        [ids.project, ids.gcStaleJob, ids.snapshotGroup, sha256Digest("g2-02-12-stale-job")],
+      ),
+    );
+    await assert.rejects(
+      service.commitNext({ projectId: ids.project, planId: required(staleDryRun.planId) }),
+      (error: unknown) =>
+        error instanceof GarbageCollectionApplicationError && error.code === "GC_PLAN_STALE",
+    );
+    await withClient(apiConfig, async (api) => {
+      const cancelled = await api.query<{ readonly state: string }>(
+        `SELECT state FROM ops.request_materialization_job_cancel($1, $2, $3, 'GC_STALE_PROBE')`,
+        [ids.project, ids.gcStaleJob, ids.principal],
+      );
+      assert.equal(cancelled.rows[0]?.state, "cancelled");
+    });
+    await assert.rejects(
+      service.commitNext({ projectId: ids.project, planId: required(staleDryRun.planId) }),
+      (error: unknown) =>
+        error instanceof GarbageCollectionApplicationError && error.code === "GC_PLAN_STALE",
+    );
+
+    const dryRun = await service.dryRun({
+      projectId: ids.project,
+      idempotencyKey: "g2-02-12-relational-gc-0002",
+    });
+    assert.equal(dryRun.analysis.status, "READY");
+    assert.ok(dryRun.planId);
+    assert.equal(
+      dryRun.analysis.protected.some(
+        (entry) =>
+          entry.kind === "GENERATION" &&
+          entry.key === ids.generation &&
+          entry.reasons.includes("HISTORICAL_ACTIVATION"),
+      ),
+      true,
+    );
+    assert.equal(
+      dryRun.analysis.candidates.some(
+        (entry) => entry.kind === "GENERATION" && entry.key === ids.gcGeneration,
+      ),
+      true,
+    );
+    assert.equal(
+      dryRun.analysis.candidates.some(
+        (entry) => entry.kind === "HEAD_SET" && entry.key === ids.gcHeadSet,
+      ),
+      true,
+    );
+    assert.equal(
+      dryRun.analysis.candidates.some(
+        (entry) => entry.kind === "ORPHAN_UPLOAD" && entry.key === ids.gcOrphanSession,
+      ),
+      true,
+    );
+    const planId = required(dryRun.planId);
+    await assert.rejects(
+      service.commitNext({ projectId: ids.project, planId }),
+      (error: unknown) =>
+        error instanceof GarbageCollectionApplicationError &&
+        error.code === "GC_DEPENDENCY_UNAVAILABLE",
+    );
+    assert.equal(deletedVersions.length, 1);
+    const orphanBatch = await service.commitNext({ projectId: ids.project, planId });
+    assert.deepEqual(
+      { phase: orphanBatch.phase, affectedRows: orphanBatch.affectedRows },
+      { phase: "ORPHAN_UPLOAD", affectedRows: 1 },
+    );
+    let batches = 1;
+    while ((await pendingGcCandidates(apiPool, planId)) > 0) {
+      const before = await gcProgress(apiPool, planId);
+      await killGcRelationalBatch(adminConfig, apiConfig, planId);
+      assert.deepEqual(await gcProgress(apiPool, planId), before);
+      const batch = await service.commitNext({ projectId: ids.project, planId });
+      batches += 1;
+      assert.equal(batch.affectedRows, 1);
+      if (batches > 100) throw new Error("GC did not converge within bounded batches.");
+    }
+    const completed = await service.commitNext({ projectId: ids.project, planId });
+    assert.equal(completed.state, "COMMITTED");
+    assert.equal(batches > 5, true);
+    assert.equal(deletedVersions.length, 2);
+    const replay = await service.commitNext({ projectId: ids.project, planId });
+    assert.equal(replay.state, "COMMITTED");
+
+    await withClient(adminConfig, async (admin) => {
+      const result = await admin.query<{
+        readonly baseRows: number;
+        readonly currentRows: number;
+        readonly provenanceRows: number;
+        readonly generationCollected: boolean;
+        readonly headSetCollected: boolean;
+        readonly attemptCollected: boolean;
+        readonly orphanCleaned: boolean;
+        readonly historicalBaseRows: number;
+        readonly historicalActivationMembers: number;
+        readonly measurementComplete: boolean;
+      }>(
+        `SELECT
+           (SELECT count(*)::integer FROM runtime.object_base
+             WHERE project_id = $1::uuid AND generation_id = $2::uuid) AS "baseRows",
+           (SELECT count(*)::integer FROM runtime.object_current
+             WHERE project_id = $1::uuid AND generation_id = $2::uuid) AS "currentRows",
+           (SELECT count(*)::integer FROM runtime.property_provenance
+             WHERE project_id = $1::uuid AND generation_id = $2::uuid) AS "provenanceRows",
+           EXISTS (SELECT 1 FROM runtime.generation_collections
+             WHERE project_id = $1::uuid AND generation_id = $2::uuid) AS "generationCollected",
+           EXISTS (SELECT 1 FROM runtime.head_set_collections
+             WHERE project_id = $1::uuid AND head_set_id = $3::uuid) AS "headSetCollected",
+           EXISTS (SELECT 1 FROM ops.materialization_attempt_collections
+             WHERE project_id = $1::uuid AND attempt_id = $4::uuid) AS "attemptCollected",
+           EXISTS (SELECT 1 FROM runtime.snapshot_upload_sessions
+             WHERE project_id = $1::uuid AND session_id = $5::uuid
+               AND state = 'cleaned') AS "orphanCleaned",
+           (SELECT count(*)::integer FROM runtime.object_base
+             WHERE project_id = $1::uuid AND generation_id = $6::uuid) AS "historicalBaseRows",
+           (SELECT count(*)::integer FROM meta.runtime_activation_members
+             WHERE project_id = $1::uuid AND generation_id = $6::uuid) AS "historicalActivationMembers",
+           (SELECT measurement_complete FROM runtime.project_runtime_inventories
+             WHERE project_id = $1::uuid) AS "measurementComplete"`,
+        [
+          ids.project,
+          ids.gcGeneration,
+          ids.gcHeadSet,
+          ids.refresh2Attempt,
+          ids.gcOrphanSession,
+          ids.generation,
+        ],
+      );
+      assert.deepEqual(result.rows[0], {
+        baseRows: 0,
+        currentRows: 0,
+        provenanceRows: 0,
+        generationCollected: true,
+        headSetCollected: true,
+        attemptCollected: true,
+        orphanCleaned: true,
+        historicalBaseRows: capacityMetrics.objectRows,
+        historicalActivationMembers: 2,
+        measurementComplete: false,
+      });
+    });
+    const blocked = await service.dryRun({
+      projectId: ids.project,
+      idempotencyKey: "g2-02-12-rescan-required-0003",
+    });
+    assert.equal(blocked.analysis.status, "BLOCKED");
+    assert.deepEqual(blocked.analysis.candidates, []);
+    assert.equal(blocked.analysis.blockedReasons.includes("MEASUREMENT_INCOMPLETE"), true);
+  } finally {
+    await apiPool.end();
+  }
+}
+
+async function pendingGcCandidates(pool: pg.Pool, planId: string): Promise<number> {
+  const result = await pool.query<{ readonly count: number }>(
+    `SELECT count(*)::integer AS count
+     FROM ops.gc_plan_entry_status
+     WHERE project_id = $1::uuid AND gc_plan_id = $2::uuid
+       AND disposition = 'CANDIDATE' AND completed_at IS NULL`,
+    [ids.project, planId],
+  );
+  return required(result.rows[0]).count;
+}
+
+async function gcProgress(
+  pool: pg.Pool,
+  planId: string,
+): Promise<Readonly<Record<string, unknown>>> {
+  const result = await pool.query<{
+    readonly state: string;
+    readonly phase: string;
+    readonly currentStateRevision: string;
+    readonly currentInventoryRevision: string;
+    readonly pending: number;
+  }>(
+    `SELECT plan.state, plan.phase,
+            plan.current_state_revision::text AS "currentStateRevision",
+            plan.current_inventory_revision::text AS "currentInventoryRevision",
+            (SELECT count(*)::integer FROM ops.gc_plan_entry_status AS entry
+              WHERE entry.project_id = plan.project_id
+                AND entry.gc_plan_id = plan.gc_plan_id
+                AND entry.disposition = 'CANDIDATE'
+                AND entry.completed_at IS NULL) AS pending
+     FROM ops.gc_plan_status AS plan
+     WHERE plan.project_id = $1::uuid AND plan.gc_plan_id = $2::uuid`,
+    [ids.project, planId],
+  );
+  return Object.freeze({ ...required(result.rows[0]) });
+}
+
+async function killGcRelationalBatch(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  planId: string,
+): Promise<void> {
+  const blocker = new pg.Client(adminConfig);
+  await blocker.connect();
+  await blocker.query("BEGIN");
+  await blocker.query("LOCK TABLE ops.gc_batch_events IN ACCESS EXCLUSIVE MODE");
+  const environment = {
+    ...process.env,
+    ONTOS_GC_TEST_DATABASE_URL: postgresConnectionString(apiConfig),
+  };
+  const child = spawn(
+    process.execPath,
+    [gcCommitCliPath, "--project-id", ids.project, "--plan-id", planId],
+    { env: environment, stdio: ["ignore", "ignore", "pipe"] },
+  );
+  let stderr = "";
+  let backendPid: number | undefined;
+  child.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString("utf8");
+  });
+  try {
+    await waitUntilCondition(async () => {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        throw new Error(`GC kill probe exited before blocking: ${stderr}`);
+      }
+      return withClient(adminConfig, async (admin) => {
+        const result = await admin.query<{ readonly pid: number }>(
+          `SELECT pid FROM pg_stat_activity
+           WHERE application_name = 'ontos-gc-kill-probe'
+             AND wait_event_type = 'Lock'
+           ORDER BY backend_start DESC LIMIT 1`,
+        );
+        backendPid = result.rows[0]?.pid;
+        return backendPid !== undefined;
+      });
+    });
+    assert.equal(child.kill("SIGKILL"), true);
+    await waitForProcessExit(child);
+    assert.equal(child.signalCode, "SIGKILL");
+    if (backendPid !== undefined) {
+      await withClient(adminConfig, async (admin) => {
+        await admin.query("SELECT pg_terminate_backend($1::integer)", [backendPid]);
+      });
+      await waitUntilCondition(() =>
+        withClient(adminConfig, async (admin) => {
+          const result = await admin.query<{ readonly present: boolean }>(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1::integer) AS present",
+            [backendPid],
+          );
+          return result.rows[0]?.present === false;
+        }),
+      );
+    }
+  } finally {
+    await blocker.query("ROLLBACK").catch(() => undefined);
+    await blocker.end().catch(() => undefined);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
+}
+
+function postgresConnectionString(config: pg.ClientConfig): string {
+  return `postgresql://${encodeURIComponent(String(config.user))}:${encodeURIComponent(
+    String(config.password),
+  )}@${String(config.host)}:${String(config.port)}/${String(config.database)}`;
+}
+
+async function waitUntilCondition(
+  action: () => Promise<boolean>,
+  timeoutMilliseconds = 10_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMilliseconds;
+  while (Date.now() < deadline) {
+    if (await action()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Timed out waiting for the GC kill boundary.");
+}
+
+async function waitForProcessExit(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve) => child.once("close", () => resolve()));
+}
+
 interface ObjectHeadProbe {
   readonly object_rid: string;
   readonly current_generation_id: string;
@@ -6603,11 +7181,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 16);
+  assert.equal(left.applied.length + right.applied.length, 17);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 16)).length, 16);
+    assert.equal((await migrationLedger(client, 17)).length, 17);
   });
 }
 
@@ -6623,6 +7201,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
     [14, "ops.projection_ddl_requests"],
     [15, "runtime.snapshot_group_definition_members"],
     [16, "runtime.snapshot_group_cutover_preparations"],
+    [17, "ops.gc_plan_entries"],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -6668,6 +7247,14 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     "meta.runtime_activation_members",
     "ops.gc_plans",
     "ops.gc_runs",
+    "ops.gc_root_provider_registry",
+    "ops.gc_root_epochs",
+    "ops.gc_root_provider_scans",
+    "ops.gc_plan_entries",
+    "ops.gc_orphan_deletions",
+    "ops.gc_batch_events",
+    "ops.gc_execution_contexts",
+    "ops.materialization_attempt_collections",
     "ops.materialization_attempts",
     "ops.materialization_checkpoints",
     "ops.materialization_jobs",
@@ -6683,6 +7270,9 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     "runtime.compatibility_certificates",
     "runtime.dataset_snapshots",
     "runtime.generations",
+    "runtime.generation_collections",
+    "runtime.head_set_collections",
+    "runtime.materialization_report_collections",
     "runtime.link_base",
     "runtime.link_current",
     "runtime.materialization_confirmations",
@@ -6826,7 +7416,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(16);
+  const directory = await migrationPrefixDirectory(17);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);

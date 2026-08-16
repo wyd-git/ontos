@@ -6,7 +6,7 @@ DB-02 是逻辑交付波次，不是第二个数据库或迁移账本。唯一�
 
 ```text
 migrations/db-00/0001 ... 0006  已发布历史，禁止修改/改名
-migrations/db-00/0007 ... 0015  DB-02 当前正式结构
+migrations/db-00/0007 ... 0017  DB-02 当前正式结构
 ontos_migration.schema_migrations 唯一账本
 ```
 
@@ -15,7 +15,7 @@ ontos_migration.schema_migrations 唯一账本
 ## 2. 上线前检查
 
 1. 确认 PostgreSQL 16、`plpgsql`、可恢复备份/PITR 和当前应用兼容版本。
-2. 导出并保存 `ontos_migration.schema_migrations` 的 `version/name/sha256`；所有已应用版本（最高可到 0015）必须与发布制品逐字一致。
+2. 导出并保存 `ontos_migration.schema_migrations` 的 `version/name/sha256`；所有已应用版本（最高可到 0017）必须与发布制品逐字一致。
 3. 检查不存在未知领先版本、缺号、Hash 漂移或同名异 Hash；任一命中立即停止。
 4. 确认 Runtime 登录不是 `migration_owner` 成员，数据库与 Schema Owner 没有漂移。
 5. 迁移不要求删除 R1/A0，也不要求停用已发布 Channel；若计划中出现历史行 UPDATE，停止执行。
@@ -30,7 +30,7 @@ Runner 会先执行版本/扩展/角色预检，再取得全局 Advisory Lock；
 
 ## 3. 成功后检查
 
-- Ledger 恰好连续到 0015，重复运行返回 no-op；
+- Ledger 恰好连续到 0017，重复运行返回 no-op；
 - 0001～0006 的 name/hash 不变；
 - 所有 `meta`/`runtime`/`ops` 新对象 Owner 为 `migration_owner`；
 - 历史 `member_count=0` Activation 的所有原列、值和 Digest 不变；
@@ -71,5 +71,5 @@ Runner 会先执行版本/扩展/角色预检，再取得全局 Advisory Lock；
 - Migration Runner 与 Projection DDL Executor 是部署级受信进程，不复用 API/Worker 连接池或凭据。
 - 业务进程不得拼接 SQL、Identifier 或直接写 Migration Ledger。
 - 生产变更只向前追加；PR 合并后不得为了“修测试”改写已发布 Migration。
-- 0007～0016 已支持 Snapshot/Ingress/Job 事实、确定 Identity、Attempt-owned Base、不可见的 Quality-qualified Current、通用 Worker 恢复、Index/DDL、容量准入、Runtime Plan、动态兼容证书与原子 Cutover；G2-02-13 完成生产 Worker/Admin HTTP 阶段组合前，`worker:start` 必须保持 fail closed，且不得开启 GC 流量。
+- 0007～0017 已支持 Snapshot/Ingress/Job 事实、确定 Identity、Attempt-owned Base、不可见的 Quality-qualified Current、通用 Worker 恢复、Index/DDL、容量准入、Runtime Plan、动态兼容证书、原子 Cutover 与 mark-plan-commit GC；G2-02-13 完成生产 Worker/Admin HTTP 阶段组合前，`worker:start` 必须保持 fail closed，且不得对外开启 GC 流量。
 - Worker 的部署、故障和 Manual Replay 纪律见 [Materialization Worker 运行手册](materialization-worker.md)。

@@ -40,7 +40,7 @@ export interface ProjectionDdlExecutionResult {
   readonly projectId: string;
   readonly requestId: string;
   readonly indexName: string;
-  readonly outcome: "CREATED" | "REUSED";
+  readonly outcome: "CREATED" | "REUSED" | "DROPPED" | "ABSENT";
   readonly attemptCount: number;
   readonly catalogDigest: string;
   readonly observedBytes: bigint;
@@ -68,6 +68,8 @@ interface RequestRow extends pg.QueryResultRow {
   readonly attemptCount: number;
   readonly lastResultCode: string | null;
   readonly catalogDigest: string | null;
+  readonly gcPlanId: string | null;
+  readonly gcPlanDigest: string | null;
   readonly targetResourceId: string;
   readonly targetRevisionId: string;
   readonly planDigest: string;
@@ -186,19 +188,38 @@ export async function executeProjectionDdlRequest(
     const claimed = await claimRequest(client, requestId);
     plan = claimed.plan;
     validateRequestRow(plan);
+    if (claimed.replay && plan.action === "DROP") return replayDrop(plan);
     locked = await tryLock(client, plan.projectId);
     if (!locked) throw new ProjectionDdlExecutorError("DDL_INDEX_BUSY");
     plan = await loadRequest(client, requestId, false);
     validateRequestRow(plan);
     await verifyPersistedPlan(client, plan);
     await assertInventoryRevision(client, plan);
-    if (plan.action !== "CREATE") {
-      throw new ProjectionDdlExecutorError("DDL_DROP_NOT_AUTHORIZED");
-    }
     const definition = parseDefinition(plan.definition);
+    if (plan.action === "DROP") {
+      await verifyGcDropAuthorization(client, plan);
+      const execution = await reconcileDrop(client, definition);
+      const catalogDigest = digestDroppedCatalog(plan, execution.outcome);
+      await markSucceeded(client, plan, catalogDigest, "0", execution.outcome);
+      return Object.freeze({
+        projectId: plan.projectId,
+        requestId: plan.requestId,
+        indexName: plan.indexName,
+        outcome: execution.outcome,
+        attemptCount: plan.attemptCount,
+        catalogDigest,
+        observedBytes: 0n,
+      });
+    }
     const execution = await reconcileCreate(client, definition);
     const catalogDigest = digestCatalog(plan, execution.catalog);
-    await markSucceeded(client, plan, catalogDigest, execution.catalog.row.observedBytes);
+    await markSucceeded(
+      client,
+      plan,
+      catalogDigest,
+      execution.catalog.row.observedBytes,
+      execution.outcome,
+    );
     return Object.freeze({
       projectId: plan.projectId,
       requestId: plan.requestId,
@@ -240,22 +261,24 @@ async function claimRequest(
        RETURNING attempt_count AS "attemptCount"`,
       [plan.projectId, requestId],
     );
-    await client.query(
-      `UPDATE runtime.index_inventory
-       SET state = 'building', last_result_code = NULL, changed_at = clock_timestamp()
-       WHERE project_id = $1::uuid
-         AND index_name = $2
-         AND physical_signature = $3
-         AND state IN ('planned', 'building', 'failed')`,
-      [plan.projectId, plan.indexName, plan.physicalSignature],
-    );
+    if (plan.action === "CREATE") {
+      await client.query(
+        `UPDATE runtime.index_inventory
+         SET state = 'building', last_result_code = NULL, changed_at = clock_timestamp()
+         WHERE project_id = $1::uuid
+           AND index_name = $2
+           AND physical_signature = $3
+           AND state IN ('planned', 'building', 'failed')`,
+        [plan.projectId, plan.indexName, plan.physicalSignature],
+      );
+    }
     await client.query("COMMIT");
     return {
       plan: {
         ...plan,
         state: "RUNNING",
         attemptCount: required(updated.rows[0]).attemptCount,
-        inventoryState: "building",
+        inventoryState: plan.action === "CREATE" ? "building" : plan.inventoryState,
       },
       replay: false,
     };
@@ -278,6 +301,7 @@ async function loadRequest(
             request.attempt_count AS "attemptCount",
             request.last_result_code AS "lastResultCode",
             request.catalog_digest AS "catalogDigest",
+            request.gc_plan_id AS "gcPlanId", request.gc_plan_digest AS "gcPlanDigest",
             plan.target_resource_id AS "targetResourceId",
             plan.target_revision_id AS "targetRevisionId",
             plan.plan_digest AS "planDigest", plan.compiler_version AS "compilerVersion",
@@ -329,6 +353,17 @@ function validateRequestRow(plan: RequestRow): void {
   parseArtifactDigest(plan.planDigest);
   parseArtifactDigest(plan.physicalSignature);
   parseArtifactDigest(plan.definitionDigest);
+  if (
+    (plan.action === "CREATE" && (plan.gcPlanId !== null || plan.gcPlanDigest !== null)) ||
+    (plan.action === "DROP" &&
+      (plan.gcPlanId === null ||
+        !canonicalUuidPattern.test(plan.gcPlanId) ||
+        plan.gcPlanDigest === null ||
+        !["ready", "retired"].includes(plan.inventoryState)))
+  ) {
+    throw new ProjectionDdlExecutorError("DDL_DROP_NOT_AUTHORIZED");
+  }
+  if (plan.gcPlanDigest !== null) parseArtifactDigest(plan.gcPlanDigest);
   const definition = parseDefinition(plan.definition);
   if (
     definition.name !== plan.indexName ||
@@ -411,6 +446,62 @@ async function assertInventoryRevision(client: pg.Client, plan: RequestRow): Pro
   }
 }
 
+async function verifyGcDropAuthorization(client: pg.Client, plan: RequestRow): Promise<void> {
+  if (plan.gcPlanId === null || plan.gcPlanDigest === null) {
+    throw new ProjectionDdlExecutorError("DDL_DROP_NOT_AUTHORIZED");
+  }
+  try {
+    await client.query("SELECT ontos_migration.g20212_assert_plan_current($1::uuid, $2::uuid)", [
+      plan.projectId,
+      plan.gcPlanId,
+    ]);
+  } catch (error) {
+    if (
+      isRecord(error) &&
+      (error.code === "40001" || String(error.message).includes("GC_PLAN_STALE"))
+    ) {
+      throw new ProjectionDdlExecutorError("DDL_PLAN_STALE", { cause: error });
+    }
+    throw error;
+  }
+  const result = await client.query<{ readonly authorized: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM ops.gc_plans AS gc_plan
+       JOIN ops.gc_plan_entries AS gc_entry
+         ON gc_entry.project_id = gc_plan.project_id
+        AND gc_entry.gc_plan_id = gc_plan.gc_plan_id
+       JOIN runtime.index_inventory AS inventory
+         ON inventory.project_id = gc_entry.project_id
+        AND inventory.physical_signature = gc_entry.entry_key
+       WHERE gc_plan.project_id = $1::uuid
+         AND gc_plan.gc_plan_id = $2::uuid
+         AND gc_plan.plan_digest = $3
+         AND gc_plan.state IN ('committing', 'waiting_for_index_ddl')
+         AND gc_entry.entry_kind = 'INDEX'
+         AND gc_entry.entry_key = $4
+         AND gc_entry.disposition = 'CANDIDATE'
+         AND gc_entry.completed_at IS NULL
+         AND inventory.index_plan_id = $5::uuid
+         AND inventory.entry_key = $6
+         AND inventory.index_name = $7
+         AND inventory.state = 'ready'
+     ) AS authorized`,
+    [
+      plan.projectId,
+      plan.gcPlanId,
+      plan.gcPlanDigest,
+      plan.physicalSignature,
+      plan.indexPlanId,
+      plan.entryKey,
+      plan.indexName,
+    ],
+  );
+  if (result.rows[0]?.authorized !== true) {
+    throw new ProjectionDdlExecutorError("DDL_DROP_NOT_AUTHORIZED");
+  }
+}
+
 async function reconcileCreate(
   client: pg.Client,
   definition: CompiledIndexDefinition,
@@ -436,6 +527,22 @@ async function reconcileCreate(
   if (created === null) throw new ProjectionDdlExecutorError("DDL_CATALOG_VERIFICATION_FAILED");
   assertCatalogDefinition(definition, created, false);
   return { outcome: "CREATED", catalog: created };
+}
+
+async function reconcileDrop(
+  client: pg.Client,
+  definition: CompiledIndexDefinition,
+): Promise<{ readonly outcome: "DROPPED" | "ABSENT" }> {
+  const existing = await inspectIndex(client, definition.name);
+  if (existing === null) return { outcome: "ABSENT" };
+  assertCatalogDefinition(definition, existing, false);
+  await client.query(
+    `DROP INDEX CONCURRENTLY ${quoteIdentifier("runtime")}.${quoteIdentifier(definition.name)}`,
+  );
+  if ((await inspectIndex(client, definition.name)) !== null) {
+    throw new ProjectionDdlExecutorError("DDL_CATALOG_VERIFICATION_FAILED");
+  }
+  return { outcome: "DROPPED" };
 }
 
 async function inspectIndex(client: pg.Client, indexName: string): Promise<CatalogIndex | null> {
@@ -690,23 +797,58 @@ async function markSucceeded(
   plan: RequestRow,
   catalogDigest: string,
   observedBytes: string,
+  outcome: ProjectionDdlExecutionResult["outcome"],
 ): Promise<void> {
   await client.query("BEGIN");
   try {
-    await client.query(
-      `UPDATE runtime.index_inventory
-       SET state = 'ready', catalog_digest = $3, observed_bytes = $4,
-           last_result_code = 'DDL_READY', catalog_scanned_at = clock_timestamp(),
-           changed_at = clock_timestamp()
-       WHERE project_id = $1::uuid AND index_name = $2`,
-      [plan.projectId, plan.indexName, catalogDigest, observedBytes],
-    );
+    if (plan.action === "CREATE") {
+      await client.query(
+        `UPDATE runtime.index_inventory
+         SET state = 'ready', catalog_digest = $3, observed_bytes = $4,
+             last_result_code = 'DDL_READY', catalog_scanned_at = clock_timestamp(),
+             changed_at = clock_timestamp()
+         WHERE project_id = $1::uuid AND index_name = $2`,
+        [plan.projectId, plan.indexName, catalogDigest, observedBytes],
+      );
+    } else {
+      const revision = await client.query<{ readonly inventoryRevision: string }>(
+        `UPDATE runtime.project_runtime_inventories
+         SET inventory_revision = inventory_revision + 1,
+             measurement_complete = false, inventory_digest = NULL,
+             changed_at = clock_timestamp()
+         WHERE project_id = $1::uuid
+         RETURNING inventory_revision::text AS "inventoryRevision"`,
+        [plan.projectId],
+      );
+      const nextRevision = required(revision.rows[0]).inventoryRevision;
+      await client.query(
+        `UPDATE runtime.index_inventory
+         SET state = 'retired', inventory_revision = $3::bigint,
+             catalog_digest = $4, observed_bytes = 0,
+             last_result_code = $5, catalog_scanned_at = clock_timestamp(),
+             changed_at = clock_timestamp()
+         WHERE project_id = $1::uuid AND index_name = $2 AND state = 'ready'`,
+        [plan.projectId, plan.indexName, nextRevision, catalogDigest, `DDL_${outcome}`],
+      );
+      await client.query(
+        `UPDATE ops.gc_plans
+         SET current_inventory_revision = $3::bigint, changed_at = clock_timestamp()
+         WHERE project_id = $1::uuid AND gc_plan_id = $2::uuid
+           AND state = 'waiting_for_index_ddl'`,
+        [plan.projectId, plan.gcPlanId, nextRevision],
+      );
+    }
     await client.query(
       `UPDATE ops.projection_ddl_requests
-       SET state = 'SUCCEEDED', last_result_code = 'DDL_READY',
+       SET state = 'SUCCEEDED', last_result_code = $4,
            catalog_digest = $3, finished_at = clock_timestamp()
        WHERE project_id = $1::uuid AND request_id = $2::uuid`,
-      [plan.projectId, plan.requestId, catalogDigest],
+      [
+        plan.projectId,
+        plan.requestId,
+        catalogDigest,
+        plan.action === "CREATE" ? "DDL_READY" : `DDL_${outcome}`,
+      ],
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -722,14 +864,16 @@ async function markFailedQuietly(
 ): Promise<void> {
   try {
     await client.query("BEGIN");
-    await client.query(
-      `UPDATE runtime.index_inventory
-       SET state = 'failed', catalog_digest = NULL, observed_bytes = NULL,
-           last_result_code = $3, catalog_scanned_at = clock_timestamp(),
-           changed_at = clock_timestamp()
-       WHERE project_id = $1::uuid AND index_name = $2`,
-      [plan.projectId, plan.indexName, code],
-    );
+    if (plan.action === "CREATE") {
+      await client.query(
+        `UPDATE runtime.index_inventory
+         SET state = 'failed', catalog_digest = NULL, observed_bytes = NULL,
+             last_result_code = $3, catalog_scanned_at = clock_timestamp(),
+             changed_at = clock_timestamp()
+         WHERE project_id = $1::uuid AND index_name = $2`,
+        [plan.projectId, plan.indexName, code],
+      );
+    }
     await client.query(
       `UPDATE ops.projection_ddl_requests
        SET state = 'FAILED', last_result_code = $3,
@@ -739,6 +883,23 @@ async function markFailedQuietly(
        WHERE project_id = $1::uuid AND request_id = $2::uuid`,
       [plan.projectId, plan.requestId, code],
     );
+    if (plan.action === "DROP" && code === "DDL_PLAN_STALE" && plan.gcPlanId !== null) {
+      await client.query(
+        `UPDATE ops.gc_plans SET state = 'stale', changed_at = clock_timestamp()
+         WHERE project_id = $1::uuid AND gc_plan_id = $2::uuid
+           AND state IN ('committing', 'waiting_for_index_ddl')`,
+        [plan.projectId, plan.gcPlanId],
+      );
+      await client.query(
+        `UPDATE ops.gc_runs AS run SET state = 'stale', result_code = 'GC_PLAN_STALE',
+                changed_at = clock_timestamp()
+         FROM ops.gc_plans AS gc_plan
+         WHERE gc_plan.project_id = $1::uuid AND gc_plan.gc_plan_id = $2::uuid
+           AND run.project_id = gc_plan.project_id AND run.gc_run_id = gc_plan.gc_run_id
+           AND run.state IN ('committing', 'waiting_for_index_ddl')`,
+        [plan.projectId, plan.gcPlanId],
+      );
+    }
     await client.query("COMMIT");
   } catch {
     await client.query("ROLLBACK").catch(() => undefined);
@@ -787,6 +948,43 @@ function digestCatalog(plan: RequestRow, catalog: CatalogIndex): string {
   );
 }
 
+function digestDroppedCatalog(plan: RequestRow, outcome: "DROPPED" | "ABSENT"): string {
+  return sha256(
+    canonicalizeContractForDigest({
+      schemaVersion: 1,
+      contractVersion: "projection-index-drop-v1",
+      requestId: plan.requestId,
+      gcPlanId: plan.gcPlanId,
+      gcPlanDigest: plan.gcPlanDigest,
+      indexPlanDigest: plan.planDigest,
+      definitionDigest: plan.definitionDigest,
+      physicalSignature: plan.physicalSignature,
+      indexName: plan.indexName,
+      outcome,
+      catalogPresent: false,
+      observedBytes: "0",
+    }),
+  );
+}
+
+function replayDrop(plan: RequestRow): ProjectionDdlExecutionResult {
+  if (
+    plan.catalogDigest === null ||
+    (plan.lastResultCode !== "DDL_DROPPED" && plan.lastResultCode !== "DDL_ABSENT")
+  ) {
+    throw new ProjectionDdlExecutorError("DDL_PLAN_INVALID");
+  }
+  return Object.freeze({
+    projectId: plan.projectId,
+    requestId: plan.requestId,
+    indexName: plan.indexName,
+    outcome: plan.lastResultCode === "DDL_DROPPED" ? "DROPPED" : "ABSENT",
+    attemptCount: plan.attemptCount,
+    catalogDigest: plan.catalogDigest,
+    observedBytes: 0n,
+  });
+}
+
 function sha256(value: string): ArtifactDigest {
   return parseArtifactDigest(`sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`);
 }
@@ -822,6 +1020,12 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 
 function stableError(error: unknown): ProjectionDdlExecutorError {
   if (error instanceof ProjectionDdlExecutorError) return error;
+  if (
+    isRecord(error) &&
+    (error.code === "40001" || String(error.message).includes("GC_PLAN_STALE"))
+  ) {
+    return new ProjectionDdlExecutorError("DDL_PLAN_STALE", { cause: error });
+  }
   return new ProjectionDdlExecutorError("DDL_EXECUTION_FAILED", { cause: error });
 }
 
