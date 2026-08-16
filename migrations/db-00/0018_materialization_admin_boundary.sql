@@ -1187,8 +1187,8 @@ SET search_path = pg_catalog
 AS $finish_materialization_build$
 DECLARE
   job_row ops.materialization_jobs%ROWTYPE;
-  inventory_revision bigint;
-  inventory_digest text;
+  current_inventory_revision bigint;
+  current_inventory_digest text;
   result_digest text;
   expected_members integer;
 BEGIN
@@ -1211,11 +1211,11 @@ BEGIN
     AND version.group_version = job_row.group_version
   FOR UPDATE;
   SELECT inventory.inventory_revision, inventory.inventory_digest
-  INTO inventory_revision, inventory_digest
+  INTO current_inventory_revision, current_inventory_digest
   FROM runtime.project_runtime_inventories AS inventory
   WHERE inventory.project_id = p_project_id AND inventory.measurement_complete
   FOR SHARE;
-  IF expected_members IS NULL OR inventory_revision IS NULL THEN
+  IF expected_members IS NULL OR current_inventory_revision IS NULL THEN
     RAISE EXCEPTION 'G20213_BUILD_NOT_READY' USING ERRCODE = '55000';
   END IF;
   IF (
@@ -1230,8 +1230,8 @@ BEGIN
       ON capacity.project_id = generation.project_id
      AND capacity.generation_id = generation.generation_id
      AND capacity.phase = 'POSTBUILD'
-     AND capacity.inventory_revision = inventory_revision
-     AND capacity.physical_measurement_digest = inventory_digest
+     AND capacity.inventory_revision = current_inventory_revision
+     AND capacity.physical_measurement_digest = current_inventory_digest
      AND capacity.report ->> 'accepted' = 'true'
      AND (
        capacity.approval_id IS NULL OR EXISTS (
@@ -1274,7 +1274,7 @@ BEGIN
         WHERE admission.project_id = member.project_id
           AND admission.release_id = member.release_id
           AND admission.index_plan_id = plan.index_plan_id
-          AND admission.inventory_revision = inventory_revision
+          AND admission.inventory_revision = current_inventory_revision
       )
   ) THEN
     RAISE EXCEPTION 'CAPACITY_INVENTORY_STALE' USING ERRCODE = '40001';
