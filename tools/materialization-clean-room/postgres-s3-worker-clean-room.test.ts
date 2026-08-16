@@ -713,6 +713,7 @@ async function seedDomain(
         apiName: member.memberKey.slice(member.memberKey.indexOf(":") + 1),
         family: member.kind === "object" ? "object_type" : "link_type",
         content: member.definition,
+        deferPublish: member.kind === "link",
       });
       insertedTargetRevisions.add(member.revisionId);
       revisionIds.push(member.revisionId);
@@ -773,6 +774,7 @@ async function seedDomain(
         member.targetObject.revisionId,
       ],
     );
+    await publishResourceRevision(admin, member.revisionId);
   }
 
   const client = await admin.connect();
@@ -823,6 +825,7 @@ async function insertPublishedResource(
     readonly apiName: string;
     readonly family: string;
     readonly content: unknown;
+    readonly deferPublish?: boolean;
   },
 ): Promise<void> {
   const digest = digestJson(input.content);
@@ -847,11 +850,15 @@ async function insertPublishedResource(
              'metadata-g2-01-v1', true, '[]'::jsonb)`,
     [randomUUID(), input.revisionId, digest],
   );
+  if (input.deferPublish !== true) await publishResourceRevision(admin, input.revisionId);
+}
+
+async function publishResourceRevision(admin: pg.Pool, revisionId: string): Promise<void> {
   for (const state of ["validated", "published"] as const) {
     await admin.query(
       `UPDATE meta.resource_revisions SET state = $2, changed_at = clock_timestamp()
        WHERE revision_id = $1`,
-      [input.revisionId, state],
+      [revisionId, state],
     );
   }
 }
