@@ -348,7 +348,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);

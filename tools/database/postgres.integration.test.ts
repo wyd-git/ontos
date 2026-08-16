@@ -809,7 +809,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_HISTORY_DIVERGED",
     );
-    await assertProbeAndLedgerState(client, true, 20);
+    await assertProbeAndLedgerState(client, true, 21);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
