@@ -303,6 +303,8 @@ void test(
         dependencyBackoffMilliseconds: 100,
         shutdownGraceMilliseconds: 15_000,
         databasePoolMaximum: 4,
+        databaseStatementTimeoutMilliseconds: 300_000,
+        databaseQueryTimeoutMilliseconds: 305_000,
         objectStore,
       });
       let terminal: JobDiagnostic;

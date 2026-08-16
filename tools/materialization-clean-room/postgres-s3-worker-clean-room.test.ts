@@ -358,6 +358,8 @@ void test(
         dependencyBackoffMilliseconds: 100,
         shutdownGraceMilliseconds: 30_000,
         databasePoolMaximum: 6,
+        databaseStatementTimeoutMilliseconds: 300_000,
+        databaseQueryTimeoutMilliseconds: 305_000,
         objectStore,
       });
       const firstTerminal = await waitForJob(admin, primaryProjectId, firstJob, 1_800_000);
@@ -588,6 +590,8 @@ void test(
         dependencyBackoffMilliseconds: 100,
         shutdownGraceMilliseconds: 30_000,
         databasePoolMaximum: 6,
+        databaseStatementTimeoutMilliseconds: 300_000,
+        databaseQueryTimeoutMilliseconds: 305_000,
         objectStore,
       });
       await executeIndexPlans(adminConfig, primaryProjectId, indexPlanIds);
