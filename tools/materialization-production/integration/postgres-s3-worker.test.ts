@@ -450,6 +450,7 @@ interface MaterializationFixture {
 interface JobDiagnostic {
   readonly state: string;
   readonly currentStage: string | null;
+  readonly completedStages: readonly string[];
   readonly resultCode: string | null;
   readonly attemptCount: number;
   readonly lastFailureCode: string | null;
@@ -686,8 +687,15 @@ async function waitForJob(
       `SELECT state, current_stage AS "currentStage", result_code AS "resultCode",
               attempt_count AS "attemptCount",
               last_failure_code AS "lastFailureCode",
-              last_failure_category AS "lastFailureCategory"
-       FROM ops.materialization_jobs WHERE project_id = $1 AND job_id = $2`,
+              last_failure_category AS "lastFailureCategory",
+              ARRAY(
+                SELECT checkpoint.stage
+                FROM ops.materialization_checkpoints AS checkpoint
+                WHERE checkpoint.project_id = job.project_id
+                  AND checkpoint.job_id = job.job_id
+                ORDER BY checkpoint.sequence
+              ) AS "completedStages"
+       FROM ops.materialization_jobs AS job WHERE project_id = $1 AND job_id = $2`,
       [projectId, jobId],
     );
     latest = required(result.rows[0]);
