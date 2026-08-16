@@ -47,6 +47,7 @@ export interface MaterializationEvidencePolicy {
 }
 
 export interface MaterializationEvidenceSnapshot {
+  readonly currentCommit: string;
   readonly trackedFiles: readonly string[];
   readonly changedFiles: readonly string[];
   readonly documents: Readonly<Record<string, string | undefined>>;
@@ -88,7 +89,7 @@ export function evaluateMaterializationEvidenceSnapshot(
   validatePriorAcceptance(snapshot.foundationAcceptance, "Foundation", violations);
   validatePriorAcceptance(snapshot.metadataAcceptance, "Metadata", violations);
   validateFixtures(snapshot.fixtures, policy, violations);
-  validateProduction(snapshot.production, policy, violations);
+  validateProduction(snapshot.production, policy, snapshot.currentCommit, violations);
   validateMutations(snapshot, policy, tracked, violations);
   return violations;
 }
@@ -103,7 +104,11 @@ export function materializationEvidenceManifest(
   const gatesPassed = requiredGates.every(
     (gate) => steps.filter((step) => step.name === gate && step.status === "PASS").length === 1,
   );
-  const productionPassed = isRecord(production) && production.status === "PASS";
+  const productionPassed =
+    isRecord(production) &&
+    production.status === "PASS" &&
+    production.cleanCheckout === true &&
+    production.commit === report.commit;
   const status =
     report.status === "PASS" && acceptance.status === "PASS" && gatesPassed && productionPassed
       ? "PASS"
@@ -245,10 +250,12 @@ async function loadSnapshot(
   repositoryRoot: string,
   policy: MaterializationEvidencePolicy,
 ): Promise<MaterializationEvidenceSnapshot> {
-  const [trackedResult, changedResult] = await Promise.all([
+  const [commitResult, trackedResult, changedResult] = await Promise.all([
+    run("git", ["rev-parse", "HEAD"], repositoryRoot),
     run("git", ["ls-files", "-z"], repositoryRoot),
     run("git", ["diff", "--name-only", "-z", policy.baselineCommit, "--"], repositoryRoot),
   ]);
+  if (commitResult.exitCode !== 0) throw new Error(`git rev-parse failed: ${commitResult.stderr}`);
   if (trackedResult.exitCode !== 0) throw new Error(`git ls-files failed: ${trackedResult.stderr}`);
   if (changedResult.exitCode !== 0) {
     throw new Error(
@@ -279,6 +286,7 @@ async function loadSnapshot(
   );
   const outputDirectory = resolve(repositoryRoot, "generated/ci-report");
   return {
+    currentCommit: commitResult.stdout.trim(),
     trackedFiles,
     changedFiles,
     documents,
@@ -330,6 +338,7 @@ function validateFixtures(
 function validateProduction(
   value: unknown,
   policy: MaterializationEvidencePolicy,
+  currentCommit: string,
   violations: string[],
 ): void {
   if (!isRecord(value) || value.status !== "PASS") {
@@ -338,6 +347,8 @@ function validateProduction(
   }
   if (value.fixtureDigest !== policy.fixtures.digest)
     violations.push("Production boundary is not bound to the approved fixture digest.");
+  if (value.commit !== currentCommit || value.cleanCheckout !== true)
+    violations.push("Production boundary must be produced by the current clean Git commit.");
   if (!sameStringsInOrder(value.completedStages, policy.productionStages))
     violations.push("Production Worker did not complete the exact eight-stage pipeline.");
   const assertions = isRecord(value.assertions) ? value.assertions : {};

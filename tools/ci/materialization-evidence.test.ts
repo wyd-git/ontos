@@ -138,7 +138,8 @@ void test("the manifest requires every unified gate exactly once", () => {
     steps: [{ name: "unit", status: "PASS", command: "npm run test:unit", testCount: 7 }],
   };
   const acceptance = { status: "PASS", requiredGates: ["unit"] };
-  const manifest = materializationEvidenceManifest(report, acceptance, { status: "PASS" });
+  const production = { status: "PASS", cleanCheckout: true, commit: "c".repeat(40) };
+  const manifest = materializationEvidenceManifest(report, acceptance, production);
   assert.equal(manifest.status, "PASS");
   assert.equal(manifest.qualification, "PRODUCTION_BOUNDARY_PASS");
   assert.equal(manifest.testCount, 7);
@@ -147,7 +148,7 @@ void test("the manifest requires every unified gate exactly once", () => {
     materializationEvidenceManifest(
       report,
       { status: "PASS", requiredGates: ["unit", "postgres"] },
-      { status: "PASS" },
+      production,
     ).status,
     "FAIL",
   );
@@ -163,6 +164,7 @@ function validSnapshot(): MaterializationEvidenceSnapshot {
     packageScripts[script] = `${packageScripts[script] ?? ""} ${routeFragment}`;
   }
   return {
+    currentCommit: "c".repeat(40),
     trackedFiles,
     changedFiles: ["package.json", "tools/ci/materialization-evidence.ts"],
     documents: {
@@ -181,6 +183,8 @@ function validSnapshot(): MaterializationEvidenceSnapshot {
     },
     production: {
       status: "PASS",
+      commit: "c".repeat(40),
+      cleanCheckout: true,
       fixtureDigest: digest,
       completedStages: policy.productionStages,
       assertions: productionAssertions(),
