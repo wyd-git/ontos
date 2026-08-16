@@ -16,7 +16,7 @@ interface MutationCheck {
   readonly source: string;
   readonly marker: string;
   readonly script: string;
-  readonly routeToken: string;
+  readonly routeFragment: string;
   readonly requiredGate: string;
 }
 
@@ -389,7 +389,7 @@ function validateMutations(
         `Mutation ${mutation.id} marker must occur exactly once; found ${String(count)}.`,
       );
     const script = snapshot.packageScripts[mutation.script];
-    if (script === undefined || !script.includes(mutation.routeToken)) {
+    if (script === undefined || !script.includes(mutation.routeFragment)) {
       violations.push(`Mutation ${mutation.id} is not routed by npm script ${mutation.script}.`);
     }
     if (!policy.requiredGates.includes(mutation.requiredGate)) {
@@ -438,7 +438,7 @@ function assertPolicy(value: unknown): asserts value is MaterializationEvidenceP
   for (const mutation of value.mutationChecks) {
     if (
       !isRecord(mutation) ||
-      !["id", "source", "marker", "script", "routeToken", "requiredGate"].every(
+      !["id", "source", "marker", "script", "routeFragment", "requiredGate"].every(
         (key) => typeof mutation[key] === "string",
       )
     ) {

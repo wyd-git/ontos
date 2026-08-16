@@ -93,7 +93,7 @@
       "source": "tools/admin-api/integration/postgres-http.test.ts",
       "marker": "await oidc.token({ scope: \"openid\" })",
       "script": "test:admin-api:postgres",
-      "routeToken": "tools/admin-api/integration/postgres-http.test.ts",
+      "routeFragment": "tools/admin-api/integration/postgres-http.test.ts",
       "requiredGate": "admin-api-oidc-postgres"
     },
     {
@@ -101,7 +101,7 @@
       "source": "tools/database/materialization-postgres.integration.test.ts",
       "marker": "G2-02-03 upgrades A0 safely and enforces DB-02 facts, fencing and least privilege",
       "script": "test:database",
-      "routeToken": "tools/database/materialization-postgres.integration.test.ts",
+      "routeFragment": "tools/database/materialization-postgres.integration.test.ts",
       "requiredGate": "postgres-integration"
     },
     {
@@ -109,7 +109,7 @@
       "source": "tools/materialization-worker/integration/postgres-process.test.ts",
       "marker": "G2-02-08 real Worker PIDs fence, kill and resume every stage",
       "script": "test:materialization-worker:postgres",
-      "routeToken": "tools/materialization-worker/integration/postgres-process.test.ts",
+      "routeFragment": "tools/materialization-worker/integration/postgres-process.test.ts",
       "requiredGate": "materialization-worker-postgres"
     },
     {
@@ -117,7 +117,7 @@
       "source": "tools/database/materialization-postgres.integration.test.ts",
       "marker": "const invisible = await admin.query",
       "script": "test:database",
-      "routeToken": "tools/database/materialization-postgres.integration.test.ts",
+      "routeFragment": "tools/database/materialization-postgres.integration.test.ts",
       "requiredGate": "postgres-integration"
     },
     {
@@ -125,7 +125,7 @@
       "source": "tools/materialization-control-plane/projection-ddl.test.ts",
       "marker": "DDL Plan digest is deterministic and binds every immutable execution field",
       "script": "test:unit",
-      "routeToken": "tools/materialization-control-plane/*.test.ts",
+      "routeFragment": "tools/materialization-control-plane/*.test.ts",
       "requiredGate": "unit"
     },
     {
@@ -133,7 +133,7 @@
       "source": "tools/projection-capacity/production.test.ts",
       "marker": "production Index service fails closed on an incomplete physical inventory",
       "script": "test:unit",
-      "routeToken": "tools/projection-capacity/*.test.ts",
+      "routeFragment": "tools/projection-capacity/*.test.ts",
       "requiredGate": "unit"
     },
     {
@@ -141,7 +141,7 @@
       "source": "tools/database/materialization-postgres.integration.test.ts",
       "marker": "for (const [index, faultPoint] of [",
       "script": "test:database",
-      "routeToken": "tools/database/materialization-postgres.integration.test.ts",
+      "routeFragment": "tools/database/materialization-postgres.integration.test.ts",
       "requiredGate": "postgres-integration"
     },
     {
@@ -149,7 +149,7 @@
       "source": "tools/ci/materialization-evidence.test.ts",
       "marker": "rejects an out-of-scope Query path mutation",
       "script": "test:unit",
-      "routeToken": "tools/ci/*.test.ts",
+      "routeFragment": "tools/ci/*.test.ts",
       "requiredGate": "unit"
     }
   ],

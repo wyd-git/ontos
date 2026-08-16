@@ -77,12 +77,12 @@ const policy: MaterializationEvidencePolicy = {
     "catch_up",
     "activate",
   ],
-  mutationChecks: mutations.map(([id, source, marker, script, routeToken, requiredGate]) => ({
+  mutationChecks: mutations.map(([id, source, marker, script, routeFragment, requiredGate]) => ({
     id,
     source,
     marker,
     script,
-    routeToken,
+    routeFragment,
     requiredGate,
   })),
   requiredGates: ["admin", "db", "oidc", "unit", "worker"],
@@ -157,10 +157,10 @@ function validSnapshot(): MaterializationEvidenceSnapshot {
   const sourceTexts: Record<string, string> = {};
   const trackedFiles = [evidencePath, reviewPath];
   const packageScripts: Record<string, string> = {};
-  for (const [, source, marker, script, routeToken] of mutations) {
+  for (const [, source, marker, script, routeFragment] of mutations) {
     sourceTexts[source] = `${sourceTexts[source] ?? ""}\n${marker}`;
     trackedFiles.push(source);
-    packageScripts[script] = `${packageScripts[script] ?? ""} ${routeToken}`;
+    packageScripts[script] = `${packageScripts[script] ?? ""} ${routeFragment}`;
   }
   return {
     trackedFiles,
