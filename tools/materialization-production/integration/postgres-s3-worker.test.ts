@@ -451,6 +451,8 @@ interface JobDiagnostic {
   readonly state: string;
   readonly currentStage: string | null;
   readonly completedStages: readonly string[];
+  readonly generationCount: number;
+  readonly generationStates: readonly string[];
   readonly resultCode: string | null;
   readonly attemptCount: number;
   readonly lastFailureCode: string | null;
@@ -694,7 +696,19 @@ async function waitForJob(
                 WHERE checkpoint.project_id = job.project_id
                   AND checkpoint.job_id = job.job_id
                 ORDER BY checkpoint.sequence
-              ) AS "completedStages"
+              ) AS "completedStages",
+              (SELECT count(*)::integer FROM runtime.generations AS generation
+               WHERE generation.project_id = job.project_id
+                 AND generation.snapshot_group_id = job.snapshot_group_id
+                 AND generation.group_version = job.group_version) AS "generationCount",
+              ARRAY(
+                SELECT generation.state
+                FROM runtime.generations AS generation
+                WHERE generation.project_id = job.project_id
+                  AND generation.snapshot_group_id = job.snapshot_group_id
+                  AND generation.group_version = job.group_version
+                ORDER BY generation.member_key
+              ) AS "generationStates"
        FROM ops.materialization_jobs AS job WHERE project_id = $1 AND job_id = $2`,
       [projectId, jobId],
     );
