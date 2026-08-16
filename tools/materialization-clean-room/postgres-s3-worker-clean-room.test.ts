@@ -244,7 +244,7 @@ void test(
       );
 
       const baselineReleaseId = await createRelease(apiRuntime, ownerToken, primaryProjectId, [
-        required(commerce.members[0]).schemaRevisionId,
+        required(commerce.members.find(({ kind }) => kind === "object")).revisionId,
       ]);
       await validateAndStageRelease(apiRuntime, ownerToken, baselineReleaseId, "ready");
       const baselinePublish = await api(
