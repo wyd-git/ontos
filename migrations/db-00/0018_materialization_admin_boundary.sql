@@ -825,6 +825,132 @@ BEGIN
 END
 $g20207_assert_live_quality$;
 
+CREATE FUNCTION ops.has_current_materialization_capacity_admission(
+  p_project_id uuid,
+  p_job_id uuid,
+  p_attempt_id uuid,
+  p_fencing_token bigint,
+  p_generation_id uuid,
+  p_phase text
+) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog
+AS $has_current_materialization_capacity_admission$
+BEGIN
+  IF p_phase NOT IN ('PREBUILD', 'POSTBUILD') THEN
+    RAISE EXCEPTION 'G20213_CAPACITY_QUERY_INVALID' USING ERRCODE = '22023';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM ops.materialization_jobs AS job
+    JOIN runtime.generations AS generation
+      ON generation.project_id = job.project_id
+     AND generation.snapshot_group_id = job.snapshot_group_id
+     AND generation.group_version = job.group_version
+    WHERE job.project_id = p_project_id
+      AND job.job_id = p_job_id
+      AND job.state = 'running'
+      AND job.current_attempt_id = p_attempt_id
+      AND job.fencing_token = p_fencing_token
+      AND job.lease_expires_at > clock_timestamp()
+      AND generation.generation_id = p_generation_id
+  ) THEN
+    RAISE EXCEPTION 'MATERIALIZATION_JOB_FENCED' USING ERRCODE = '55000';
+  END IF;
+  RETURN EXISTS (
+    SELECT 1
+    FROM runtime.project_runtime_inventories AS inventory
+    JOIN runtime.capacity_admissions AS admission
+      ON admission.project_id = inventory.project_id
+     AND admission.inventory_revision = inventory.inventory_revision
+    WHERE inventory.project_id = p_project_id
+      AND inventory.measurement_complete
+      AND admission.generation_id = p_generation_id
+      AND admission.phase = p_phase
+      AND admission.report ->> 'accepted' = 'true'
+      AND (
+        p_phase = 'PREBUILD'
+        OR admission.physical_measurement_digest = inventory.inventory_digest
+      )
+      AND (
+        admission.approval_id IS NULL OR EXISTS (
+          SELECT 1
+          FROM runtime.capacity_approvals AS approval
+          WHERE approval.project_id = admission.project_id
+            AND approval.approval_id = admission.approval_id
+            AND approval.state = 'active'
+            AND approval.expires_at = admission.approval_expires_at
+            AND approval.expires_at > clock_timestamp()
+        )
+      )
+  );
+END
+$has_current_materialization_capacity_admission$;
+
+CREATE FUNCTION ops.has_any_current_materialization_postbuild_admission(
+  p_project_id uuid,
+  p_job_id uuid,
+  p_attempt_id uuid,
+  p_fencing_token bigint,
+  p_generation_ids uuid[]
+) RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog
+AS $has_any_current_materialization_postbuild_admission$
+DECLARE
+  generation_count integer;
+BEGIN
+  generation_count := COALESCE(cardinality(p_generation_ids), 0);
+  IF generation_count NOT BETWEEN 1 AND 256
+    OR array_position(p_generation_ids, NULL) IS NOT NULL
+    OR (SELECT count(DISTINCT generation_id) FROM unnest(p_generation_ids) AS generation_id)
+      <> generation_count THEN
+    RAISE EXCEPTION 'G20213_CAPACITY_QUERY_INVALID' USING ERRCODE = '22023';
+  END IF;
+  IF (
+    SELECT count(*)
+    FROM ops.materialization_jobs AS job
+    JOIN runtime.generations AS generation
+      ON generation.project_id = job.project_id
+     AND generation.snapshot_group_id = job.snapshot_group_id
+     AND generation.group_version = job.group_version
+     AND generation.generation_id = ANY(p_generation_ids)
+    WHERE job.project_id = p_project_id
+      AND job.job_id = p_job_id
+      AND job.state = 'running'
+      AND job.current_attempt_id = p_attempt_id
+      AND job.fencing_token = p_fencing_token
+      AND job.lease_expires_at > clock_timestamp()
+  ) <> generation_count THEN
+    RAISE EXCEPTION 'MATERIALIZATION_JOB_FENCED' USING ERRCODE = '55000';
+  END IF;
+  RETURN EXISTS (
+    SELECT 1
+    FROM runtime.project_runtime_inventories AS inventory
+    JOIN runtime.capacity_admissions AS admission
+      ON admission.project_id = inventory.project_id
+     AND admission.inventory_revision = inventory.inventory_revision
+     AND admission.phase = 'POSTBUILD'
+     AND admission.physical_measurement_digest = inventory.inventory_digest
+    WHERE inventory.project_id = p_project_id
+      AND inventory.measurement_complete
+      AND admission.generation_id = ANY(p_generation_ids)
+      AND admission.report ->> 'accepted' = 'true'
+      AND (
+        admission.approval_id IS NULL OR EXISTS (
+          SELECT 1
+          FROM runtime.capacity_approvals AS approval
+          WHERE approval.project_id = admission.project_id
+            AND approval.approval_id = admission.approval_id
+            AND approval.state = 'active'
+            AND approval.expires_at = admission.approval_expires_at
+            AND approval.expires_at > clock_timestamp()
+        )
+      )
+  );
+END
+$has_any_current_materialization_postbuild_admission$;
+
 CREATE FUNCTION ops.verify_materialization_index_inventory(
   p_project_id uuid,
   p_job_id uuid,
@@ -1194,6 +1320,12 @@ REVOKE ALL PRIVILEGES ON FUNCTION
   ops.read_materialization_build_members(uuid, uuid, uuid, bigint),
   ops.prepare_materialization_build(uuid, uuid, uuid, bigint, jsonb),
   ops.promote_empty_materialization_base(uuid, uuid, uuid, bigint, uuid, text),
+  ops.has_current_materialization_capacity_admission(
+    uuid, uuid, uuid, bigint, uuid, text
+  ),
+  ops.has_any_current_materialization_postbuild_admission(
+    uuid, uuid, uuid, bigint, uuid[]
+  ),
   ops.verify_materialization_index_inventory(uuid, uuid, uuid, bigint),
   runtime.rebind_materialization_index_admissions(uuid, uuid, uuid, bigint),
   ops.finish_materialization_build(uuid, uuid, uuid, bigint)
@@ -1204,6 +1336,12 @@ GRANT EXECUTE ON FUNCTION
   ops.read_materialization_build_members(uuid, uuid, uuid, bigint),
   ops.prepare_materialization_build(uuid, uuid, uuid, bigint, jsonb),
   ops.promote_empty_materialization_base(uuid, uuid, uuid, bigint, uuid, text),
+  ops.has_current_materialization_capacity_admission(
+    uuid, uuid, uuid, bigint, uuid, text
+  ),
+  ops.has_any_current_materialization_postbuild_admission(
+    uuid, uuid, uuid, bigint, uuid[]
+  ),
   ops.verify_materialization_index_inventory(uuid, uuid, uuid, bigint),
   runtime.rebind_materialization_index_admissions(uuid, uuid, uuid, bigint),
   ops.finish_materialization_build(uuid, uuid, uuid, bigint)

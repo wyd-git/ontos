@@ -122,12 +122,12 @@ export interface ProductionMaterializationPipelineRepository {
   ): Promise<readonly ProductionMaterializationMember[]>;
   readCurrentInventoryRevision(projectId: string): Promise<bigint>;
   hasCurrentCapacityAdmission(input: {
-    readonly projectId: string;
+    readonly scope: MaterializationAttemptScope;
     readonly generationId: string;
     readonly phase: "PREBUILD" | "POSTBUILD";
   }): Promise<boolean>;
   hasAnyCurrentPostbuildAdmission(input: {
-    readonly projectId: string;
+    readonly scope: MaterializationAttemptScope;
     readonly generationIds: readonly string[];
   }): Promise<boolean>;
   verifyIndexInventory(scope: MaterializationAttemptScope): Promise<ArtifactDigest>;
@@ -438,7 +438,7 @@ export class ProductionMaterializationStageExecutor implements MaterializationSt
     for (const member of members) {
       throwIfAborted(input.signal);
       const reused = await this.#repository.hasCurrentCapacityAdmission({
-        projectId: scope.projectId,
+        scope,
         generationId: member.generationId,
         phase: "PREBUILD",
       });
@@ -475,7 +475,7 @@ export class ProductionMaterializationStageExecutor implements MaterializationSt
     const allCurrent = await Promise.all(
       generationIds.map((generationId) =>
         this.#repository.hasCurrentCapacityAdmission({
-          projectId: scope.projectId,
+          scope,
           generationId,
           phase: "POSTBUILD",
         }),
@@ -487,7 +487,7 @@ export class ProductionMaterializationStageExecutor implements MaterializationSt
     } | null = null;
     if (!allCurrent.every(Boolean)) {
       const anyCurrent = await this.#repository.hasAnyCurrentPostbuildAdmission({
-        projectId: scope.projectId,
+        scope,
         generationIds,
       });
       if (!anyCurrent) {
@@ -502,7 +502,7 @@ export class ProductionMaterializationStageExecutor implements MaterializationSt
         throwIfAborted(input.signal);
         if (
           !(await this.#repository.hasCurrentCapacityAdmission({
-            projectId: scope.projectId,
+            scope,
             generationId: member.generationId,
             phase: "POSTBUILD",
           }))

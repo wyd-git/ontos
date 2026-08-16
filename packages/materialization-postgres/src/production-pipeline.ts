@@ -192,30 +192,14 @@ export class PostgresProductionMaterializationPipelineRepository implements Prod
   ): Promise<boolean> {
     try {
       const result = await this.#pool.query<PresentRow>(
-        `SELECT EXISTS (
-           SELECT 1
-           FROM runtime.project_runtime_inventories AS inventory
-           JOIN runtime.capacity_admissions AS admission
-             ON admission.project_id = inventory.project_id
-            AND admission.inventory_revision = inventory.inventory_revision
-           WHERE inventory.project_id = $1::uuid
-             AND inventory.measurement_complete
-             AND admission.generation_id = $2::uuid
-             AND admission.phase = $3
-             AND admission.report ->> 'accepted' = 'true'
-             AND ($3 = 'PREBUILD' OR admission.physical_measurement_digest = inventory.inventory_digest)
-             AND (
-               admission.approval_id IS NULL OR EXISTS (
-                 SELECT 1 FROM runtime.capacity_approvals AS approval
-                 WHERE approval.project_id = admission.project_id
-                   AND approval.approval_id = admission.approval_id
-                   AND approval.state = 'active'
-                   AND approval.expires_at = admission.approval_expires_at
-                   AND approval.expires_at > clock_timestamp()
-               )
-             )
+        `SELECT ops.has_current_materialization_capacity_admission(
+           $1, $2, $3, $4, $5, $6
          ) AS present`,
-        [parseOntosId(input.projectId), parseOntosId(input.generationId), input.phase],
+        [
+          ...scopeParameters(input.scope),
+          parseOntosId(input.generationId),
+          input.phase,
+        ],
       );
       return required(result.rows[0]).present;
     } catch (error) {
@@ -232,30 +216,10 @@ export class PostgresProductionMaterializationPipelineRepository implements Prod
     const generationIds = input.generationIds.map((value) => parseOntosId(value));
     try {
       const result = await this.#pool.query<PresentRow>(
-        `SELECT EXISTS (
-           SELECT 1
-           FROM runtime.project_runtime_inventories AS inventory
-           JOIN runtime.capacity_admissions AS admission
-             ON admission.project_id = inventory.project_id
-            AND admission.inventory_revision = inventory.inventory_revision
-            AND admission.phase = 'POSTBUILD'
-            AND admission.physical_measurement_digest = inventory.inventory_digest
-           WHERE inventory.project_id = $1::uuid
-             AND inventory.measurement_complete
-             AND admission.generation_id = ANY($2::uuid[])
-             AND admission.report ->> 'accepted' = 'true'
-             AND (
-               admission.approval_id IS NULL OR EXISTS (
-                 SELECT 1 FROM runtime.capacity_approvals AS approval
-                 WHERE approval.project_id = admission.project_id
-                   AND approval.approval_id = admission.approval_id
-                   AND approval.state = 'active'
-                   AND approval.expires_at = admission.approval_expires_at
-                   AND approval.expires_at > clock_timestamp()
-               )
-             )
+        `SELECT ops.has_any_current_materialization_postbuild_admission(
+           $1, $2, $3, $4, $5
          ) AS present`,
-        [parseOntosId(input.projectId), generationIds],
+        [...scopeParameters(input.scope), generationIds],
       );
       return required(result.rows[0]).present;
     } catch (error) {
