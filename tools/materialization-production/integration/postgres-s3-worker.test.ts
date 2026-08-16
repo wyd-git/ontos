@@ -582,18 +582,28 @@ async function seedPublishedMaterializationResources(
       [resource.revisionId],
     );
   }
-  await admin.query(
-    `INSERT INTO runtime.snapshot_groups
-       (project_id, snapshot_group_id, group_key, definition_member_count)
-     VALUES ($1, $2, 'customers', 1)`,
-    [projectId, snapshotGroupId],
-  );
-  await admin.query(
-    `INSERT INTO runtime.snapshot_group_definition_members
-       (project_id, snapshot_group_id, ordinal, mapping_resource_id)
-     VALUES ($1, $2, 0, $3)`,
-    [projectId, snapshotGroupId, mappingResourceId],
-  );
+  const client = await admin.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO runtime.snapshot_groups
+         (project_id, snapshot_group_id, group_key, definition_member_count)
+       VALUES ($1, $2, 'customers', 1)`,
+      [projectId, snapshotGroupId],
+    );
+    await client.query(
+      `INSERT INTO runtime.snapshot_group_definition_members
+         (project_id, snapshot_group_id, ordinal, mapping_resource_id)
+       VALUES ($1, $2, 0, $3)`,
+      [projectId, snapshotGroupId, mappingResourceId],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
   await admin.query(
     `INSERT INTO runtime.project_runtime_inventories
        (project_id, state_revision, inventory_revision, measurement_complete, inventory_digest)
