@@ -22,7 +22,8 @@ export type MaterializationWorkerRuntimeEvent =
     };
 
 export interface MaterializationWorkerRuntimeDependencies {
-  readonly executor: MaterializationStageExecutor;
+  readonly executor?: MaterializationStageExecutor;
+  readonly createExecutor?: (pool: pg.Pool) => MaterializationStageExecutor;
   readonly observe?: (event: MaterializationWorkerRuntimeEvent) => void;
   readonly afterCheckpoint?: (checkpoint: MaterializationJobCheckpoint) => Promise<void>;
 }
@@ -58,11 +59,16 @@ export async function startMaterializationWorker(
 
   let worker: MaterializationWorker;
   try {
+    if ((dependencies.executor === undefined) === (dependencies.createExecutor === undefined)) {
+      throw new Error("Exactly one Worker stage executor source is required.");
+    }
+    const executor = dependencies.executor ?? dependencies.createExecutor?.(pool);
+    if (executor === undefined) throw new Error("The Worker stage executor is unavailable.");
     worker = new MaterializationWorker({
       workerInstanceId: config.workerInstanceId,
       leaseSeconds: config.leaseSeconds,
       repository: new PostgresMaterializationJobRepository(pool),
-      executor: dependencies.executor,
+      executor,
       leaseRuntime: new HeartbeatLeaseRuntime(config.heartbeatIntervalMilliseconds),
       crypto: { randomId: randomUUID },
       ...(dependencies.afterCheckpoint === undefined

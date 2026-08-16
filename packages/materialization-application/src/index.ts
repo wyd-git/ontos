@@ -35,6 +35,8 @@ export * from "./runtime-plan.ts";
 export * from "./overlay.ts";
 export * from "./cutover.ts";
 export * from "./garbage-collection.ts";
+export * from "./admin.ts";
+export * from "./production-pipeline.ts";
 
 export type MaterializationIngressErrorCode =
   | "ADMIN_REQUEST_INVALID"

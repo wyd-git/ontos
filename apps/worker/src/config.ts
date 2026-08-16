@@ -9,6 +9,18 @@ export interface MaterializationWorkerConfig {
   readonly databasePoolMaximum: number;
 }
 
+export interface ProductionMaterializationWorkerConfig extends MaterializationWorkerConfig {
+  readonly objectStore: {
+    readonly endpoint: string;
+    readonly region: string;
+    readonly bucket: string;
+    readonly accessKeyId: string;
+    readonly secretAccessKey: string;
+    readonly forcePathStyle: boolean;
+    readonly maxAttempts: number;
+  };
+}
+
 const forbiddenCredentialKeys = Object.freeze([
   "ONTOS_ADMIN_BEARER_TOKEN",
   "ONTOS_WORKER_BEARER_TOKEN",
@@ -74,6 +86,32 @@ export function loadMaterializationWorkerConfig(
   });
 }
 
+export function loadProductionMaterializationWorkerConfig(
+  source: Readonly<Record<string, string | undefined>> = process.env,
+): ProductionMaterializationWorkerConfig {
+  const worker = loadMaterializationWorkerConfig(source);
+  return Object.freeze({
+    ...worker,
+    objectStore: Object.freeze({
+      endpoint: required(source, "ONTOS_S3_ENDPOINT"),
+      region: required(source, "ONTOS_S3_REGION"),
+      bucket: required(source, "ONTOS_S3_BUCKET"),
+      accessKeyId: required(source, "ONTOS_S3_ACCESS_KEY_ID"),
+      secretAccessKey: required(source, "ONTOS_S3_SECRET_ACCESS_KEY"),
+      forcePathStyle: booleanValue(
+        source["ONTOS_S3_FORCE_PATH_STYLE"] ?? "false",
+        "ONTOS_S3_FORCE_PATH_STYLE",
+      ),
+      maxAttempts: boundedInteger(
+        source["ONTOS_S3_MAX_ATTEMPTS"] ?? "2",
+        "ONTOS_S3_MAX_ATTEMPTS",
+        1,
+        5,
+      ),
+    }),
+  });
+}
+
 function required(source: Readonly<Record<string, string | undefined>>, key: string): string {
   const value = source[key]?.trim();
   if (value === undefined || value.length === 0) {
@@ -89,4 +127,10 @@ function boundedInteger(value: string, key: string, minimum: number, maximum: nu
     throw new Error(`${key} is invalid.`);
   }
   return parsed;
+}
+
+function booleanValue(value: string, key: string): boolean {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  throw new Error(`${key} is invalid.`);
 }

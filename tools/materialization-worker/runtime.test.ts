@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { loadMaterializationWorkerConfig } from "../../apps/worker/src/config.ts";
+import {
+  loadMaterializationWorkerConfig,
+  loadProductionMaterializationWorkerConfig,
+} from "../../apps/worker/src/config.ts";
 import { HeartbeatLeaseRuntime } from "../../apps/worker/src/lease-runtime.ts";
 
 const minimumConfig = Object.freeze({
@@ -20,6 +23,32 @@ void test("loads a bounded Worker-only runtime configuration", () => {
     shutdownGraceMilliseconds: 15000,
     databasePoolMaximum: 4,
   });
+});
+
+void test("loads the production Worker object-store boundary without Admin credentials", () => {
+  const source = {
+    ...minimumConfig,
+    ONTOS_S3_ENDPOINT: "http://127.0.0.1:9000",
+    ONTOS_S3_REGION: "us-east-1",
+    ONTOS_S3_BUCKET: "ontos-materialization",
+    ONTOS_S3_ACCESS_KEY_ID: "worker-access",
+    ONTOS_S3_SECRET_ACCESS_KEY: "worker-secret",
+    ONTOS_S3_FORCE_PATH_STYLE: "true",
+    ONTOS_S3_MAX_ATTEMPTS: "3",
+  };
+  assert.deepEqual(loadProductionMaterializationWorkerConfig(source), {
+    ...loadMaterializationWorkerConfig(source),
+    objectStore: {
+      endpoint: source.ONTOS_S3_ENDPOINT,
+      region: source.ONTOS_S3_REGION,
+      bucket: source.ONTOS_S3_BUCKET,
+      accessKeyId: source.ONTOS_S3_ACCESS_KEY_ID,
+      secretAccessKey: source.ONTOS_S3_SECRET_ACCESS_KEY,
+      forcePathStyle: true,
+      maxAttempts: 3,
+    },
+  });
+  assert.throws(() => loadProductionMaterializationWorkerConfig(minimumConfig));
 });
 
 void test("rejects bearer, OIDC, migration and DDL credentials from the Worker process", () => {
