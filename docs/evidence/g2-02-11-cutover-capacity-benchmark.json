@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-02-11",
+  "recordedAt": "2026-08-16",
+  "environment": {
+    "operatingSystem": "Ubuntu 24.04",
+    "platform": "linux",
+    "architecture": "x64",
+    "logicalCpuCount": 8,
+    "totalMemoryBytes": 16768651264,
+    "nodeVersion": "v24.18.0",
+    "postgresVersion": "16.14 (Debian 16.14-1.pgdg12+1)",
+    "postgresConfiguration": {
+      "shared_buffers": "128MB",
+      "work_mem": "4MB",
+      "maintenance_work_mem": "64MB",
+      "max_wal_size": "1GB",
+      "checkpoint_timeout": "5min",
+      "synchronous_commit": "on",
+      "effective_cache_size": "4GB",
+      "effective_io_concurrency": "1",
+      "random_page_cost": "4"
+    }
+  },
+  "workload": {
+    "objectRows": 100000,
+    "linkRows": 1000000,
+    "objectBatches": 20,
+    "linkBatches": 200,
+    "preparationHeadRows": 100000
+  },
+  "build": {
+    "state": "cold-empty-postgresql-container-and-data-layer",
+    "objectMilliseconds": 638956,
+    "linkMilliseconds": 621632,
+    "projectionMilliseconds": 1265067,
+    "qualityCurrentMilliseconds": 170356,
+    "rowsPerSecond": 873
+  },
+  "cutover": {
+    "commitMilliseconds": 207.474,
+    "limitMilliseconds": 5000,
+    "passed": true
+  },
+  "steadyNoopCutover": {
+    "runs": 20,
+    "p95Milliseconds": 83.991389,
+    "maxMilliseconds": 85.731624
+  },
+  "storage": {
+    "walBytes": 5153480888,
+    "projectActualBytes": 2830483456,
+    "capacityReservedBytes": 4245725184,
+    "capacityPeakBytes": 4245725184,
+    "dynamicIndexBytes": 15769600,
+    "inventoryRevision": "4",
+    "measurementDigest": "sha256:5859a18c9bb4fe2c52101d02118df878e7612ae6da6aa54726ddf9bee5731a70"
+  },
+  "memory": {
+    "peakNodeRssBytes": 313675776,
+    "postgresContainerAtCompletionBytes": 275775488,
+    "hostFreeAtCompletionBytes": 15543775232
+  },
+  "contentDigest": "sha256:5d47b768918c10a7e072475396443e2a025da3c1f78c5fc32b6cf65fdff4642f",
+  "result": "PASS"
+}

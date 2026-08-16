@@ -3,7 +3,7 @@
 - 版本：1.0
 - 日期：2026-08-15
 - 状态：Implementation Ready，仍受本任务包 Gate、红队修订与停止条件约束
-- 执行进度：G2-02-01～10 已 PASS（10/14）；当前唯一顺序工作项为 G2-02-11
+- 执行进度：G2-02-01～11 已 PASS（11/14）；当前唯一顺序工作项为 G2-02-12
 - 上游：[Ontology Kernel PRD](../product/ontology-kernel-prd.md)
 - 实现蓝图：[G2 生产实现蓝图](../product/ontology-kernel-implementation-blueprint.md)
 - 入口证据：[G2-01-12 Metadata clean-room 总验收](../evidence/g2-01-12-clean-room-metadata-gate.md)
@@ -537,6 +537,10 @@ Materialization 的产品价值不在“生成了新表数据”，而在用户�
 - 20 次固定规模 Cutover 记录锁等待与事务耗时，P95 < 1 秒且最大 < 5 秒；超过阈值先减少事务工作，不扩大锁超时掩盖；
 - `kill -9` API/Worker、PostgreSQL 连接断开和提交响应丢失后，可由幂等状态读取确定结果，不需要手工改 Pointer；
 - Evidence 清楚区分 Base 生产原子性、Overlay 对抗 Port 证据和待 G2-04 的真实 Overlay 集成，不宣称 AC-03 已完成。
+
+**交付状态（2026-08-16）**
+
+G2-02-11 已按 [ADR-018](../architecture/adr/018-immutable-head-set-snapshot-group-cutover.md)、[Evidence](../evidence/g2-02-11-snapshot-group-cutover.md) 与 [专项红队](../reviews/g2-02-11-snapshot-cutover-red-team.md) PASS：连续 Migration 到 0016，不可变 Head Set + Project Pointer CAS、完整 Activation/Member、Serving/Channel 并发控制、八边界故障回滚、zero-overlay/W0-W1 Port 和 Head 业务版本语义均已进入正式实现。真实 100k Object / 1m Link 下最终 Commit 为 207.474 ms，低于 5 秒硬上限。生产 Worker/Admin HTTP 组合仍属于 G2-02-13，本关不宣称完整端到端闭环。
 
 ### G2-02-12：实现 Generation/Index mark-plan-commit GC
 

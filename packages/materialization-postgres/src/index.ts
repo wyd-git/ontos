@@ -23,6 +23,7 @@ export * from "./worker.ts";
 export * from "./index-capacity.ts";
 export * from "./projection-ddl.ts";
 export * from "./runtime-plan.ts";
+export * from "./cutover.ts";
 
 interface SessionRow extends pg.QueryResultRow {
   readonly projectId: string;

@@ -32,6 +32,8 @@ export * from "./quality.ts";
 export * from "./worker.ts";
 export * from "./index-capacity.ts";
 export * from "./runtime-plan.ts";
+export * from "./overlay.ts";
+export * from "./cutover.ts";
 
 export type MaterializationIngressErrorCode =
   | "ADMIN_REQUEST_INVALID"

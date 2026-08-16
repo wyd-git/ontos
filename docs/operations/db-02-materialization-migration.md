@@ -71,5 +71,5 @@ Runner 会先执行版本/扩展/角色预检，再取得全局 Advisory Lock；
 - Migration Runner 与 Projection DDL Executor 是部署级受信进程，不复用 API/Worker 连接池或凭据。
 - 业务进程不得拼接 SQL、Identifier 或直接写 Migration Ledger。
 - 生产变更只向前追加；PR 合并后不得为了“修测试”改写已发布 Migration。
-- 0007～0015 已支持 Snapshot/Ingress/Job 事实、确定 Identity、Attempt-owned Base、不可见的 Quality-qualified Current、通用 Worker 恢复、Index/DDL、容量准入、Runtime Plan 与动态兼容证书；G2-02-11 完成正式 Cutover 处理器组合前，`worker:start` 必须保持 fail closed，且不得开启 Current Serving 或 GC 流量。
+- 0007～0016 已支持 Snapshot/Ingress/Job 事实、确定 Identity、Attempt-owned Base、不可见的 Quality-qualified Current、通用 Worker 恢复、Index/DDL、容量准入、Runtime Plan、动态兼容证书与原子 Cutover；G2-02-13 完成生产 Worker/Admin HTTP 阶段组合前，`worker:start` 必须保持 fail closed，且不得开启 GC 流量。
 - Worker 的部署、故障和 Manual Replay 纪律见 [Materialization Worker 运行手册](materialization-worker.md)。

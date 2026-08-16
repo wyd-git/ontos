@@ -23,6 +23,7 @@ void test("Publish, Cutover and GC share the one monotonic lock order", () => {
   assert.deepEqual(MATERIALIZATION_CUTOVER_LOCK_PLAN, [
     "PROJECT_CONTROL",
     "RELEASE_CHANNEL",
+    "RELEASE",
     "SNAPSHOT_GROUP",
     "OBJECT_TYPE_CUTOVER",
     "GENERATION_INVENTORY",

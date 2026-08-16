@@ -23,6 +23,8 @@ import {
   MaterializationQualityService,
   ProjectionCapacityAdmissionService,
   RowCountConfirmationService,
+  SnapshotGroupCutoverCoordinator,
+  SnapshotGroupCutoverError,
   RuntimeCompatibilityCoordinator,
   RuntimeCompatibilityError,
   provenanceTemplatesFromPlan,
@@ -43,6 +45,7 @@ import {
   PostgresMaterializationQualityRepository,
   PostgresProjectionCapacityAdmissionRepository,
   PostgresRuntimeCompatibilityRepository,
+  PostgresSnapshotGroupCutoverRepository,
   scanAndRecordProjectPhysicalInventory,
   type ProjectPhysicalInventoryMeasurement,
 } from "@ontos/materialization-postgres";
@@ -173,6 +176,26 @@ const ids = {
   linkGeneration: "10000000-0000-4000-8000-00000000200d",
   linkAttempt: "10000000-0000-4000-8000-00000000200e",
   projectionLinkQualityReport: "10000000-0000-4000-8000-00000000200f",
+  refresh2Snapshot: "40000000-0000-4000-8000-000000000001",
+  refresh2File: "40000000-0000-4000-8000-000000000002",
+  refresh2Artifact: "40000000-0000-4000-8000-000000000003",
+  refresh2Job: "40000000-0000-4000-8000-000000000004",
+  refresh2Attempt: "40000000-0000-4000-8000-000000000005",
+  refresh2Report: "40000000-0000-4000-8000-000000000006",
+  refresh2Generation: "40000000-0000-4000-8000-000000000007",
+  refresh2CapacityAdmission: "40000000-0000-4000-8000-000000000008",
+  refresh2Certificate2: "40000000-0000-4000-8000-000000000009",
+  refresh2Certificate3: "40000000-0000-4000-8000-00000000000a",
+  refresh3Snapshot: "40000000-0000-4000-8000-000000000011",
+  refresh3File: "40000000-0000-4000-8000-000000000012",
+  refresh3Artifact: "40000000-0000-4000-8000-000000000013",
+  refresh3Job: "40000000-0000-4000-8000-000000000014",
+  refresh3Attempt: "40000000-0000-4000-8000-000000000015",
+  refresh3Report: "40000000-0000-4000-8000-000000000016",
+  refresh3Generation: "40000000-0000-4000-8000-000000000017",
+  refresh3CapacityAdmission: "40000000-0000-4000-8000-000000000018",
+  refresh3Certificate2: "40000000-0000-4000-8000-000000000019",
+  refresh3Certificate3: "40000000-0000-4000-8000-00000000001a",
   qualityGroup: "30000000-0000-4000-8000-000000000001",
   qualityObjectSnapshot: "30000000-0000-4000-8000-000000000002",
   qualityObjectFile: "30000000-0000-4000-8000-000000000003",
@@ -217,6 +240,8 @@ const ids = {
   qualityConfirmationV3: "30000000-0000-4000-8000-00000000002a",
   qualityConfirmationV2Race: "30000000-0000-4000-8000-00000000002b",
 } as const;
+
+let activatedRelease2Id: string = ids.activation1;
 
 const digests = {
   object: digestOf("1"),
@@ -310,7 +335,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -387,6 +412,7 @@ void test(
       if (!projectionCapacityMode) {
         await exerciseManagedCsvIngressDatabase(apiConfig, worker1Config, opsConfig);
       }
+      await prepareAndCommitA1(adminConfig, apiConfig);
       await withClient(apiConfig, async (api) => {
         await publishA1(api);
       });
@@ -400,6 +426,9 @@ void test(
       await assertRuntimePrivilegeMatrix(apiConfig, worker1Config, opsConfig);
       if (!projectionCapacityMode) {
         await exerciseCompatibilityStalenessVectors(adminConfig, apiConfig, worker1Config);
+        await exerciseSnapshotGroupRefreshCutover(adminConfig, apiConfig, worker1Config);
+      } else {
+        await assertCapacityCutoverLinkSemantics(adminConfig);
       }
       await assertFreshConcurrentMigration(adminConfig);
       await assertEveryDb02MigrationRollsBack(adminConfig);
@@ -4845,91 +4874,958 @@ async function exerciseCompatibilityStalenessVectors(
   }
 }
 
-async function publishA1(client: pg.Client): Promise<void> {
-  const runtimePlan = await client.query<{ readonly plan_digest: string }>(
-    `SELECT plan_digest FROM meta.release_runtime_plans WHERE release_id = $1`,
-    [ids.release2],
-  );
-  const runtimePlanDigest = runtimePlan.rows[0]?.plan_digest;
-  assert.ok(runtimePlanDigest !== undefined);
-  const activationMembers = [
-    ...(projectionCapacityMode
-      ? [
-          {
-            memberKey: "link:OrderRelation",
-            generationId: ids.linkGeneration,
-            snapshotId: ids.linkSnapshot,
-            snapshotGroupId: ids.snapshotGroup,
-            groupVersion: 1,
-            certificateId: ids.linkCertificate,
-          },
-        ]
-      : []),
-    {
-      memberKey: "object:Order",
-      generationId: ids.generation,
-      snapshotId: ids.snapshot,
-      snapshotGroupId: ids.snapshotGroup,
-      groupVersion: 1,
-      certificateId: ids.certificate,
-    },
-  ];
-  const activationDigest = materializationDigest("RuntimeActivation", {
-    schemaVersion: 1,
-    contractVersion: "runtime-activation-v1",
-    activationId: ids.activation1,
+interface RefreshFixtureIds {
+  readonly snapshotId: string;
+  readonly fileId: string;
+  readonly artifactId: string;
+  readonly jobId: string;
+  readonly attemptId: string;
+  readonly reportId: string;
+  readonly generationId: string;
+  readonly capacityAdmissionId: string;
+  readonly release2CertificateId: string;
+  readonly release3CertificateId: string;
+}
+
+const refreshFixtureIds = Object.freeze({
+  3: Object.freeze({
+    snapshotId: ids.refresh2Snapshot,
+    fileId: ids.refresh2File,
+    artifactId: ids.refresh2Artifact,
+    jobId: ids.refresh2Job,
+    attemptId: ids.refresh2Attempt,
+    reportId: ids.refresh2Report,
+    generationId: ids.refresh2Generation,
+    capacityAdmissionId: ids.refresh2CapacityAdmission,
+    release2CertificateId: ids.refresh2Certificate2,
+    release3CertificateId: ids.refresh2Certificate3,
+  }),
+  4: Object.freeze({
+    snapshotId: ids.refresh3Snapshot,
+    fileId: ids.refresh3File,
+    artifactId: ids.refresh3Artifact,
+    jobId: ids.refresh3Job,
+    attemptId: ids.refresh3Attempt,
+    reportId: ids.refresh3Report,
+    generationId: ids.refresh3Generation,
+    capacityAdmissionId: ids.refresh3CapacityAdmission,
+    release2CertificateId: ids.refresh3Certificate2,
+    release3CertificateId: ids.refresh3Certificate3,
+  }),
+}) satisfies Readonly<Record<3 | 4, RefreshFixtureIds>>;
+
+function zeroOverlayEvidence(groupVersion: number) {
+  return Object.freeze({
+    providerId: "ontos.zero-overlay",
+    providerVersion: "1",
     projectId: ids.project,
-    releaseId: ids.release2,
-    runtimePlanDigest,
-    state: "ready",
-    members: activationMembers,
-    activationDigest: digestOf("0"),
-    createdAt: "2026-08-15T00:00:00.000000Z",
+    snapshotGroupKey: `${ids.snapshotGroup}:${String(groupVersion)}`,
+    complete: true,
+    watermark: 0,
+    deltaCount: 0,
+    digest: `sha256:${"0".repeat(64)}`,
+  });
+}
+
+async function exerciseSnapshotGroupRefreshCutover(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+): Promise<void> {
+  const inventoryPool = new pg.Pool(workerConfig);
+  let measurement: ProjectPhysicalInventoryMeasurement;
+  try {
+    measurement = await scanAndRecordProjectPhysicalInventory(
+      inventoryPool,
+      projectionCapacityCrypto(),
+      {
+        projectId: ids.project,
+        expectedInventoryRevision: 2n,
+      },
+    );
+  } finally {
+    await inventoryPool.end();
+  }
+  assert.equal(measurement.inventoryRevision, 3n);
+  await withClient(adminConfig, async (admin) => {
+    const indexPlan = await admin.query<{ readonly index_plan_id: string }>(
+      `SELECT index_plan_id
+       FROM runtime.index_plans
+       WHERE project_id = $1 AND target_resource_id = $2
+         AND target_revision_id = $3 AND plan_digest = $4`,
+      [ids.project, ids.objectResource, ids.objectRevision, runtimeObjectIndexPlanDigest()],
+    );
+    for (const releaseId of [ids.release2, ids.release3]) {
+      await admin.query(
+        `INSERT INTO runtime.index_plan_admissions (
+           project_id, admission_id, release_id, release_plan_digest,
+           index_plan_id, inventory_revision, release_units, project_union_units,
+           project_physical_index_count, admission_mode, report_digest
+         ) VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 0, 'WITHIN_NORMAL', $7)`,
+        [
+          ids.project,
+          randomUUID(),
+          releaseId,
+          sha256Digest(`g20211-refresh-index-plan-${releaseId}`),
+          required(indexPlan.rows[0]).index_plan_id,
+          measurement.inventoryRevision.toString(),
+          sha256Digest(`g20211-refresh-index-admission-${releaseId}`),
+        ],
+      );
+    }
   });
 
-  await client.query("BEGIN");
-  await client.query(
-    `INSERT INTO meta.runtime_activations
-       (activation_id, release_id, activation_digest, member_count)
-     VALUES ($1, $2, $3, $4)`,
-    [ids.activation1, ids.release2, activationDigest, activationMembers.length],
-  );
-  if (projectionCapacityMode) {
-    await client.query(
-      `INSERT INTO meta.runtime_activation_members (
-         project_id, release_id, activation_id, member_key, generation_id,
-         snapshot_id, snapshot_group_id, group_version, certificate_id
-       ) VALUES ($1, $2, $3, 'link:OrderRelation', $4, $5, $6, 1, $7)`,
-      [
-        ids.project,
-        ids.release2,
-        ids.activation1,
-        ids.linkGeneration,
-        ids.linkSnapshot,
-        ids.snapshotGroup,
-        ids.linkCertificate,
-      ],
+  const before = await withClient(adminConfig, readObjectHeads);
+  assert.equal(before.length, 2);
+  await prepareRefreshFixture(adminConfig, apiConfig, workerConfig, 3);
+
+  const apiPool = new pg.Pool(apiConfig);
+  try {
+    const repository = new PostgresSnapshotGroupCutoverRepository(apiPool);
+    const control = await readPublicationSequence(apiPool);
+    const evidence = zeroOverlayEvidence(3);
+    const preparations = await Promise.all(
+      ["g20211-double-refresh-left-0002", "g20211-double-refresh-right-0002"].map(
+        (idempotencyKey) =>
+          repository.prepareSnapshotGroupCutover({
+            command: {
+              projectId: ids.project,
+              snapshotGroupId: ids.snapshotGroup,
+              groupVersion: 3,
+              expectedControlRevision: control,
+              idempotencyKey,
+            },
+            overlayEvidence: evidence,
+          }),
+      ),
     );
+    const concurrent = await Promise.allSettled(
+      preparations.map((preparation) =>
+        repository.commitSnapshotGroupCutover({ preparation, overlayEvidence: evidence }),
+      ),
+    );
+    const fulfilled = concurrent.filter(
+      (
+        result,
+      ): result is PromiseFulfilledResult<
+        Awaited<ReturnType<typeof repository.commitSnapshotGroupCutover>>
+      > => result.status === "fulfilled",
+    );
+    const rejected = concurrent.filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (fulfilled.length !== 1) {
+      throw new Error(
+        concurrent
+          .map((result) =>
+            result.status === "fulfilled"
+              ? "fulfilled"
+              : `${String(result.reason)}:${String(
+                  (result.reason as { readonly cause?: { readonly message?: unknown } }).cause
+                    ?.message,
+                )}`,
+          )
+          .join(" | "),
+      );
+    }
+    assert.equal(fulfilled.length, 1);
+    assert.equal(rejected.length, 1);
+    assert.equal(
+      rejected[0]?.reason instanceof SnapshotGroupCutoverError &&
+        rejected[0].reason.code === "CUTOVER_CONCURRENT_MODIFICATION",
+      true,
+    );
+    const refresh2 = required(fulfilled[0]).value;
+    assert.deepEqual(
+      {
+        inserted: refresh2.insertedHeadCount,
+        updated: refresh2.updatedHeadCount,
+        repointed: refresh2.repointedHeadCount,
+        releaseCount: refresh2.releases.length,
+      },
+      { inserted: 0, updated: 0, repointed: 2, releaseCount: 2 },
+    );
+    const winningPreparation =
+      preparations[concurrent.findIndex((result) => result.status === "fulfilled")];
+    const lostResponseRetry = await repository.commitSnapshotGroupCutover({
+      preparation: required(winningPreparation),
+      overlayEvidence: evidence,
+    });
+    assert.equal(lostResponseRetry.reused, true);
+
+    const afterRebuild = await withClient(adminConfig, readObjectHeads);
+    assert.deepEqual(
+      afterRebuild.map((head) => [head.object_rid, head.head_version, head.head_digest]),
+      before.map((head) => [head.object_rid, head.head_version, head.head_digest]),
+    );
+    assert.equal(
+      afterRebuild.every((head) => head.current_generation_id === ids.refresh2Generation),
+      true,
+    );
+    await assertRefreshLifecycle(adminConfig, 1, "retired", "superseded");
+    await assertRefreshLifecycle(adminConfig, 3, "active", "active");
+
+    await prepareRefreshFixture(adminConfig, apiConfig, workerConfig, 4);
+    const stalePreparation = await repository.prepareSnapshotGroupCutover({
+      command: {
+        projectId: ids.project,
+        snapshotGroupId: ids.snapshotGroup,
+        groupVersion: 4,
+        expectedControlRevision: await readPublicationSequence(apiPool),
+        idempotencyKey: "g20211-refresh-versus-publish-0003",
+      },
+      overlayEvidence: zeroOverlayEvidence(4),
+    });
+    const release3Activation = required(
+      refresh2.releases.find((release) => release.releaseId === ids.release3),
+    ).activationId;
+    await publishRelease3(adminConfig, release3Activation);
+    await assert.rejects(
+      repository.commitSnapshotGroupCutover({
+        preparation: stalePreparation,
+        overlayEvidence: zeroOverlayEvidence(4),
+      }),
+      (error: unknown) =>
+        error instanceof SnapshotGroupCutoverError &&
+        error.code === "CUTOVER_CONCURRENT_MODIFICATION",
+    );
+
+    const coordinator = new SnapshotGroupCutoverCoordinator(repository);
+    const refresh3 = await coordinator.activate({
+      projectId: ids.project,
+      snapshotGroupId: ids.snapshotGroup,
+      groupVersion: 4,
+      expectedControlRevision: await readPublicationSequence(apiPool),
+      idempotencyKey: "g20211-refresh-after-publish-0003",
+    });
+    assert.deepEqual(
+      {
+        inserted: refresh3.insertedHeadCount,
+        updated: refresh3.updatedHeadCount,
+        repointed: refresh3.repointedHeadCount,
+        servingMoved: refresh3.releases.filter((release) => release.servingHeadMoved).length,
+        channelMoved: refresh3.releases.filter((release) => release.channelMoved).length,
+      },
+      { inserted: 0, updated: 2, repointed: 0, servingMoved: 2, channelMoved: 1 },
+    );
+    const afterBusinessChange = await withClient(adminConfig, readObjectHeads);
+    assert.deepEqual(
+      afterBusinessChange.map((head) => head.head_version),
+      before.map((head) => head.head_version + 1),
+    );
+    assert.equal(
+      afterBusinessChange.every((head) => head.current_generation_id === ids.refresh3Generation),
+      true,
+    );
+    assert.equal(afterBusinessChange[0]?.head_digest, afterBusinessChange[0]?.base_value_digest);
+    assert.notEqual(afterBusinessChange[1]?.head_digest, afterBusinessChange[1]?.base_value_digest);
+    await assertRefreshLifecycle(adminConfig, 3, "retired", "superseded");
+    await assertRefreshLifecycle(adminConfig, 4, "active", "active");
+    await assertSemanticHeadDigestContract(adminConfig);
+
+    const performance = await measureRepeatedCutovers(repository, apiPool);
+    assert.equal(performance.p95Milliseconds < 1_000, true);
+    assert.equal(performance.maxMilliseconds < 5_000, true);
+    process.stdout.write(`${JSON.stringify({ g20211Cutover: performance })}\n`);
+  } finally {
+    await apiPool.end();
   }
-  await client.query(
-    `INSERT INTO meta.runtime_activation_members (
-       project_id, release_id, activation_id, member_key, generation_id,
-       snapshot_id, snapshot_group_id, group_version, certificate_id
-     ) VALUES ($1, $2, $3, 'object:Order', $4, $5, $6, 1, $7)`,
-    [
-      ids.project,
-      ids.release2,
-      ids.activation1,
-      ids.generation,
-      ids.snapshot,
-      ids.snapshotGroup,
-      ids.certificate,
-    ],
+}
+
+interface ObjectHeadProbe {
+  readonly object_rid: string;
+  readonly current_generation_id: string;
+  readonly head_version: number;
+  readonly head_digest: string;
+  readonly base_value_digest: string;
+}
+
+async function readObjectHeads(client: pg.Client): Promise<readonly ObjectHeadProbe[]> {
+  const result = await client.query<ObjectHeadProbe>(
+    `SELECT object_rid::text, current_generation_id::text, head_version::integer,
+            head_digest, base_value_digest
+     FROM runtime.object_heads
+     WHERE project_id = $1 AND object_type_resource_id = $2
+     ORDER BY object_rid`,
+    [ids.project, ids.objectResource],
   );
+  return result.rows;
+}
+
+async function readPublicationSequence(pool: pg.Pool): Promise<bigint> {
+  const result = await pool.query<{ readonly revision: string }>(
+    `SELECT publication_sequence::text AS revision FROM meta.projects WHERE project_id = $1`,
+    [ids.project],
+  );
+  return BigInt(required(result.rows[0]).revision);
+}
+
+async function prepareRefreshFixture(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+  groupVersion: 3 | 4,
+): Promise<void> {
+  const fixture = refreshFixtureIds[groupVersion];
+  const sourceSnapshotId = groupVersion === 3 ? ids.snapshot : ids.refresh2Snapshot;
+  const sourceGenerationId = groupVersion === 3 ? ids.generation : ids.refresh2Generation;
+  const reportDigest = sha256Digest(`g20211-refresh-report-${String(groupVersion)}`);
+  const generationDigest = sha256Digest(`g20211-refresh-generation-${String(groupVersion)}`);
+  const snapshotDigest = sha256Digest(`g20211-refresh-snapshot-${String(groupVersion)}`);
+  const contentDigest = sha256Digest(`g20211-refresh-content-${String(groupVersion)}`);
+
+  await withClient(adminConfig, async (admin) => {
+    await admin.query("BEGIN");
+    try {
+      await admin.query(
+        `INSERT INTO runtime.snapshot_group_versions
+           (project_id, snapshot_group_id, group_version, member_count, group_digest)
+         VALUES ($1, $2, $3, 1, $4)`,
+        [
+          ids.project,
+          ids.snapshotGroup,
+          groupVersion,
+          sha256Digest(`g20211-refresh-group-${String(groupVersion)}`),
+        ],
+      );
+      await admin.query(
+        `INSERT INTO runtime.dataset_snapshots (
+           project_id, snapshot_id, snapshot_group_id, group_version,
+           member_key, member_kind, target_resource_id, target_revision_id,
+           snapshot_schema_resource_id, snapshot_schema_revision_id,
+           mapping_resource_id, mapping_revision_id, runtime_plan_digest,
+           content_digest, byte_count, row_count, file_count, previous_snapshot_id,
+           snapshot_digest
+         )
+         SELECT project_id, $1, snapshot_group_id, $2, member_key, member_kind,
+                target_resource_id, target_revision_id, snapshot_schema_resource_id,
+                snapshot_schema_revision_id, mapping_resource_id, mapping_revision_id,
+                runtime_plan_digest, $3, byte_count, row_count, 1, snapshot_id, $4
+         FROM runtime.dataset_snapshots
+         WHERE project_id = $5 AND snapshot_id = $6`,
+        [
+          fixture.snapshotId,
+          groupVersion,
+          contentDigest,
+          snapshotDigest,
+          ids.project,
+          sourceSnapshotId,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO runtime.snapshot_files (
+           project_id, snapshot_id, file_id, managed_artifact_id, object_version,
+           ordinal, content_digest, byte_count, row_count, source_label, scan_status
+         )
+         SELECT project_id, $1, $2, $3, $4, 0, $5, byte_count, row_count,
+                'G2-02-11 refresh fixture', 'complete'
+         FROM runtime.dataset_snapshots
+         WHERE project_id = $6 AND snapshot_id = $1`,
+        [
+          fixture.snapshotId,
+          fixture.fileId,
+          fixture.artifactId,
+          `refresh-version-${String(groupVersion)}`,
+          contentDigest,
+          ids.project,
+        ],
+      );
+      await admin.query(
+        `INSERT INTO runtime.snapshot_group_members (
+           project_id, snapshot_group_id, group_version, member_key, member_kind,
+           snapshot_id, target_resource_id, target_revision_id
+         ) VALUES ($1, $2, $3, 'object:Order', 'object', $4, $5, $6)`,
+        [
+          ids.project,
+          ids.snapshotGroup,
+          groupVersion,
+          fixture.snapshotId,
+          ids.objectResource,
+          ids.objectRevision,
+        ],
+      );
+      await admin.query("COMMIT");
+    } catch (error) {
+      await admin.query("ROLLBACK");
+      throw error;
+    }
+    for (const state of ["validated", "materializing"] as const) {
+      await admin.query(
+        `UPDATE runtime.snapshot_group_versions
+         SET state = $4, changed_at = clock_timestamp()
+         WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = $3`,
+        [ids.project, ids.snapshotGroup, groupVersion, state],
+      );
+      await admin.query(
+        `UPDATE runtime.dataset_snapshots
+         SET state = $4, changed_at = clock_timestamp()
+         WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = $3`,
+        [ids.project, ids.snapshotGroup, groupVersion, state],
+      );
+    }
+  });
+
+  await withClient(apiConfig, async (api) => {
+    const result = await api.query<{ readonly state: string; readonly reused: boolean }>(
+      `SELECT state, reused FROM ops.ensure_runtime_refresh_job($1, $2, $3, $4, $5)`,
+      [ids.project, fixture.jobId, ids.snapshotGroup, groupVersion, randomUUID()],
+    );
+    assert.deepEqual(result.rows[0], { state: "queued", reused: false });
+  });
+
+  await withClient(adminConfig, async (admin) => {
+    await admin.query(
+      `INSERT INTO runtime.generations (
+         project_id, generation_id, member_key, member_kind,
+         target_resource_id, target_revision_id, snapshot_id, snapshot_group_id,
+         group_version, snapshot_schema_resource_id, snapshot_schema_revision_id,
+         mapping_resource_id, mapping_revision_id, runtime_plan_digest, index_plan_digest
+       )
+       SELECT project_id, $1, member_key, member_kind, target_resource_id,
+              target_revision_id, $2, snapshot_group_id, $3,
+              snapshot_schema_resource_id, snapshot_schema_revision_id,
+              mapping_resource_id, mapping_revision_id, runtime_plan_digest, index_plan_digest
+       FROM runtime.generations
+       WHERE project_id = $4 AND generation_id = $5`,
+      [fixture.generationId, fixture.snapshotId, groupVersion, ids.project, sourceGenerationId],
+    );
+  });
+
+  await withClient(workerConfig, async (worker) => {
+    const claim = await worker.query<{ readonly job_id: string }>(
+      `SELECT job_id FROM ops.claim_materialization_job_v2($1, $2, 300)`,
+      [ids.worker1, fixture.attemptId],
+    );
+    assert.equal(claim.rows[0]?.job_id, fixture.jobId);
+  });
+
+  await withClient(adminConfig, async (admin) => {
+    await admin.query("BEGIN");
+    try {
+      await admin.query(
+        `WITH ranked AS (
+           SELECT base.*, row_number() OVER (ORDER BY base.object_rid) AS ordinal
+           FROM runtime.object_base AS base
+           WHERE base.project_id = $1 AND base.generation_id = $2
+         )
+         INSERT INTO runtime.object_base (
+           project_id, generation_id, object_type_resource_id, object_type_revision_id,
+           object_rid, canonical_primary_key, properties, source_snapshot_id,
+           source_file_id, source_row_number, mapping_revision_id, value_digest
+         )
+         SELECT project_id, $3, object_type_resource_id, object_type_revision_id,
+                object_rid, canonical_primary_key,
+                CASE WHEN $4::boolean AND ordinal = 1
+                  THEN jsonb_set(properties, '{values,displayName,value}',
+                    to_jsonb('Order refresh v3'::text), false)
+                  ELSE properties END,
+                $5, $6, source_row_number, mapping_revision_id,
+                CASE WHEN $4::boolean AND ordinal = 1 THEN $7 ELSE value_digest END
+         FROM ranked`,
+        [
+          ids.project,
+          sourceGenerationId,
+          fixture.generationId,
+          groupVersion === 4,
+          fixture.snapshotId,
+          fixture.fileId,
+          sha256Digest("g20211-refresh-v3-business-value"),
+        ],
+      );
+      await admin.query(
+        `WITH ranked AS (
+           SELECT base.*, row_number() OVER (ORDER BY base.object_rid) AS ordinal
+           FROM runtime.object_base AS base
+           WHERE base.project_id = $1 AND base.generation_id = $2
+         )
+         INSERT INTO runtime.object_current (
+           project_id, generation_id, object_type_resource_id, object_type_revision_id,
+           object_rid, canonical_primary_key, properties, base_value_digest, lifecycle_state
+         )
+         SELECT base.project_id, base.generation_id, base.object_type_resource_id,
+                base.object_type_revision_id, base.object_rid, base.canonical_primary_key,
+                base.properties, base.value_digest,
+                CASE WHEN $3::boolean AND base.ordinal = 2 THEN 'inactive'
+                     ELSE old_current.lifecycle_state END
+         FROM ranked AS base
+         JOIN runtime.object_current AS old_current
+           ON old_current.project_id = base.project_id
+          AND old_current.generation_id = $4
+          AND old_current.object_type_resource_id = base.object_type_resource_id
+          AND old_current.object_rid = base.object_rid`,
+        [ids.project, fixture.generationId, groupVersion === 4, sourceGenerationId],
+      );
+      await admin.query(
+        `INSERT INTO runtime.property_provenance (
+           project_id, generation_id, object_type_resource_id, object_rid,
+           property_api_name, source_snapshot_id, source_file_id, source_row_number,
+           input_column_ordinal, mapping_revision_id, algorithm_version, value_digest,
+           source_index, source_kind, source_expression_digest
+         )
+         SELECT project_id, $1, object_type_resource_id, object_rid,
+                property_api_name, $2, $3, source_row_number,
+                input_column_ordinal, mapping_revision_id,
+                'g2-02-11-refresh-rebuild-v1', value_digest,
+                source_index, source_kind, source_expression_digest
+         FROM runtime.property_provenance
+         WHERE project_id = $4 AND generation_id = $5`,
+        [fixture.generationId, fixture.snapshotId, fixture.fileId, ids.project, sourceGenerationId],
+      );
+      await admin.query(
+        `INSERT INTO runtime.materialization_reports (
+           project_id, report_id, snapshot_group_id, group_version, job_id, outcome,
+           total_rows, accepted_rows, rejected_rows, validator_version, report_digest
+         )
+         SELECT $1, $2, $3, $4, $5, 'passed', count(*), count(*), 0,
+                'g2-02-11-refresh-fixture-v1', $6
+         FROM runtime.object_current
+         WHERE project_id = $1 AND generation_id = $7`,
+        [
+          ids.project,
+          fixture.reportId,
+          ids.snapshotGroup,
+          groupVersion,
+          fixture.jobId,
+          reportDigest,
+          fixture.generationId,
+        ],
+      );
+      await admin.query(
+        `UPDATE runtime.generations
+         SET report_id = $3, report_digest = $4, generation_digest = $5,
+             changed_at = clock_timestamp()
+         WHERE project_id = $1 AND generation_id = $2`,
+        [ids.project, fixture.generationId, fixture.reportId, reportDigest, generationDigest],
+      );
+      await admin.query(
+        `INSERT INTO runtime.materialization_quality_bindings (
+           project_id, generation_id, report_id, report_digest,
+           snapshot_digest, mapping_revision_digest, observation_digest,
+           current_digest, provenance_digest, zero_overlay_row_count,
+           state, quality_binding_digest
+         )
+         SELECT $1, $2, $3, $4, $5, revision.content_digest, $6, $7, $8, 0,
+                'passed', $9
+         FROM runtime.generations AS generation
+         JOIN meta.resource_revisions AS revision
+           ON revision.resource_id = generation.mapping_resource_id
+          AND revision.revision_id = generation.mapping_revision_id
+         WHERE generation.project_id = $1 AND generation.generation_id = $2`,
+        [
+          ids.project,
+          fixture.generationId,
+          fixture.reportId,
+          reportDigest,
+          snapshotDigest,
+          sha256Digest(`g20211-refresh-observations-${String(groupVersion)}`),
+          sha256Digest(`g20211-refresh-current-${String(groupVersion)}`),
+          sha256Digest(`g20211-refresh-provenance-${String(groupVersion)}`),
+          sha256Digest(`g20211-refresh-quality-${String(groupVersion)}`),
+        ],
+      );
+      await admin.query(
+        `UPDATE ops.materialization_attempts
+         SET state = 'completed', finished_at = clock_timestamp(), result_code = 'SUCCEEDED'
+         WHERE project_id = $1 AND attempt_id = $2 AND state = 'leased'`,
+        [ids.project, fixture.attemptId],
+      );
+      await admin.query(
+        `UPDATE ops.materialization_jobs
+         SET state = 'succeeded', lease_owner_id = NULL, lease_expires_at = NULL,
+             heartbeat_at = NULL, result_code = 'SUCCEEDED', result_digest = $3,
+             updated_at = clock_timestamp()
+         WHERE project_id = $1 AND job_id = $2`,
+        [ids.project, fixture.jobId, sha256Digest(`g20211-refresh-job-${String(groupVersion)}`)],
+      );
+      for (const table of ["snapshot_group_versions", "dataset_snapshots"] as const) {
+        await admin.query(
+          `UPDATE runtime.${table}
+           SET state = 'ready', changed_at = clock_timestamp()
+           WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = $3`,
+          [ids.project, ids.snapshotGroup, groupVersion],
+        );
+      }
+      await admin.query(
+        `UPDATE runtime.generations SET state = 'ready', changed_at = clock_timestamp()
+         WHERE project_id = $1 AND generation_id = $2`,
+        [ids.project, fixture.generationId],
+      );
+      await admin.query(
+        `INSERT INTO runtime.capacity_admissions (
+           project_id, admission_id, generation_id, phase, inventory_revision,
+           index_plan_digest, source_forecast_digest, physical_measurement_digest,
+           measured_bytes, observed_project_physical_bytes, reserved_bytes,
+           steady_reserved_bytes, peak_reserved_bytes, report, report_digest
+         )
+         SELECT generation.project_id, $1, generation.generation_id, 'POSTBUILD',
+                inventory.inventory_revision, generation.index_plan_digest, $2,
+                inventory.inventory_digest, 0, 0, 0, 0, 0,
+                '{"accepted":true,"fixture":"g2-02-11-refresh"}'::jsonb, $3
+         FROM runtime.generations AS generation
+         JOIN runtime.project_runtime_inventories AS inventory
+           ON inventory.project_id = generation.project_id AND inventory.measurement_complete
+         WHERE generation.project_id = $4 AND generation.generation_id = $5`,
+        [
+          fixture.capacityAdmissionId,
+          sha256Digest(`g20211-refresh-forecast-${String(groupVersion)}`),
+          sha256Digest(`g20211-refresh-capacity-${String(groupVersion)}`),
+          ids.project,
+          fixture.generationId,
+        ],
+      );
+      await admin.query("COMMIT");
+    } catch (error) {
+      await admin.query("ROLLBACK");
+      throw error;
+    }
+  });
+
+  await withClient(apiConfig, async (api) => {
+    for (const [releaseId, certificateId] of [
+      [ids.release2, fixture.release2CertificateId],
+      [ids.release3, fixture.release3CertificateId],
+    ] as const) {
+      const issued = await api.query<{ readonly certificate_id: string }>(
+        `SELECT certificate_id FROM runtime.issue_compatibility_certificate($1, $2, $3, $4)`,
+        [certificateId, ids.project, fixture.generationId, releaseId],
+      );
+      assert.equal(issued.rows[0]?.certificate_id, certificateId);
+    }
+  });
+}
+
+async function publishRelease3(adminConfig: pg.ClientConfig, activationId: string): Promise<void> {
+  await withClient(adminConfig, async (admin) => {
+    await admin.query("BEGIN");
+    try {
+      await admin.query(
+        `INSERT INTO meta.release_serving_heads
+           (release_id, activation_id, control_sequence) VALUES ($1, $2, 1)`,
+        [ids.release3, activationId],
+      );
+      await admin.query(
+        `UPDATE meta.releases
+         SET state = 'published', published_by_principal_id = $2,
+             published_at = clock_timestamp(), changed_at = clock_timestamp()
+         WHERE release_id = $1 AND state = 'ready'`,
+        [ids.release3, ids.principal],
+      );
+      await admin.query(
+        `UPDATE meta.releases SET state = 'superseded', changed_at = clock_timestamp()
+         WHERE release_id = $1 AND state = 'published'`,
+        [ids.release2],
+      );
+      await admin.query(
+        `UPDATE meta.release_channels
+         SET release_id = $2, activation_id = $3,
+             control_sequence = control_sequence + 1, changed_at = clock_timestamp()
+         WHERE project_id = $1 AND channel_name = 'production'`,
+        [ids.project, ids.release3, activationId],
+      );
+      await admin.query(
+        `UPDATE meta.projects
+         SET publication_sequence = publication_sequence + 1,
+             changed_at = clock_timestamp()
+         WHERE project_id = $1`,
+        [ids.project],
+      );
+      await admin.query("COMMIT");
+    } catch (error) {
+      await admin.query("ROLLBACK");
+      throw error;
+    }
+  });
+}
+
+async function assertRefreshLifecycle(
+  adminConfig: pg.ClientConfig,
+  groupVersion: number,
+  expectedGenerationState: string,
+  expectedSnapshotState: string,
+): Promise<void> {
+  const generationId =
+    groupVersion === 1
+      ? ids.generation
+      : groupVersion === 3
+        ? ids.refresh2Generation
+        : ids.refresh3Generation;
+  await withClient(adminConfig, async (admin) => {
+    const result = await admin.query<{
+      readonly generation_state: string;
+      readonly snapshot_state: string;
+      readonly group_state: string;
+    }>(
+      `SELECT
+         (SELECT state FROM runtime.generations
+          WHERE project_id = $1 AND generation_id = $4) AS generation_state,
+         (SELECT state FROM runtime.dataset_snapshots
+          WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = $3
+            AND member_kind = 'object') AS snapshot_state,
+         (SELECT state FROM runtime.snapshot_group_versions
+          WHERE project_id = $1 AND snapshot_group_id = $2 AND group_version = $3) AS group_state`,
+      [ids.project, ids.snapshotGroup, groupVersion, generationId],
+    );
+    assert.deepEqual(result.rows[0], {
+      generation_state: expectedGenerationState,
+      snapshot_state: expectedSnapshotState,
+      group_state: expectedSnapshotState,
+    });
+  });
+}
+
+async function assertSemanticHeadDigestContract(adminConfig: pg.ClientConfig): Promise<void> {
+  await withClient(adminConfig, async (admin) => {
+    const base = sha256Digest("g20211-semantic-base");
+    const firstLink = sha256Digest("g20211-semantic-link-a");
+    const secondLink = sha256Digest("g20211-semantic-link-b");
+    const result = await admin.query<{
+      readonly plain: string;
+      readonly inactive: string;
+      readonly first_link: string;
+      readonly second_link: string;
+    }>(
+      `SELECT
+         ontos_migration.g20211_semantic_head_digest($1, 'active', NULL) AS plain,
+         ontos_migration.g20211_semantic_head_digest($1, 'inactive', NULL) AS inactive,
+         ontos_migration.g20211_semantic_head_digest($1, 'active', $2) AS first_link,
+         ontos_migration.g20211_semantic_head_digest($1, 'active', $3) AS second_link`,
+      [base, firstLink, secondLink],
+    );
+    assert.equal(result.rows[0]?.plain, base);
+    assert.notEqual(result.rows[0]?.inactive, base);
+    assert.notEqual(result.rows[0]?.first_link, result.rows[0]?.second_link);
+  });
+}
+
+async function assertCapacityCutoverLinkSemantics(adminConfig: pg.ClientConfig): Promise<void> {
+  await withClient(adminConfig, async (admin) => {
+    const result = await admin.query<{ readonly linked_heads: number }>(
+      `SELECT count(*)::integer AS linked_heads
+       FROM runtime.object_heads
+       WHERE project_id = $1 AND object_type_resource_id = $2
+         AND head_digest <> base_value_digest`,
+      [ids.project, ids.objectResource],
+    );
+    assert.equal((result.rows[0]?.linked_heads ?? 0) > 0, true);
+  });
+  await assertSemanticHeadDigestContract(adminConfig);
+}
+
+async function measureRepeatedCutovers(
+  repository: PostgresSnapshotGroupCutoverRepository,
+  pool: pg.Pool,
+): Promise<{
+  readonly runs: number;
+  readonly p95Milliseconds: number;
+  readonly maxMilliseconds: number;
+  readonly samplesMilliseconds: readonly number[];
+}> {
+  const expectedControlRevision = await readPublicationSequence(pool);
+  const overlayEvidence = zeroOverlayEvidence(4);
+  const samples: number[] = [];
+  for (let index = 0; index < 20; index += 1) {
+    const preparation = await repository.prepareSnapshotGroupCutover({
+      command: {
+        projectId: ids.project,
+        snapshotGroupId: ids.snapshotGroup,
+        groupVersion: 4,
+        expectedControlRevision,
+        idempotencyKey: `g20211-performance-${String(index).padStart(4, "0")}`,
+      },
+      overlayEvidence,
+    });
+    const startedAt = process.hrtime.bigint();
+    const result = await repository.commitSnapshotGroupCutover({ preparation, overlayEvidence });
+    samples.push(elapsedMilliseconds(startedAt));
+    assert.equal(result.changed, false);
+  }
+  const ordered = samples.toSorted((left, right) => left - right);
+  return Object.freeze({
+    runs: samples.length,
+    p95Milliseconds: required(ordered[Math.ceil(ordered.length * 0.95) - 1]),
+    maxMilliseconds: Math.max(...samples),
+    samplesMilliseconds: Object.freeze(samples),
+  });
+}
+
+async function prepareAndCommitA1(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+): Promise<void> {
+  const apiPool = new pg.Pool(apiConfig);
+  const adminPool = new pg.Pool(adminConfig);
+  try {
+    const control = await apiPool.query<{ readonly revision: string }>(
+      `SELECT publication_sequence::text AS revision
+       FROM meta.projects WHERE project_id = $1`,
+      [ids.project],
+    );
+    const expectedControlRevision = required(control.rows[0]).revision;
+    const repository = new PostgresSnapshotGroupCutoverRepository(apiPool);
+    const evidence = {
+      providerId: "ontos.zero-overlay",
+      providerVersion: "1",
+      projectId: ids.project,
+      snapshotGroupKey: `${ids.snapshotGroup}:1`,
+      complete: true,
+      watermark: 0,
+      deltaCount: 0,
+      digest: `sha256:${"0".repeat(64)}`,
+    } as const;
+
+    if (!projectionCapacityMode) {
+      const before = await cutoverAtomicState(adminPool);
+      for (const [index, faultPoint] of [
+        "after_locks",
+        "after_activations",
+        "after_heads",
+        "after_serving_heads",
+        "after_channels",
+        "after_lifecycle",
+        "after_revisions",
+        "after_result",
+      ].entries()) {
+        const preparation = await repository.prepareSnapshotGroupCutover({
+          command: {
+            projectId: ids.project,
+            snapshotGroupId: ids.snapshotGroup,
+            groupVersion: 1,
+            expectedControlRevision: BigInt(expectedControlRevision),
+            idempotencyKey: `g20211-fault-${String(index).padStart(4, "0")}`,
+          },
+          overlayEvidence: evidence,
+        });
+        await withClient(adminConfig, async (admin) => {
+          await assert.rejects(
+            admin.query(
+              `SELECT * FROM ontos_migration.g20211_commit_snapshot_group_cutover(
+                 $1, $2, $3, $4, $5, $6, $7, $8
+               )`,
+              [
+                ids.project,
+                preparation.preparationId,
+                evidence.providerId,
+                evidence.providerVersion,
+                evidence.watermark,
+                evidence.deltaCount,
+                evidence.digest,
+                faultPoint,
+              ],
+            ),
+            (error: unknown) =>
+              (error as { readonly code?: unknown }).code === "XX000" &&
+              String((error as { readonly message?: unknown }).message).includes(faultPoint),
+          );
+        });
+        assert.deepEqual(await cutoverAtomicState(adminPool), before);
+      }
+    }
+
+    const coordinator = new SnapshotGroupCutoverCoordinator(repository);
+    const command = {
+      projectId: ids.project,
+      snapshotGroupId: ids.snapshotGroup,
+      groupVersion: 1,
+      expectedControlRevision: BigInt(expectedControlRevision),
+      idempotencyKey: "g20211-initial-cutover-0001",
+    } as const;
+    const preparation = await repository.prepareSnapshotGroupCutover({
+      command,
+      overlayEvidence: evidence,
+    });
+    const commitStartedAt = process.hrtime.bigint();
+    const result = await repository.commitSnapshotGroupCutover({
+      preparation,
+      overlayEvidence: evidence,
+    });
+    const commitMilliseconds = elapsedMilliseconds(commitStartedAt);
+    assert.equal(commitMilliseconds < 5_000, true);
+    if (projectionCapacityMode) {
+      process.stdout.write(
+        `CI_G2_02_11_CUTOVER_CAPACITY ${JSON.stringify({
+          objectRows: capacityMetrics.objectRows,
+          linkRows: capacityMetrics.linkRows,
+          preparationHeadRows: preparation.objectHeadCount,
+          commitMilliseconds: Math.round(commitMilliseconds * 1_000) / 1_000,
+        })}\n`,
+      );
+    }
+    const release2 = result.releases.find((release) => release.releaseId === ids.release2);
+    assert.ok(release2 !== undefined);
+    assert.equal(release2.servingHeadMoved, false);
+    activatedRelease2Id = release2.activationId;
+    const retry = await coordinator.activate({
+      projectId: ids.project,
+      snapshotGroupId: ids.snapshotGroup,
+      groupVersion: 1,
+      expectedControlRevision,
+      idempotencyKey: "g20211-initial-cutover-0001",
+    });
+    assert.equal(retry.reused, true);
+    assert.equal(
+      retry.releases.find((release) => release.releaseId === ids.release2)?.activationId,
+      activatedRelease2Id,
+    );
+  } finally {
+    await apiPool.end();
+    await adminPool.end();
+  }
+}
+
+async function cutoverAtomicState(pool: pg.Pool): Promise<unknown> {
+  const result = await pool.query(
+    `SELECT
+       (SELECT COALESCE(jsonb_agg(jsonb_build_array(
+          release_id::text, activation_id::text, activation_digest, member_count, state
+        ) ORDER BY release_id, activation_id), '[]'::jsonb)
+        FROM meta.runtime_activations WHERE release_id IN ($1, $2)) AS activations,
+       (SELECT COALESCE(jsonb_agg(jsonb_build_array(
+          release_id::text, activation_id::text, member_key, generation_id::text,
+          snapshot_id::text, group_version, certificate_id::text
+        ) ORDER BY release_id, activation_id, member_key COLLATE "C"), '[]'::jsonb)
+        FROM meta.runtime_activation_members WHERE release_id IN ($1, $2)) AS members,
+       (SELECT COALESCE(jsonb_agg(jsonb_build_array(
+          object_type_resource_id::text, object_rid::text, current_generation_id::text,
+          object_type_revision_id::text, head_version, head_digest, base_value_digest
+        ) ORDER BY object_type_resource_id, object_rid), '[]'::jsonb)
+        FROM runtime.object_heads WHERE project_id = $3) AS heads,
+       (SELECT COALESCE(jsonb_agg(jsonb_build_array(
+          release_id::text, activation_id::text, control_sequence
+        ) ORDER BY release_id), '[]'::jsonb)
+        FROM meta.release_serving_heads WHERE release_id IN ($1, $2)) AS serving,
+       (SELECT jsonb_build_array(release_id::text, activation_id::text, control_sequence)
+        FROM meta.release_channels WHERE project_id = $3 AND channel_name = 'production') AS channel,
+       (SELECT publication_sequence FROM meta.projects WHERE project_id = $3) AS control,
+       (SELECT jsonb_build_array(state_revision, inventory_revision)
+        FROM runtime.project_runtime_inventories WHERE project_id = $3) AS inventory,
+       (SELECT COALESCE(jsonb_agg(jsonb_build_array(
+          snapshot_group_id::text, group_version, state
+        ) ORDER BY snapshot_group_id, group_version), '[]'::jsonb)
+        FROM runtime.snapshot_group_versions WHERE project_id = $3) AS group_versions,
+       (SELECT COALESCE(jsonb_agg(jsonb_build_array(
+          snapshot_id::text, snapshot_group_id::text, group_version, state
+        ) ORDER BY snapshot_id), '[]'::jsonb)
+        FROM runtime.dataset_snapshots WHERE project_id = $3) AS snapshots,
+       (SELECT COALESCE(jsonb_agg(jsonb_build_array(
+          generation_id::text, snapshot_group_id::text, group_version, state
+        ) ORDER BY generation_id), '[]'::jsonb)
+        FROM runtime.generations WHERE project_id = $3) AS generations,
+       (SELECT COALESCE(jsonb_agg(jsonb_build_array(
+          job_id::text, snapshot_group_id::text, group_version, state,
+          fencing_token, result_code
+        ) ORDER BY job_id), '[]'::jsonb)
+        FROM ops.materialization_jobs WHERE project_id = $3) AS jobs`,
+    [ids.release2, ids.release3, ids.project],
+  );
+  return result.rows[0];
+}
+
+async function publishA1(client: pg.Client): Promise<void> {
+  await client.query("BEGIN");
   await client.query(
     `INSERT INTO meta.release_serving_heads
        (release_id, activation_id, control_sequence) VALUES ($1, $2, 1)`,
-    [ids.release2, ids.activation1],
+    [ids.release2, activatedRelease2Id],
   );
   await client.query(
     `UPDATE meta.releases
@@ -4948,7 +5844,14 @@ async function publishA1(client: pg.Client): Promise<void> {
      SET release_id = $2, activation_id = $3,
          control_sequence = control_sequence + 1, changed_at = clock_timestamp()
      WHERE project_id = $1 AND channel_name = 'production'`,
-    [ids.project, ids.release2, ids.activation1],
+    [ids.project, ids.release2, activatedRelease2Id],
+  );
+  await client.query(
+    `UPDATE meta.projects
+     SET publication_sequence = publication_sequence + 1,
+         changed_at = clock_timestamp()
+     WHERE project_id = $1`,
+    [ids.project],
   );
   await client.query("COMMIT");
 }
@@ -4971,12 +5874,12 @@ async function assertA1AndCrossProjectGuards(client: pg.Client): Promise<void> {
       AND generation.generation_id = member.generation_id
      WHERE activation.activation_id = $1
      GROUP BY activation.member_count`,
-    [ids.activation1],
+    [activatedRelease2Id],
   );
   assert.deepEqual(a1.rows[0], {
     member_count: projectionCapacityMode ? 2 : 1,
     actual_members: projectionCapacityMode ? 2 : 1,
-    generation_state: "ready",
+    generation_state: "active",
   });
 
   await assertFailedTransaction(client, "23514", async () => {
@@ -5080,7 +5983,7 @@ async function assertA1AndCrossProjectGuards(client: pg.Client): Promise<void> {
   const perTypeTables = await client.query<{ readonly count: number }>(`
     SELECT count(*)::integer AS count FROM pg_catalog.pg_tables
     WHERE schemaname = 'runtime'
-      AND (tablename LIKE '%order%' OR tablename LIKE '%release%')`);
+      AND (tablename LIKE '%order%' OR tablename ~ '^release_[0-9]')`);
   assert.equal(perTypeTables.rows[0]?.count, 0);
 }
 
@@ -5274,12 +6177,19 @@ async function assertRuntimePrivilegeMatrix(
     for (const statement of [
       "SELECT count(*) FROM runtime.object_base",
       "SELECT count(*) FROM runtime.link_base",
+      "SELECT count(*) FROM runtime.object_heads",
+      "SELECT count(*) FROM runtime.object_head_sets",
+      "SELECT count(*) FROM runtime.object_head_versions",
+      "SELECT count(*) FROM runtime.project_object_head_pointers",
+      "SELECT count(*) FROM runtime.snapshot_group_cutover_head_candidates",
       "SELECT count(*) FROM ops.object_base_staging",
       "SELECT count(*) FROM ops.link_base_staging",
       "UPDATE runtime.object_base SET properties = properties WHERE false",
       "DELETE FROM runtime.object_base WHERE false",
       "UPDATE runtime.link_base SET value_digest = value_digest WHERE false",
       "DELETE FROM runtime.link_base WHERE false",
+      "UPDATE runtime.object_head_versions SET head_version = head_version WHERE false",
+      "UPDATE runtime.project_object_head_pointers SET head_set_id = head_set_id WHERE false",
     ]) {
       await assertPgCode(api.query(statement), "42501");
     }
@@ -5341,6 +6251,12 @@ async function assertRuntimePrivilegeMatrix(
       "DELETE FROM runtime.object_base WHERE false",
       "UPDATE runtime.link_base SET value_digest = value_digest WHERE false",
       "DELETE FROM runtime.link_base WHERE false",
+      "SELECT count(*) FROM runtime.object_heads",
+      "SELECT count(*) FROM runtime.object_head_sets",
+      "SELECT count(*) FROM runtime.object_head_versions",
+      "SELECT count(*) FROM runtime.project_object_head_pointers",
+      "UPDATE runtime.object_head_versions SET head_version = head_version WHERE false",
+      "UPDATE runtime.project_object_head_pointers SET head_set_id = head_set_id WHERE false",
     ]) {
       await assertPgCode(worker.query(statement), "42501");
     }
@@ -5357,6 +6273,10 @@ async function assertRuntimePrivilegeMatrix(
     for (const statement of [
       "SELECT count(*) FROM runtime.object_base",
       "SELECT count(*) FROM runtime.link_base",
+      "SELECT count(*) FROM runtime.object_heads",
+      "SELECT count(*) FROM runtime.object_head_sets",
+      "SELECT count(*) FROM runtime.object_head_versions",
+      "SELECT count(*) FROM runtime.project_object_head_pointers",
       "SELECT count(*) FROM ops.object_base_staging",
       "SELECT count(*) FROM ops.link_base_staging",
     ]) {
@@ -5672,11 +6592,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 15);
+  assert.equal(left.applied.length + right.applied.length, 16);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 15)).length, 15);
+    assert.equal((await migrationLedger(client, 16)).length, 16);
   });
 }
 
@@ -5691,6 +6611,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
     [13, "ops.materialization_job_error_samples"],
     [14, "ops.projection_ddl_requests"],
     [15, "runtime.snapshot_group_definition_members"],
+    [16, "runtime.snapshot_group_cutover_preparations"],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -5758,10 +6679,19 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     "runtime.object_base",
     "runtime.object_current",
     "runtime.object_head_candidates",
+    "runtime.object_head_sets",
+    "runtime.object_head_versions",
+    "runtime.project_object_head_pointers",
     "runtime.object_identities",
     "runtime.snapshot_files",
     "runtime.snapshot_group_versions",
     "runtime.snapshot_groups",
+    "runtime.snapshot_group_cutover_preparations",
+    "runtime.snapshot_group_cutover_release_candidates",
+    "runtime.snapshot_group_cutover_member_candidates",
+    "runtime.snapshot_group_cutover_head_candidates",
+    "runtime.snapshot_group_cutover_object_type_locks",
+    "runtime.activation_content_bindings",
   ];
   const result = await client.query<{ readonly relation: string; readonly owner: string }>(
     `
@@ -5885,7 +6815,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(15);
+  const directory = await migrationPrefixDirectory(16);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);
