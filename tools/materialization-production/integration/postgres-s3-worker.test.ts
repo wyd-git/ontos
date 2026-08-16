@@ -7,7 +7,12 @@ import test from "node:test";
 import { promisify } from "node:util";
 
 import { HeadBucketCommand, PutBucketVersioningCommand, S3Client } from "@aws-sdk/client-s3";
-import { parseArtifactDigest, parseErrorEnvelope, type ArtifactDigest } from "@ontos/contracts";
+import {
+  canonicalizeContractForDigest,
+  parseArtifactDigest,
+  parseErrorEnvelope,
+  type ArtifactDigest,
+} from "@ontos/contracts";
 import {
   IndexPlanAdmissionService,
   type IndexCapacityCrypto,
@@ -940,7 +945,7 @@ function digestBytes(value: Uint8Array): ArtifactDigest {
 }
 
 function digestJson(value: unknown): ArtifactDigest {
-  return digestText(JSON.stringify(value));
+  return digestText(canonicalizeContractForDigest(value));
 }
 
 function digestText(value: string): ArtifactDigest {
