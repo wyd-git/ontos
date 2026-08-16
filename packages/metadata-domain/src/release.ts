@@ -15,6 +15,11 @@ import {
 
 export const METADATA_RELEASE_VALIDATOR_VERSION = "metadata-release-g2-01-v1" as const;
 
+const runtimePlanStageableCompatibilityCodes = new Set([
+  "SNAPSHOT_SCHEMA_REMATERIALIZATION_REQUIRED",
+  "MAPPING_REMATERIALIZATION_REQUIRED",
+]);
+
 export type ReleaseLifecycleState =
   "draft" | "staging" | "ready" | "failed" | "published" | "superseded";
 
@@ -223,7 +228,11 @@ function compatibilityIssue(
 ): ValidationIssueContract {
   return Object.freeze({
     code: `COMPATIBILITY_${finding.code}`,
-    severity: finding.kind === "compatible" ? "warning" : "error",
+    severity:
+      finding.kind === "compatible" ||
+      (finding.kind === "conditional" && runtimePlanStageableCompatibilityCodes.has(finding.code))
+        ? "warning"
+        : "error",
     resourceId: parseOntosId(resourceId, "$releaseGate.issue.resourceId"),
     path: finding.path,
     message: finding.message,

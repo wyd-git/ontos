@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@ontos/contracts": "0.0.0",
+    "@ontos/materialization-domain": "0.0.0",
     "@ontos/metadata-application": "0.0.0",
     "@ontos/metadata-domain": "0.0.0",
     "pg": "8.23.0"

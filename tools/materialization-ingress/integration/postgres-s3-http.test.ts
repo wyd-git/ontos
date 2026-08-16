@@ -176,6 +176,29 @@ void test(
       assert.equal(injected.status, 400);
       assert.equal(errorCode(injected), "ADMIN_REQUEST_INVALID");
 
+      const draftReleaseId = randomUUID();
+      await admin.query(
+        `INSERT INTO meta.releases
+           (release_id, project_id, release_number, manifest_digest,
+            target_channel_name, created_by_principal_id)
+         VALUES ($1, $2, 2, $3, 'production', $4)`,
+        [draftReleaseId, projectId, digestText("g2-02-10-draft-no-plan"), principalId],
+      );
+      const draftWithoutPlan = await api(
+        runtime,
+        ownerToken,
+        "POST",
+        "/api/v1/admin/snapshot-upload-sessions",
+        {
+          json: {
+            ...createSessionBody(fixture, projectId, csv.byteLength, "draft.csv"),
+            releaseId: draftReleaseId,
+          },
+        },
+      );
+      assert.equal(draftWithoutPlan.status, 404);
+      assert.equal(errorCode(draftWithoutPlan), "OBJECT_NOT_ACCESSIBLE");
+
       const firstCreation = await api(
         runtime,
         ownerToken,
@@ -183,7 +206,7 @@ void test(
         "/api/v1/admin/snapshot-upload-sessions",
         { json: createSessionBody(fixture, projectId, csv.byteLength, "first.csv") },
       );
-      assert.equal(firstCreation.status, 201);
+      assert.equal(firstCreation.status, 201, firstCreation.text);
       const firstSession = createdSession(firstCreation);
       assert.doesNotMatch(firstCreation.text, /objectKey|secretAccessKey|127\.0\.0\.1:|bucket/iu);
       const firstUpload = await api(runtime, ownerToken, "PUT", firstSession.uploadPath, {
@@ -603,16 +626,25 @@ async function seedIngressRuntimePlan(
       WHERE release_id = $1`,
     [releaseId, validationContextDigest],
   );
-  await admin.query(
-    `UPDATE meta.releases SET state = 'ready', changed_at = clock_timestamp()
-      WHERE release_id = $1`,
-    [releaseId],
-  );
-  await admin.query(
-    `INSERT INTO runtime.snapshot_groups
-       (project_id, snapshot_group_id, group_key) VALUES ($1, $2, 'customers')`,
-    [projectId, snapshotGroupId],
-  );
+  await admin.query("BEGIN");
+  try {
+    await admin.query(
+      `INSERT INTO runtime.snapshot_groups
+         (project_id, snapshot_group_id, group_key, definition_member_count)
+       VALUES ($1, $2, 'customers', 1)`,
+      [projectId, snapshotGroupId],
+    );
+    await admin.query(
+      `INSERT INTO runtime.snapshot_group_definition_members
+         (project_id, snapshot_group_id, ordinal, mapping_resource_id)
+       VALUES ($1, $2, 0, $3)`,
+      [projectId, snapshotGroupId, mappingResourceId],
+    );
+    await admin.query("COMMIT");
+  } catch (error) {
+    await admin.query("ROLLBACK");
+    throw error;
+  }
   const indexPlanDigest = digestText("g2-02-04-index-plan");
   await admin.query(
     `INSERT INTO runtime.index_plans
@@ -641,6 +673,28 @@ async function seedIngressRuntimePlan(
       ],
       planDigest: digestText("placeholder"),
     }),
+  );
+  await admin.query(
+    `INSERT INTO runtime.project_runtime_inventories
+       (project_id, state_revision, inventory_revision,
+        measurement_complete, inventory_digest)
+     VALUES ($1, 1, 1, true, $2)`,
+    [projectId, digestText("g2-02-04-runtime-inventory")],
+  );
+  await admin.query(
+    `INSERT INTO runtime.index_plan_admissions (
+       project_id, admission_id, release_id, release_plan_digest,
+       index_plan_id, inventory_revision, release_units, project_union_units,
+       project_physical_index_count, admission_mode, report_digest
+     ) VALUES ($1, $2, $3, $4, $5, 1, 0, 0, 0, 'WITHIN_NORMAL', $6)`,
+    [
+      projectId,
+      randomUUID(),
+      releaseId,
+      runtimePlanDigest,
+      indexPlanId,
+      digestText("g2-02-04-index-admission"),
+    ],
   );
   const client = await admin.connect();
   try {

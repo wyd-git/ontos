@@ -1,7 +1,9 @@
 import {
   canonicalizeContractForDigest,
   parseLinkTypeDefinition,
+  parseMappingDefinition,
   parseObjectTypeDefinition,
+  parseSnapshotSchemaDefinition,
   type ArtifactDigest,
   type CompatibilityFindingContract,
   type CompatibilityReportContract,
@@ -13,7 +15,14 @@ import {
   type ResourceFamily,
 } from "@ontos/contracts";
 
-export const METADATA_COMPATIBILITY_VERSION = "metadata-compatibility-g2-01-v1" as const;
+export const METADATA_COMPATIBILITY_VERSION = "metadata-compatibility-g2-02-10-v1" as const;
+
+const runtimePlanCompatibilityFamilies = new Set<ResourceFamily>([
+  "object_type",
+  "link_type",
+  "snapshot_schema",
+  "mapping",
+]);
 
 export interface ResourceCompatibilityInput {
   readonly baselineFamily: ResourceFamily;
@@ -100,6 +109,36 @@ export function compareResourceCompatibility(
       endpointIdentityMap(input.endpointRevisionIdentities ?? []),
     );
   }
+  if (input.baselineFamily === "snapshot_schema") {
+    const baseline = parseSnapshotSchemaDefinition(input.baselineContent);
+    const candidate = parseSnapshotSchemaDefinition(input.candidateContent);
+    return sameValue(baseline, candidate)
+      ? evaluation([])
+      : evaluation([
+          finding(
+            "conditional",
+            "SNAPSHOT_SCHEMA_REMATERIALIZATION_REQUIRED",
+            "/",
+            "The Snapshot Schema changed and existing Generation data cannot be assumed compatible.",
+            "Derive the new Runtime Plan and complete a new trusted Generation before Release readiness.",
+          ),
+        ]);
+  }
+  if (input.baselineFamily === "mapping") {
+    const baseline = parseMappingDefinition(input.baselineContent);
+    const candidate = parseMappingDefinition(input.candidateContent);
+    return sameValue(baseline, candidate)
+      ? evaluation([])
+      : evaluation([
+          finding(
+            "conditional",
+            "MAPPING_REMATERIALIZATION_REQUIRED",
+            "/",
+            "The Mapping changed and an existing Generation cannot be trusted for the new semantics.",
+            "Derive the new Runtime Plan and complete a new trusted Generation before Release readiness.",
+          ),
+        ]);
+  }
 
   return evaluation([
     finding(
@@ -131,7 +170,7 @@ export function comparePinnedCompatibility(
     .map(({ revisionId, resourceId }) => ({ revisionId, resourceId }));
 
   for (const [resourceId, candidate] of sortedEntries(candidateByResource)) {
-    if (candidate.family === "object_type" || candidate.family === "link_type") continue;
+    if (runtimePlanCompatibilityFamilies.has(candidate.family)) continue;
     findings.push(
       finding(
         "conditional",
