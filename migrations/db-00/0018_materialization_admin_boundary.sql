@@ -361,7 +361,7 @@ BEGIN
              AND stage.generation_id = generation.generation_id
              AND stage.state = 'promoted'
          ),
-         generation.member_key,
+         generation.member_key::text,
          generation.member_kind,
          generation.target_resource_id,
          generation.target_revision_id,
