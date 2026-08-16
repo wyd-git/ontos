@@ -32,7 +32,8 @@
       "migrations/db-00/0012_materialization_quality_current.sql",
       "migrations/db-00/0013_materialization_job_worker.sql",
       "migrations/db-00/0014_projection_index_capacity_ddl.sql",
-      "migrations/db-00/0015_runtime_plan_compatibility.sql"
+      "migrations/db-00/0015_runtime_plan_compatibility.sql",
+      "migrations/db-00/0016_snapshot_group_cutover.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -74,6 +75,7 @@
       "ops.link_base_staging",
       "ops.object_base_staging",
       "ops.projection_ddl_requests",
+      "runtime.activation_content_bindings",
       "runtime.capacity_admissions",
       "runtime.capacity_approvals",
       "runtime.compatibility_certificates",
@@ -93,13 +95,21 @@
       "runtime.object_base",
       "runtime.object_current",
       "runtime.object_head_candidates",
+      "runtime.object_head_sets",
+      "runtime.object_head_versions",
       "runtime.object_heads",
       "runtime.object_identities",
+      "runtime.project_object_head_pointers",
       "runtime.project_physical_measurements",
       "runtime.project_runtime_inventories",
       "runtime.property_provenance",
       "runtime.rejected_row_sets",
       "runtime.snapshot_files",
+      "runtime.snapshot_group_cutover_head_candidates",
+      "runtime.snapshot_group_cutover_member_candidates",
+      "runtime.snapshot_group_cutover_object_type_locks",
+      "runtime.snapshot_group_cutover_preparations",
+      "runtime.snapshot_group_cutover_release_candidates",
       "runtime.snapshot_group_definition_members",
       "runtime.snapshot_group_members",
       "runtime.snapshot_group_versions",
@@ -182,6 +192,12 @@
       "path": "docs/architecture/adr/017-materialization-worker-recovery.md",
       "acceptedStatus": "Accepted for G2-02-08",
       "evidence": "docs/evidence/g2-02-08-materialization-worker.md"
+    },
+    {
+      "id": "ADR-018",
+      "path": "docs/architecture/adr/018-immutable-head-set-snapshot-group-cutover.md",
+      "acceptedStatus": "Accepted for G2-02-11",
+      "evidence": "docs/evidence/g2-02-11-snapshot-group-cutover.md"
     }
   ],
   "requiredEvidence": [
@@ -219,7 +235,8 @@
     "docs/evidence/g2-02-07-quality-current-provenance.md",
     "docs/evidence/g2-02-08-materialization-worker.md",
     "docs/evidence/g2-02-09-index-capacity-ddl.md",
-    "docs/evidence/g2-02-10-runtime-plan-compatibility.md"
+    "docs/evidence/g2-02-10-runtime-plan-compatibility.md",
+    "docs/evidence/g2-02-11-snapshot-group-cutover.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",
