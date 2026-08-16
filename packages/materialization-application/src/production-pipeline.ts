@@ -238,6 +238,11 @@ export class ProductionMaterializationStageExecutor implements MaterializationSt
         forecastId: parseOntosId(this.#crypto.randomId()),
       })),
     });
+    const inventoryRevision = await this.#repository.readCurrentInventoryRevision(scope.projectId);
+    const measurement = await this.#scanPhysicalInventory({
+      projectId: scope.projectId,
+      expectedInventoryRevision: inventoryRevision,
+    });
     for (const member of members) {
       for (const file of member.files) {
         throwIfAborted(input.signal);
@@ -254,6 +259,8 @@ export class ProductionMaterializationStageExecutor implements MaterializationSt
     return stageResult(input, this.#crypto, {
       memberCount: members.length,
       members: members.map(memberEvidence),
+      inventoryRevision: measurement.inventoryRevision.toString(),
+      measurementDigest: measurement.measurementDigest,
     });
   }
 

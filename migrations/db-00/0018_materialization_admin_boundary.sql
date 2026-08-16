@@ -1107,6 +1107,16 @@ BEGIN
      AND capacity.inventory_revision = inventory_revision
      AND capacity.physical_measurement_digest = inventory_digest
      AND capacity.report ->> 'accepted' = 'true'
+     AND (
+       capacity.approval_id IS NULL OR EXISTS (
+         SELECT 1 FROM runtime.capacity_approvals AS approval
+         WHERE approval.project_id = capacity.project_id
+           AND approval.approval_id = capacity.approval_id
+           AND approval.state = 'active'
+           AND approval.expires_at = capacity.approval_expires_at
+           AND approval.expires_at > clock_timestamp()
+       )
+     )
     WHERE generation.project_id = p_project_id
       AND generation.snapshot_group_id = job_row.snapshot_group_id
       AND generation.group_version = job_row.group_version

@@ -244,6 +244,16 @@ export class PostgresProductionMaterializationPipelineRepository implements Prod
              AND inventory.measurement_complete
              AND admission.generation_id = ANY($2::uuid[])
              AND admission.report ->> 'accepted' = 'true'
+             AND (
+               admission.approval_id IS NULL OR EXISTS (
+                 SELECT 1 FROM runtime.capacity_approvals AS approval
+                 WHERE approval.project_id = admission.project_id
+                   AND approval.approval_id = admission.approval_id
+                   AND approval.state = 'active'
+                   AND approval.expires_at = admission.approval_expires_at
+                   AND approval.expires_at > clock_timestamp()
+               )
+             )
          ) AS present`,
         [parseOntosId(input.projectId), generationIds],
       );

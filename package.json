@@ -57,6 +57,7 @@
     "test:materialization-runtime-plan": "node --test tools/materialization-runtime-plan/*.test.ts",
     "test:materialization-gc": "node --test tools/materialization-gc/*.test.ts",
     "test:materialization-worker:postgres": "node --test --test-concurrency=1 tools/materialization-worker/integration/postgres-process.test.ts",
+    "test:materialization:production": "node --test --test-concurrency=1 tools/materialization-production/integration/postgres-s3-worker.test.ts",
     "test:materialization-ingress:s3": "node --test --test-concurrency=1 tools/materialization-ingress/integration/s3.test.ts",
     "test:materialization-ingress:integration": "node --test --test-concurrency=1 tools/materialization-ingress/integration/*.test.ts",
     "test:projection-ddl:postgres": "node --test --test-concurrency=1 tools/materialization-control-plane/integration/postgres.test.ts",
