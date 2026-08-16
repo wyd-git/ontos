@@ -263,7 +263,8 @@ void test(
       assert.equal(baselinePublish.status, 200, baselinePublish.text);
       const r1State = await stateCounts(admin, primaryProjectId);
       assert.equal(r1State.activations, 1);
-      assert.equal(r1State.servingHeads, 0);
+      assert.equal(r1State.servingHeads, 1);
+      assert.equal(r1State.materializedMembers, 0);
 
       const commerce = await seedDomain(admin, primaryProjectId, principalId, commerceFixture);
       const work = await seedDomain(admin, secondProjectId, principalId, workFixture);
@@ -1238,15 +1239,24 @@ async function stateCounts(
 ): Promise<{
   readonly activations: number;
   readonly servingHeads: number;
+  readonly materializedMembers: number;
 }> {
-  const result = await admin.query<{ readonly activations: number; readonly servingHeads: number }>(
+  const result = await admin.query<{
+    readonly activations: number;
+    readonly servingHeads: number;
+    readonly materializedMembers: number;
+  }>(
     `SELECT
        (SELECT count(*)::integer FROM meta.runtime_activations AS activation
         JOIN meta.releases AS release ON release.release_id = activation.release_id
         WHERE release.project_id = $1) AS activations,
        (SELECT count(*)::integer FROM meta.release_serving_heads AS head
         JOIN meta.releases AS release ON release.release_id = head.release_id
-        WHERE release.project_id = $1) AS "servingHeads"`,
+        WHERE release.project_id = $1) AS "servingHeads",
+       (SELECT COALESCE(sum(activation.member_count), 0)::integer
+        FROM meta.runtime_activations AS activation
+        JOIN meta.releases AS release ON release.release_id = activation.release_id
+        WHERE release.project_id = $1) AS "materializedMembers"`,
     [projectId],
   );
   return required(result.rows[0]);
