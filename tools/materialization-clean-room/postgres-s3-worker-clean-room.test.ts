@@ -269,12 +269,10 @@ void test(
       const commerce = await seedDomain(admin, primaryProjectId, principalId, commerceFixture);
       const work = await seedDomain(admin, secondProjectId, principalId, workFixture);
 
-      const releaseId = await createRelease(
-        apiRuntime,
-        ownerToken,
-        primaryProjectId,
-        commerce.revisionIds,
-      );
+      const releaseId = await createRelease(apiRuntime, ownerToken, primaryProjectId, [
+        baselineRevisionId,
+        ...commerce.revisionIds,
+      ]);
       const indexPlanIds = await stageIndexPlans(
         adminConfig,
         primaryProjectId,
