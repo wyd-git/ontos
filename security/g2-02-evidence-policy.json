@@ -24,6 +24,7 @@
   "scope": {
     "allowedExactPaths": [
       ".github/workflows/foundation-ci.yml",
+      "docs/README.md",
       "migrations/db-00/0018_materialization_admin_boundary.sql",
       "package-lock.json",
       "package.json",
