@@ -216,8 +216,8 @@ void test(
         objectStore,
       });
 
-      const ownerToken = await required(oidc).token({ subject: "clean-room-owner", name: "Owner" });
-      const outsiderToken = await required(oidc).token({
+      let ownerToken = await required(oidc).token({ subject: "clean-room-owner", name: "Owner" });
+      let outsiderToken = await required(oidc).token({
         subject: "clean-room-outsider",
         name: "Outsider",
       });
@@ -391,6 +391,7 @@ void test(
         },
       );
       const walBytes = await walBytesSince(admin, walStart);
+      ownerToken = await required(oidc).token({ subject: "clean-room-owner", name: "Owner" });
 
       const readyStage = await api(
         apiRuntime,
@@ -467,6 +468,11 @@ void test(
       const refreshBenchmarkDurationMs = elapsedMilliseconds(refreshBenchmarkStarted);
       assert.equal(refreshBenchmarkDurationMs < 30 * 60 * 1_000, true);
       const refreshBuild = await readBuildEvidence(admin, primaryProjectId, refreshJob);
+      ownerToken = await required(oidc).token({ subject: "clean-room-owner", name: "Owner" });
+      outsiderToken = await required(oidc).token({
+        subject: "clean-room-outsider",
+        name: "Outsider",
+      });
       const observedActivations = new Set<string>();
       let keepPolling = true;
       const pointerPoll = (async () => {
