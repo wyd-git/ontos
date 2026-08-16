@@ -203,21 +203,21 @@ export class ProductionMaterializationStageExecutor implements MaterializationSt
       const scope = scopeFrom(input);
       switch (input.stage) {
         case "scan":
-          return this.#scan(input, scope);
+          return await this.#scan(input, scope);
         case "map":
-          return this.#map(input, scope);
+          return await this.#map(input, scope);
         case "validate":
-          return this.#validate(input, scope);
+          return await this.#validate(input, scope);
         case "build_stage":
-          return this.#admitPrebuild(input, scope);
+          return await this.#admitPrebuild(input, scope);
         case "build_index":
-          return this.#verifyIndexes(input, scope);
+          return await this.#verifyIndexes(input, scope);
         case "ready_for_activation":
-          return this.#prepareReady(input, scope);
+          return await this.#prepareReady(input, scope);
         case "catch_up":
-          return this.#catchUp(input, scope);
+          return await this.#catchUp(input, scope);
         case "activate":
-          return this.#finishReady(input, scope);
+          return await this.#finishReady(input, scope);
       }
     } catch (error) {
       if (error instanceof MaterializationStageError) throw error;
