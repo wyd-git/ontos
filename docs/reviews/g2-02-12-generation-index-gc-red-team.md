@@ -31,7 +31,7 @@
 - **Claim：** 每个关系批次全有或全无，重试与一次完成相同。
 - **钢人：** 数据删除、Collection Marker、Entry 进度、Revision 和 Batch Event 在一个事务中提交。
 - **Fails if：** Node 被杀后服务端事务仍在后台提交，Harness 却误把它当回滚；或重试再次改变事实。
-- **Evidence：** Harness 在 Batch Event 上持锁，等待数据已变更后 SIGKILL Node，并显式终止 PostgreSQL Backend，再比较进度不变；释放故障后重复相同批次直至收敛。另有提交结果重放覆盖“服务端成功、响应丢失”。
+- **Evidence：** 正常 PostgreSQL Lane 在 Batch Event 上持锁，等待数据已变更后 SIGKILL Node，并显式终止 PostgreSQL Backend，再比较进度不变；释放故障后重复相同批次直至收敛。容量 Lane 独立验证 10k/100k 吞吐，不重复强杀矩阵；两条 Gate 分别 PASS。另有提交结果重放覆盖“服务端成功、响应丢失”。
 - **Kill criterion：** 任一 Kill 点出现半批状态、双 Marker、悬空引用或人工修库即 FAIL。
 - **Cheapest test：** 对每个实际产生变化的 Phase 复用同一阻塞/终止脚本。
 - **状态：CLOSED。** 首版仅 Kill 客户端的证据不足，已改进 Harness。

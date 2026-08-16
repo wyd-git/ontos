@@ -440,7 +440,10 @@ void test(
       if (!projectionCapacityMode) {
         await exerciseCompatibilityStalenessVectors(adminConfig, apiConfig, worker1Config);
         await exerciseSnapshotGroupRefreshCutover(adminConfig, apiConfig, worker1Config);
-        await exerciseGenerationGarbageCollection(adminConfig, apiConfig);
+        // The per-batch SIGKILL matrix belongs to the normal PostgreSQL gate.
+        // Capacity lanes retain their own throughput purpose instead of
+        // duplicating every GC rollback over a large fixture.
+        if (!capacityMode) await exerciseGenerationGarbageCollection(adminConfig, apiConfig);
       } else {
         await assertCapacityCutoverLinkSemantics(adminConfig);
       }
@@ -5403,6 +5406,7 @@ async function exerciseGenerationGarbageCollection(
 
   const apiPool = new pg.Pool(apiConfig);
   const deletedVersions: string[] = [];
+  const gcBatchSize = 1;
   try {
     const repository = new PostgresGarbageCollectionRepository(apiPool);
     let failFirstOrphanAcknowledgement = true;
@@ -5429,7 +5433,7 @@ async function exerciseGenerationGarbageCollection(
           return Promise.resolve();
         },
       },
-      batchSize: 1,
+      batchSize: gcBatchSize,
     });
     const staleDryRun = await service.dryRun({
       projectId: ids.project,
@@ -5515,11 +5519,17 @@ async function exerciseGenerationGarbageCollection(
     let batches = 1;
     while ((await pendingGcCandidates(apiPool, planId)) > 0) {
       const before = await gcProgress(apiPool, planId);
-      await killGcRelationalBatch(adminConfig, apiConfig, planId);
+      try {
+        await killGcRelationalBatch(adminConfig, apiConfig, planId, gcBatchSize);
+      } catch (error) {
+        throw new Error(`GC kill boundary failed from ${JSON.stringify(before)}.`, {
+          cause: error,
+        });
+      }
       assert.deepEqual(await gcProgress(apiPool, planId), before);
       const batch = await service.commitNext({ projectId: ids.project, planId });
       batches += 1;
-      assert.equal(batch.affectedRows, 1);
+      assert.equal(batch.affectedRows > 0 && batch.affectedRows <= gcBatchSize, true);
       if (batches > 100) throw new Error("GC did not converge within bounded batches.");
     }
     const completed = await service.commitNext({ projectId: ids.project, planId });
@@ -5639,6 +5649,7 @@ async function killGcRelationalBatch(
   adminConfig: pg.ClientConfig,
   apiConfig: pg.ClientConfig,
   planId: string,
+  batchSize: number,
 ): Promise<void> {
   const blocker = new pg.Client(adminConfig);
   await blocker.connect();
@@ -5650,7 +5661,15 @@ async function killGcRelationalBatch(
   };
   const child = spawn(
     process.execPath,
-    [gcCommitCliPath, "--project-id", ids.project, "--plan-id", planId],
+    [
+      gcCommitCliPath,
+      "--project-id",
+      ids.project,
+      "--plan-id",
+      planId,
+      "--batch-size",
+      String(batchSize),
+    ],
     { env: environment, stdio: ["ignore", "ignore", "pipe"] },
   );
   let stderr = "";
@@ -5659,21 +5678,24 @@ async function killGcRelationalBatch(
     stderr += chunk.toString("utf8");
   });
   try {
-    await waitUntilCondition(async () => {
-      if (child.exitCode !== null || child.signalCode !== null) {
-        throw new Error(`GC kill probe exited before blocking: ${stderr}`);
-      }
-      return withClient(adminConfig, async (admin) => {
-        const result = await admin.query<{ readonly pid: number }>(
-          `SELECT pid FROM pg_stat_activity
-           WHERE application_name = 'ontos-gc-kill-probe'
-             AND wait_event_type = 'Lock'
-           ORDER BY backend_start DESC LIMIT 1`,
-        );
-        backendPid = result.rows[0]?.pid;
-        return backendPid !== undefined;
-      });
-    });
+    await waitUntilCondition(
+      async () => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          throw new Error(`GC kill probe exited before blocking: ${stderr}`);
+        }
+        return withClient(adminConfig, async (admin) => {
+          const result = await admin.query<{ readonly pid: number }>(
+            `SELECT pid FROM pg_stat_activity
+             WHERE application_name = 'ontos-gc-kill-probe'
+               AND wait_event_type = 'Lock'
+             ORDER BY backend_start DESC LIMIT 1`,
+          );
+          backendPid = result.rows[0]?.pid;
+          return backendPid !== undefined;
+        });
+      },
+      batchSize >= 1_000 ? 60_000 : 10_000,
+    );
     assert.equal(child.kill("SIGKILL"), true);
     await waitForProcessExit(child);
     assert.equal(child.signalCode, "SIGKILL");
@@ -5691,6 +5713,23 @@ async function killGcRelationalBatch(
         }),
       );
     }
+  } catch (error) {
+    const activity = await withClient(adminConfig, async (admin) => {
+      const result = await admin.query<{
+        readonly state: string;
+        readonly waitEventType: string | null;
+        readonly waitEvent: string | null;
+        readonly query: string;
+      }>(
+        `SELECT state, wait_event_type AS "waitEventType", wait_event AS "waitEvent",
+                left(query, 256) AS query
+         FROM pg_stat_activity
+         WHERE application_name = 'ontos-gc-kill-probe'
+         ORDER BY backend_start DESC`,
+      );
+      return result.rows;
+    });
+    throw new Error(`GC kill probe activity: ${JSON.stringify(activity)}.`, { cause: error });
   } finally {
     await blocker.query("ROLLBACK").catch(() => undefined);
     await blocker.end().catch(() => undefined);

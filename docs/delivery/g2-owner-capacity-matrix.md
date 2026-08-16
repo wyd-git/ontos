@@ -141,7 +141,7 @@
 
 - G2-02-12 已 PASS，当前进度为 **12/14**；连续 Migration 到 0017，完整 Root Provider/Inventory、单调 Root Epoch、分层保留、分批关系回收、精确对象版本删除与 GC-bound Index Drop 已进入正式实现。
 - 真库故障测试对每个产生变化的关系批次执行 Node SIGKILL + PostgreSQL Backend 终止并重试；首个 Index DROP 同样 Kill/Replay，最终旧历史 Activation 可读、零引用 Index 清零、容量测量强制重新扫描。
-- 实际返工包括瞬态 Root 加删导致计划复活、历史 Activation 漏保护、伪空 Provider Scan、Generation/Attempt 字节归属、仅 Kill 客户端不足以证明事务回滚，以及 DROP 后容量测量陈旧；均已在本 Gate 关闭。
+- 实际返工包括瞬态 Root 加删导致计划复活、历史 Activation 漏保护、伪空 Provider Scan、Generation/Attempt 字节归属、仅 Kill 客户端不足以证明事务回滚、DROP 后容量测量陈旧，以及容量 Lane 重复 GC 强杀导致统一 CI 超时；均已在本 Gate 关闭，容量与故障 Gate 已按目的拆开且分别 PASS。
 - 剩余 2 项是 Admin HTTP + 生产 Worker/Testkit/统一 CI 组合和 clean-room 总验收；剩余单通道容量情景为 **1～3 工程周**，不是上线日期承诺。
 - 当前只放行 G2-02-13 Admin API、Testkit 与统一 CI Gate；不得跳到 Query、页面或 Action。
 

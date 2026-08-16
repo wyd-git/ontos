@@ -7,6 +7,7 @@ import pg from "pg";
 
 const projectId = argument("--project-id");
 const planId = argument("--plan-id");
+const batchSize = integerArgument("--batch-size", 1, 10_000);
 const connectionString = process.env.ONTOS_GC_TEST_DATABASE_URL;
 if (connectionString === undefined || connectionString.trim() === "") {
   throw new Error("GC test database URL is missing.");
@@ -25,7 +26,7 @@ try {
       deleteVersion: () =>
         Promise.reject(new Error("The relational kill probe cannot delete object-store versions.")),
     },
-    batchSize: 1,
+    batchSize,
   }).commitNext({ projectId, planId });
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } finally {
@@ -37,6 +38,14 @@ function argument(name: string): string {
   const value = process.argv[index + 1];
   if (index < 0 || value === undefined || value.startsWith("--")) {
     throw new Error(`Missing ${name}.`);
+  }
+  return value;
+}
+
+function integerArgument(name: string, minimum: number, maximum: number): number {
+  const value = Number(argument(name));
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer from ${String(minimum)} to ${String(maximum)}.`);
   }
   return value;
 }

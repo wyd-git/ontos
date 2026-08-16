@@ -55,6 +55,7 @@
 4. **首版 Generation 字节归属会漏算派生行并与 Attempt Staging 重复计算。** 当前 Generation 计永久 Base/Current/Provenance/Head/Quality 派生行，Attempt 单独计 Staging/Stage/Checkpoint/Error Sample。
 5. **只 Kill 客户端不能证明服务端事务已经回滚。** 故障 Harness 在 SQL 写入后、Batch Event 前持锁，先 SIGKILL Node，再终止 PostgreSQL Backend；同时保留提交响应丢失的幂等重放验证。
 6. **Index 物理删除后若马上宣称容量账完整，会产生虚假可用空间。** DDL 成功推进 Inventory Revision，并把 `measurement_complete` 置 false；下一 GC 必须先重测。
+7. **把容量吞吐与每批 GC 强杀混在同一运行会让 CI 无法落地。** 首次全量 Gate 在 10k/100k 容量向量上重复每个 GC 物理批次，触发 10 分钟超时。现在 Base 容量 Lane 只负责吞吐、重启和 Cutover；正常 PostgreSQL Lane 保留 GC Fixture 的每批 Node/Backend Kill。两条分别在约 233.4 秒和 41.7 秒内 PASS，覆盖没有删除，只是按目的拆开。
 
 以上修正没有引入 Query、Action、UI、Overlay 或领域特化分支。
 
@@ -83,6 +84,9 @@ PASS — 3 个真库顶层套件，约 41.5 秒
        Materialization GC 含逐批 SIGKILL/Backend 终止与旧代读取
        DB-01/DB-02 连续 Migration 0001～0017
        11 个 Index Recipe Create + GC Drop Kill/Replay
+
+npm run test:materialization-base:capacity
+PASS — 10k Object / 100k Link，约 233.4 秒；容量 Lane 不重复 GC 故障矩阵
 
 npm run format:check
 npm run lint
