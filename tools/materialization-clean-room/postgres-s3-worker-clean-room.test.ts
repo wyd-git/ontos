@@ -320,13 +320,7 @@ void test(
         secondProjectId,
         work.revisionIds,
       );
-      const secondPlans = await stageIndexPlans(
-        adminConfig,
-        secondProjectId,
-        secondReleaseId,
-        work,
-      );
-      await executeIndexPlans(adminConfig, secondProjectId, secondPlans);
+      await stageIndexPlans(adminConfig, secondProjectId, secondReleaseId, work);
       await validateAndStageRelease(apiRuntime, ownerToken, secondReleaseId, "staging");
       await uploadGroup(
         apiRuntime,
