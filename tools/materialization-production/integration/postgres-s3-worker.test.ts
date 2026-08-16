@@ -766,8 +766,10 @@ async function readBuildEvidence(admin: pg.Pool, projectId: string, jobId: strin
               WHERE admission.project_id = generation.project_id
                 AND admission.generation_id = generation.generation_id
                 AND admission.phase = 'POSTBUILD') AS "postbuildAdmissions",
-            (SELECT count(*)::integer FROM meta.release_serving_heads AS head
-              WHERE head.project_id = generation.project_id) AS "servingHeads"
+            (SELECT count(*)::integer
+             FROM meta.release_serving_heads AS head
+             JOIN meta.releases AS release ON release.release_id = head.release_id
+             WHERE release.project_id = generation.project_id) AS "servingHeads"
      FROM ops.materialization_jobs AS job
      JOIN runtime.generations AS generation
        ON generation.project_id = job.project_id
