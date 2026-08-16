@@ -56,13 +56,13 @@ export function loadMaterializationWorkerConfig(
     throw new Error("ONTOS_WORKER_HEARTBEAT_MILLISECONDS must be less than half the lease.");
   }
   const databaseStatementTimeoutMilliseconds = boundedInteger(
-    source["ONTOS_WORKER_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS"] ?? "300000",
+    source["ONTOS_WORKER_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS"] ?? "600000",
     "ONTOS_WORKER_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS",
     1_000,
     1_795_000,
   );
   const databaseQueryTimeoutMilliseconds = boundedInteger(
-    source["ONTOS_WORKER_DATABASE_QUERY_TIMEOUT_MILLISECONDS"] ?? "305000",
+    source["ONTOS_WORKER_DATABASE_QUERY_TIMEOUT_MILLISECONDS"] ?? "605000",
     "ONTOS_WORKER_DATABASE_QUERY_TIMEOUT_MILLISECONDS",
     1_001,
     1_800_000,
