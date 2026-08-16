@@ -63,6 +63,7 @@ export interface PersistAdmittedIndexPlansInput {
   readonly inventoryRevision: bigint;
   readonly plans: readonly PreparedObjectTypeIndexPlan[];
   readonly admission: IndexAdmissionReport;
+  readonly approval?: IndexCapacityApproval;
   readonly reportDigest: ArtifactDigest;
 }
 
@@ -143,6 +144,9 @@ export class IndexPlanAdmissionService {
         inventoryRevision: snapshot.inventoryRevision,
         plans,
         admission,
+        ...(admission.approvalId === null || input.approval === undefined
+          ? {}
+          : { approval: input.approval }),
         reportDigest,
       }),
     );
@@ -186,6 +190,7 @@ export interface PersistCapacityAdmissionInput {
   readonly phase: "PREBUILD" | "POSTBUILD";
   readonly snapshot: CapacityAdmissionSnapshot;
   readonly report: CapacityReport;
+  readonly approval?: ProjectionCapacityApproval;
   readonly reportDigest: ArtifactDigest;
 }
 
@@ -251,6 +256,9 @@ export class ProjectionCapacityAdmissionService {
         phase: input.phase,
         snapshot,
         report,
+        ...(report.approvalId === null || snapshot.approval === undefined
+          ? {}
+          : { approval: snapshot.approval }),
         reportDigest,
       }),
     );

@@ -31,7 +31,8 @@
       "migrations/db-00/0011_object_identity_base_staging.sql",
       "migrations/db-00/0012_materialization_quality_current.sql",
       "migrations/db-00/0013_materialization_job_worker.sql",
-      "migrations/db-00/0014_projection_index_capacity_ddl.sql"
+      "migrations/db-00/0014_projection_index_capacity_ddl.sql",
+      "migrations/db-00/0015_runtime_plan_compatibility.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -99,6 +100,7 @@
       "runtime.property_provenance",
       "runtime.rejected_row_sets",
       "runtime.snapshot_files",
+      "runtime.snapshot_group_definition_members",
       "runtime.snapshot_group_members",
       "runtime.snapshot_group_versions",
       "runtime.snapshot_groups",
@@ -216,7 +218,8 @@
     "docs/evidence/g2-02-06-object-identity-base.md",
     "docs/evidence/g2-02-07-quality-current-provenance.md",
     "docs/evidence/g2-02-08-materialization-worker.md",
-    "docs/evidence/g2-02-09-index-capacity-ddl.md"
+    "docs/evidence/g2-02-09-index-capacity-ddl.md",
+    "docs/evidence/g2-02-10-runtime-plan-compatibility.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",

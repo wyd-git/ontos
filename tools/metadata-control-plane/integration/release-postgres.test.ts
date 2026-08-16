@@ -13,6 +13,7 @@ import {
   parseVerifiedFoundationIdentity,
   type VerifiedFoundationIdentity,
 } from "@ontos/metadata-application";
+import type { ResourceFamily } from "@ontos/contracts";
 import {
   PostgresMetadataControlPlane,
   PostgresReleaseStore,
@@ -179,6 +180,18 @@ void test(
       });
       assert.deepEqual(repeated, firstPublication);
       await assertPublishedWorld(pool, first.releaseId, firstPublication.binding.activationId, 1n);
+
+      await assertServerDerivedRuntimePlanVector({
+        adminConfig,
+        pool,
+        resources,
+        releases,
+        identityInput: ownerIdentity,
+        projectId: project.project.projectId,
+        baselineReleaseId: first.releaseId,
+        orderResourceId: resource.resource.resourceId,
+        orderRevisionId: baselineValidation.revision.revisionId,
+      });
 
       const concurrentRevisionA = await createValidatedChild(
         resources,
@@ -385,6 +398,249 @@ void test(
   },
 );
 
+async function assertServerDerivedRuntimePlanVector(input: {
+  readonly adminConfig: pg.ClientConfig;
+  readonly pool: pg.Pool;
+  readonly resources: ResourceLifecycleApplicationService;
+  readonly releases: ReleaseLifecycleApplicationService;
+  readonly identityInput: VerifiedFoundationIdentity;
+  readonly projectId: string;
+  readonly baselineReleaseId: string;
+  readonly orderResourceId: string;
+  readonly orderRevisionId: string;
+}): Promise<void> {
+  const customer = await createValidatedRuntimeResource(input, {
+    apiName: "Customer",
+    family: "object_type",
+    content: runtimeObjectTypeContent("Customer"),
+  });
+  const link = await createValidatedRuntimeResource(input, {
+    apiName: "OrderToCustomer",
+    family: "link_type",
+    content: runtimeLinkTypeContent(input.orderRevisionId, customer.revision.revisionId),
+  });
+  const orderSchema = await createValidatedRuntimeResource(input, {
+    apiName: "OrderSnapshot",
+    family: "snapshot_schema",
+    content: runtimeObjectSchema("orderId"),
+  });
+  const customerSchema = await createValidatedRuntimeResource(input, {
+    apiName: "CustomerSnapshot",
+    family: "snapshot_schema",
+    content: runtimeObjectSchema("customerId"),
+  });
+  const linkSchema = await createValidatedRuntimeResource(input, {
+    apiName: "OrderCustomerLinkSnapshot",
+    family: "snapshot_schema",
+    content: runtimeLinkSchema(),
+  });
+  const orderMapping = await createValidatedRuntimeResource(input, {
+    apiName: "OrderSnapshotMapping",
+    family: "mapping",
+    content: runtimeObjectMapping({
+      schemaRevisionId: orderSchema.revision.revisionId,
+      targetResourceId: input.orderResourceId,
+      targetRevisionId: input.orderRevisionId,
+      keyColumn: "orderId",
+    }),
+  });
+  const customerMapping = await createValidatedRuntimeResource(input, {
+    apiName: "CustomerSnapshotMapping",
+    family: "mapping",
+    content: runtimeObjectMapping({
+      schemaRevisionId: customerSchema.revision.revisionId,
+      targetResourceId: customer.resource.resourceId,
+      targetRevisionId: customer.revision.revisionId,
+      keyColumn: "customerId",
+    }),
+  });
+  const linkMapping = await createValidatedRuntimeResource(input, {
+    apiName: "OrderCustomerLinkMapping",
+    family: "mapping",
+    content: runtimeLinkMapping({
+      schemaRevisionId: linkSchema.revision.revisionId,
+      targetResourceId: link.resource.resourceId,
+      targetRevisionId: link.revision.revisionId,
+      sourceRevisionId: input.orderRevisionId,
+      targetRevisionIdForKey: customer.revision.revisionId,
+    }),
+  });
+
+  const draft = await input.releases.createRelease(input.identityInput, {
+    projectId: input.projectId,
+    targetChannelName: "stable",
+    revisionIds: [
+      input.orderRevisionId,
+      customer.revision.revisionId,
+      link.revision.revisionId,
+      orderSchema.revision.revisionId,
+      customerSchema.revision.revisionId,
+      linkSchema.revision.revisionId,
+      orderMapping.revision.revisionId,
+      customerMapping.revision.revisionId,
+      linkMapping.revision.revisionId,
+    ],
+  });
+  const groupId = randomUUID();
+  const objectPlans = [
+    {
+      id: randomUUID(),
+      targetResourceId: input.orderResourceId,
+      targetRevisionId: input.orderRevisionId,
+      digest: fixedDigest("1"),
+    },
+    {
+      id: randomUUID(),
+      targetResourceId: customer.resource.resourceId,
+      targetRevisionId: customer.revision.revisionId,
+      digest: fixedDigest("2"),
+    },
+  ] as const;
+  await withClient(input.adminConfig, async (admin) => {
+    await admin.query(
+      `INSERT INTO runtime.project_runtime_inventories
+         (project_id, state_revision, inventory_revision, measurement_complete, inventory_digest)
+       VALUES ($1, 1, 1, true, $2)`,
+      [input.projectId, fixedDigest("3")],
+    );
+  });
+  const client = await input.pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO runtime.snapshot_groups
+         (project_id, snapshot_group_id, group_key, definition_member_count)
+       VALUES ($1, $2, 'order-customer', 3)`,
+      [input.projectId, groupId],
+    );
+    const mappings = [
+      orderMapping.resource.resourceId,
+      customerMapping.resource.resourceId,
+      linkMapping.resource.resourceId,
+    ].sort();
+    for (const [ordinal, mappingResourceId] of mappings.entries()) {
+      await client.query(
+        `INSERT INTO runtime.snapshot_group_definition_members
+           (project_id, snapshot_group_id, ordinal, mapping_resource_id)
+         VALUES ($1, $2, $3, $4)`,
+        [input.projectId, groupId, ordinal, mappingResourceId],
+      );
+    }
+    for (const [ordinal, plan] of objectPlans.entries()) {
+      await client.query(
+        `INSERT INTO runtime.index_plans
+           (project_id, index_plan_id, target_resource_id, target_revision_id,
+            plan_digest, entry_count, compiler_version)
+         VALUES ($1, $2, $3, $4, $5, 0, 'g2-02-10-pg-vector-v1')`,
+        [input.projectId, plan.id, plan.targetResourceId, plan.targetRevisionId, plan.digest],
+      );
+      await client.query(
+        `INSERT INTO runtime.index_plan_admissions (
+           project_id, admission_id, release_id, release_plan_digest,
+           index_plan_id, inventory_revision, release_units, project_union_units,
+           project_physical_index_count, admission_mode, report_digest
+         ) VALUES ($1, $2, $3, $4, $5, 1, 0, 0, 0, 'WITHIN_NORMAL', $6)`,
+        [
+          input.projectId,
+          randomUUID(),
+          draft.releaseId,
+          fixedDigest("4"),
+          plan.id,
+          fixedDigest(ordinal === 0 ? "5" : "6"),
+        ],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const staged = await input.releases.stageRelease(input.identityInput, {
+    releaseId: draft.releaseId,
+  });
+  assert.equal(staged.staged, true, JSON.stringify(staged.report.issues));
+  assert.equal(staged.report.valid, true);
+  assert.equal(staged.release.state, "staging");
+  const plan = await input.pool.query<{
+    readonly plan_digest: string;
+    readonly member_count: number;
+    readonly member_keys: string[];
+    readonly group_ids: string[];
+  }>(
+    `SELECT root.plan_digest, root.member_count,
+            array_agg(member.member_key ORDER BY member.member_key COLLATE "C") AS member_keys,
+            array_agg(DISTINCT member.snapshot_group_id::text) AS group_ids
+     FROM meta.release_runtime_plans AS root
+     JOIN meta.release_runtime_plan_members AS member
+       ON member.release_id = root.release_id
+     WHERE root.release_id = $1
+     GROUP BY root.plan_digest, root.member_count`,
+    [draft.releaseId],
+  );
+  assert.deepEqual(plan.rows[0], {
+    plan_digest: plan.rows[0]?.plan_digest,
+    member_count: 3,
+    member_keys: ["link:OrderToCustomer", "object:Customer", "object:Order"],
+    group_ids: [groupId],
+  });
+  const originalDigest = plan.rows[0]?.plan_digest;
+  assert.ok(originalDigest !== undefined);
+  const repeated = await input.releases.stageRelease(input.identityInput, {
+    releaseId: draft.releaseId,
+  });
+  assert.equal(repeated.release.state, "staging");
+  const after = await input.pool.query<{ readonly plan_digest: string }>(
+    `SELECT plan_digest FROM meta.release_runtime_plans WHERE release_id = $1`,
+    [draft.releaseId],
+  );
+  assert.equal(after.rows[0]?.plan_digest, originalDigest);
+  const baseline = await input.pool.query<{
+    readonly plan_count: number;
+    readonly activation_member_count: number;
+  }>(
+    `SELECT
+       (SELECT count(*)::integer FROM meta.release_runtime_plans
+        WHERE release_id = $1) AS plan_count,
+       (SELECT activation.member_count
+        FROM meta.release_serving_heads AS head
+        JOIN meta.runtime_activations AS activation
+          ON activation.release_id = head.release_id
+         AND activation.activation_id = head.activation_id
+        WHERE head.release_id = $1) AS activation_member_count`,
+    [input.baselineReleaseId],
+  );
+  assert.deepEqual(baseline.rows[0], { plan_count: 0, activation_member_count: 0 });
+}
+
+async function createValidatedRuntimeResource(
+  input: {
+    readonly resources: ResourceLifecycleApplicationService;
+    readonly identityInput: VerifiedFoundationIdentity;
+    readonly projectId: string;
+  },
+  resource: {
+    readonly apiName: string;
+    readonly family: ResourceFamily;
+    readonly content: unknown;
+  },
+) {
+  const created = await input.resources.createResource(input.identityInput, {
+    projectId: input.projectId,
+    namespace: "release.runtime",
+    apiName: resource.apiName,
+    family: resource.family,
+    content: resource.content,
+  });
+  const validation = await input.resources.validateRevision(input.identityInput, {
+    revisionId: created.initialDraft.revisionId,
+  });
+  assert.equal(validation.report.valid, true);
+  return Object.freeze({ resource: created.resource, revision: validation.revision });
+}
+
 async function createAndStage(
   releases: ReleaseLifecycleApplicationService,
   identityInput: VerifiedFoundationIdentity,
@@ -552,6 +808,152 @@ function objectTypeContent(marker: string) {
       },
     ],
   };
+}
+
+function runtimeObjectTypeContent(apiName: string) {
+  const key = apiName === "Customer" ? "customerId" : "orderId";
+  return {
+    schemaVersion: 1,
+    apiName,
+    displayName: apiName,
+    description: `G2-02-10 ${apiName} Runtime Plan vector.`,
+    primaryKeyPropertyApiName: key,
+    titlePropertyApiName: key,
+    defaultSearchPropertyApiNames: [],
+    defaultSort: [{ propertyApiName: key, direction: "asc" }],
+    defaultClassification: "internal",
+    properties: [
+      {
+        schemaVersion: 1,
+        apiName: key,
+        displayName: `${apiName} ID`,
+        description: "Stable source identifier.",
+        valueType: "string",
+        caseSensitive: true,
+        nullable: false,
+        writeMode: "source_only",
+        unique: true,
+        filterable: true,
+        sortable: true,
+        searchable: false,
+        classification: "internal",
+      },
+    ],
+  };
+}
+
+function runtimeObjectSchema(keyColumn: string) {
+  return {
+    schemaVersion: 1,
+    contractVersion: "snapshot-schema-v1",
+    format: "csv_utf8",
+    headerRow: true,
+    columns: [{ ordinal: 0, columnApiName: keyColumn, valueType: "string", required: true }],
+  };
+}
+
+function runtimeLinkTypeContent(sourceRevisionId: string, targetRevisionId: string) {
+  return {
+    schemaVersion: 1,
+    apiName: "OrderToCustomer",
+    displayName: "Order to Customer",
+    description: "G2-02-10 base Link Runtime Plan vector.",
+    source: {
+      objectTypeRevisionId: sourceRevisionId,
+      apiName: "order",
+      displayName: "Order",
+    },
+    target: {
+      objectTypeRevisionId: targetRevisionId,
+      apiName: "customer",
+      displayName: "Customer",
+    },
+    cardinality: "many_to_one",
+    sourceKind: "base",
+    deletionBehavior: "restrict",
+    actionCreateAllowed: false,
+    actionDeleteAllowed: false,
+  };
+}
+
+function runtimeLinkSchema() {
+  return {
+    schemaVersion: 1,
+    contractVersion: "snapshot-schema-v1",
+    format: "csv_utf8",
+    headerRow: true,
+    columns: [
+      { ordinal: 0, columnApiName: "orderId", valueType: "string", required: true },
+      { ordinal: 1, columnApiName: "customerId", valueType: "string", required: true },
+    ],
+  };
+}
+
+function runtimeObjectMapping(input: {
+  readonly schemaRevisionId: string;
+  readonly targetResourceId: string;
+  readonly targetRevisionId: string;
+  readonly keyColumn: string;
+}) {
+  return {
+    schemaVersion: 1,
+    mappingVersion: "mapping-v1",
+    targetKind: "object",
+    inputSchemaRevisionId: input.schemaRevisionId,
+    targetResourceId: input.targetResourceId,
+    targetRevisionId: input.targetRevisionId,
+    valueCodecVersion: "pk1",
+    propertyMappings: [],
+    primaryKeyExpression: { op: "column", columnApiName: input.keyColumn },
+    qualityRules: runtimeQualityRules(),
+  };
+}
+
+function runtimeLinkMapping(input: {
+  readonly schemaRevisionId: string;
+  readonly targetResourceId: string;
+  readonly targetRevisionId: string;
+  readonly sourceRevisionId: string;
+  readonly targetRevisionIdForKey: string;
+}) {
+  return {
+    schemaVersion: 1,
+    mappingVersion: "mapping-v1",
+    targetKind: "link",
+    inputSchemaRevisionId: input.schemaRevisionId,
+    targetResourceId: input.targetResourceId,
+    targetRevisionId: input.targetRevisionId,
+    valueCodecVersion: "pk1",
+    propertyMappings: [],
+    sourceKeyMapping: {
+      objectTypeRevisionId: input.sourceRevisionId,
+      expression: { op: "column", columnApiName: "orderId" },
+      codecVersion: "pk1",
+    },
+    targetKeyMapping: {
+      objectTypeRevisionId: input.targetRevisionIdForKey,
+      expression: { op: "column", columnApiName: "customerId" },
+      codecVersion: "pk1",
+    },
+    qualityRules: runtimeQualityRules(),
+  };
+}
+
+function runtimeQualityRules() {
+  return {
+    primaryKeyNullMaximumCount: 0,
+    primaryKeyDuplicateMaximumCount: 0,
+    requiredPropertyFailureMaximumCount: 0,
+    requiredLinkDanglingMaximumCount: 0,
+    optionalPropertyFailureMaximumBasisPoints: 0,
+    optionalLinkDanglingMaximumBasisPoints: 0,
+    rowCountChangeConfirmationBasisPoints: 5_000,
+    optionalFailureDisposition: "reject_row",
+  };
+}
+
+function fixedDigest(character: string): string {
+  return `sha256:${character.repeat(64)}`;
 }
 
 function identity(subject: string): VerifiedFoundationIdentity {

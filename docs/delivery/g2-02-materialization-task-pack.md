@@ -3,7 +3,7 @@
 - 版本：1.0
 - 日期：2026-08-15
 - 状态：Implementation Ready，仍受本任务包 Gate、红队修订与停止条件约束
-- 执行进度：G2-02-01～09 已 PASS（9/14）；当前唯一顺序工作项为 G2-02-10
+- 执行进度：G2-02-01～10 已 PASS（10/14）；当前唯一顺序工作项为 G2-02-11
 - 上游：[Ontology Kernel PRD](../product/ontology-kernel-prd.md)
 - 实现蓝图：[G2 生产实现蓝图](../product/ontology-kernel-implementation-blueprint.md)
 - 入口证据：[G2-01-12 Metadata clean-room 总验收](../evidence/g2-01-12-clean-room-metadata-gate.md)
@@ -506,6 +506,10 @@ Release 定义了“应该服务什么”，Generation 证明“已经构建了�
 - 显式 Refresh 协调器枚举所有受影响且仍支持的 Serving Release，逐个报告 `ready/reused/failed/stale`；一个失败不移动其他 Release Pointer；
 - 伪造 Certificate、跨 Project Generation、陈旧 Inventory/Plan、已失败 Job、已过期审批或 Snapshot Digest 变化均稳定拒绝；
 - Metadata-only Release、一个 Member、多个 Object + Base Link Group 和两个并存 Release 有真实 PostgreSQL 集成向量。
+
+**交付状态（2026-08-16）**
+
+G2-02-10 已按 [Evidence](../evidence/g2-02-10-runtime-plan-compatibility.md) 与 [专项红队](../reviews/g2-02-10-runtime-plan-compatibility-red-team.md) PASS：Metadata Stage 从 Published Pins、服务器 Group Definition 和已准入 Index Plan 派生不可变 Runtime Plan；连续 Migration 到 0015；四参数受信证书函数、动态 Current Certificate View、完整 Release READY Guard、跨 Release Generation 复用和 `pending/ready/reused/failed/stale` 协调结果均已进入正式实现。真实 100k Object / 1m Link 已升级为 Object + Base Link 两成员、两证书 Closure；正式 Pointer/Cutover 仍只属于 G2-02-11。
 
 ### G2-02-11：实现 Snapshot Group 原子 Cutover 与数据 Refresh
 

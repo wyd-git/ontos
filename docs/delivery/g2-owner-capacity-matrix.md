@@ -121,9 +121,17 @@
 - 剩余 5 项仍包含 Certificate、真实 Group Cutover/Refresh、GC/Drop、Admin HTTP/Testkit 和 clean-room；剩余单通道容量情景保持 **3～6 工程周**，不是上线日期承诺。
 - 当前只放行 G2-02-10 Runtime Member Plan 与受信兼容证书；不得跳到 Cutover、GC、Query 或 UI。
 
+### G2-02-10 后检查点（2026-08-16）
+
+- G2-02-10 已 PASS，当前进度为 **10/14**；Metadata Stage 服务器派生不可变 Runtime Plan，连续 Migration 到 0015，受信 Compatibility Certificate、动态失效 View、完整 Release READY Guard 和跨 Release Generation 复用已进入正式实现。
+- 真实 Ubuntu 24 / x86_64 / 8C16G / PostgreSQL 16.14 已把 100k Object + 1m Link 容量链路升级为 Object + Base Link 两成员 Closure：完整构建约 21m25s，实测 2,827,124,736 bytes，150% Peak 4,240,687,104 bytes，两个证书齐全后才允许 Release READY。
+- 可行性复审发现并关闭旧证书在新 Admission 下复活、失败 Job 伪造质量、跨 Release FK 过严、审批 Expiry 未持久和 Metadata Stage 四列最小读取权限等缺口；没有把 Certificate 或 Pointer 任意写权限授给 Runtime。
+- 剩余 4 项包含真实 Group Cutover/Refresh、GC/Drop、Admin HTTP/Testkit 和 clean-room；Cutover 仍是当前最大事务风险，剩余单通道容量情景调整为 **2～5 工程周**，不是上线日期承诺。
+- 当前只放行 G2-02-11 Snapshot Group 原子 Cutover 与数据 Refresh；不得跳到 GC、Query、页面或 Action。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01 与 G2-02-01～09 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-10，不得跳到 Cutover、GC、Query、页面或 Action。
+1. G2-00、G2-01 与 G2-02-01～10 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-11，不得跳到 GC、Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

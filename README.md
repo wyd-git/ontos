@@ -9,8 +9,8 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 - G2-00 Foundation：**PASS，13/13 已合并**；
 - G2-01 Metadata：**PASS，G2-01-01～12 已实现并通过 clean-room 总验收**；
 - 正式产品实现：**Metadata/Package 控制面已具备真实 OIDC、受限 HTTP 入口、最小 RBAC、PostgreSQL Repository、Release 原子发布、Package Install/Upgrade/Rollback 和进程重启恢复；统一 Gate 已扩展到 28 道**；
-- G2-02 Materialization：**G2-02-01～09 已 PASS，已有受管 CSV Ingress、确定 Mapping、永久 Object Identity、Attempt-owned Base、不可见 Current/质量/血缘、PostgreSQL Job/Lease/Kill-Resume，以及 Published Index Plan、容量硬准入和隔离 DDL Executor；完整 Gate 仍未实现**；
-- 下一唯一允许的工作项：**G2-02-10，实现 Runtime Member Plan 与受信兼容证书；不得跳到 Cutover、GC、Query 或 UI**。
+- G2-02 Materialization：**G2-02-01～10 已 PASS，已有受管 CSV Ingress、确定 Mapping、永久 Object Identity、Attempt-owned Base、不可见 Current/质量/血缘、PostgreSQL Job/Lease/Kill-Resume、Published Index Plan、容量硬准入、隔离 DDL Executor，以及服务器派生 Runtime Plan/动态兼容证书；完整 Gate 仍未实现**；
+- 下一唯一允许的工作项：**G2-02-11，实现 Snapshot Group 原子 Cutover 与数据 Refresh；不得跳到 GC、Query 或 UI**。
 
 ## 权威文档
 
@@ -29,6 +29,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [ADR-016 与 G2-02-07 Evidence](docs/architecture/adr/016-quality-current-provenance-confirmation.md) | Base-only Current、质量阈值、Rejected Artifact、最小 Property Provenance 与 Owner 行数确认 |
 | [ADR-017 与 G2-02-08 Evidence](docs/architecture/adr/017-materialization-worker-recovery.md) | PostgreSQL Job/Lease、八阶段 Checkpoint、Retry/Cancel 与真实进程 Kill/Resume |
 | [ADR-008 与 G2-02-09 Evidence](docs/architecture/adr/008-shared-projection-index-capacity.md) | Published Property Index Plan、完整容量库存、隔离 DDL、11 Recipe 与 100k/1m 首轮实测 |
+| [G2-02-10 Runtime Plan 与兼容证书 Evidence](docs/evidence/g2-02-10-runtime-plan-compatibility.md) | 服务器派生 Plan、完整 Group、动态证书失效、跨 Release 复用与多成员容量闭环 |
 | [ADR-007 Runtime Activation](docs/architecture/adr/007-runtime-activation-serving-head.md) | Release/Generation 一致绑定、90 天支持、容量与 GC 语义 |
 | [ADR-010 Job/Lease 与 Outbox](docs/architecture/adr/010-postgresql-job-lease-outbox.md) | 持久 Job 恢复、租约 fencing、至少一次投递与同对象顺序 |
 | [G1 可行性报告](spikes/g1/docs/g1-feasibility-report.md) | 已验证结论、性能和限制 |

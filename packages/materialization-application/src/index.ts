@@ -31,6 +31,7 @@ export * from "./base.ts";
 export * from "./quality.ts";
 export * from "./worker.ts";
 export * from "./index-capacity.ts";
+export * from "./runtime-plan.ts";
 
 export type MaterializationIngressErrorCode =
   | "ADMIN_REQUEST_INVALID"

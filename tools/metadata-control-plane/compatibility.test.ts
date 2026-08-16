@@ -183,6 +183,26 @@ void test("Decimal compatibility preserves both integer range and fractional sca
   assert.ok(codes(compare("object_type", baseline, widened)).includes("DECIMAL_RANGE_WIDENED"));
 });
 
+void test("Snapshot Schema and Mapping changes require a new trusted Generation", () => {
+  const baselineSchema = snapshotSchema("orderId");
+  const changedSchema = structuredClone(baselineSchema);
+  changedSchema.columns.push({
+    ordinal: 1,
+    columnApiName: "displayName",
+    valueType: "string",
+    required: false,
+  });
+  const schemaResult = compare("snapshot_schema", baselineSchema, changedSchema);
+  assert.equal(schemaResult.outcome, "conditional");
+  assert.deepEqual(codes(schemaResult), ["SNAPSHOT_SCHEMA_REMATERIALIZATION_REQUIRED"]);
+
+  const baselineMapping = objectMapping("orderId");
+  const changedMapping = objectMapping("legacyOrderId");
+  const mappingResult = compare("mapping", baselineMapping, changedMapping);
+  assert.equal(mappingResult.outcome, "conditional");
+  assert.deepEqual(codes(mappingResult), ["MAPPING_REMATERIALIZATION_REQUIRED"]);
+});
+
 void test("deferred Resource families remain conditional even when unchanged or newly pinned", () => {
   const deferred = pin(
     "00000000-0000-4000-8000-000000000099",
@@ -404,6 +424,40 @@ function compare(family: ResourceFamily, baselineContent: unknown, candidateCont
     candidateFamily: family,
     candidateContent,
   });
+}
+
+function snapshotSchema(keyColumn: string) {
+  return {
+    schemaVersion: 1,
+    contractVersion: "snapshot-schema-v1",
+    format: "csv_utf8",
+    headerRow: true,
+    columns: [{ ordinal: 0, columnApiName: keyColumn, valueType: "string", required: true }],
+  };
+}
+
+function objectMapping(keyColumn: string) {
+  return {
+    schemaVersion: 1,
+    mappingVersion: "mapping-v1",
+    targetKind: "object",
+    inputSchemaRevisionId: baselineObjectRevisionId,
+    targetResourceId: firstObjectResourceId,
+    targetRevisionId: candidateObjectRevisionId,
+    valueCodecVersion: "pk1",
+    propertyMappings: [],
+    primaryKeyExpression: { op: "column", columnApiName: keyColumn },
+    qualityRules: {
+      primaryKeyNullMaximumCount: 0,
+      primaryKeyDuplicateMaximumCount: 0,
+      requiredPropertyFailureMaximumCount: 0,
+      requiredLinkDanglingMaximumCount: 0,
+      optionalPropertyFailureMaximumBasisPoints: 0,
+      optionalLinkDanglingMaximumBasisPoints: 0,
+      rowCountChangeConfirmationBasisPoints: 5_000,
+      optionalFailureDisposition: "reject_row",
+    },
+  };
 }
 
 function codes(result: ReturnType<typeof compareResourceCompatibility>): string[] {

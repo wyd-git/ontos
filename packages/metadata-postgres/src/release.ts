@@ -5,6 +5,7 @@ import {
   canonicalizeManifestForDigest,
   parseArtifactDigest,
   parseCompatibilityReport,
+  parseMappingDefinition,
   parseOntosId,
   parseReleaseBinding,
   parseReleaseManifest,
@@ -14,8 +15,16 @@ import {
   type CompatibilityReportContract,
   type ReleaseManifestContract,
   type ResourceFamily,
+  type RuntimeMemberPlanContract,
   type ValidationReportContract,
 } from "@ontos/contracts";
+import {
+  RuntimePlanError,
+  compileRuntimeMemberPlan,
+  type RuntimePlanIndexReference,
+  type RuntimePlanPinnedResource,
+  type RuntimePlanSnapshotGroupDefinition,
+} from "@ontos/materialization-domain";
 import {
   MetadataApplicationError,
   type PublishedReleaseBinding,
@@ -81,6 +90,7 @@ interface PinRow {
   readonly stored_family: ResourceFamily;
   readonly stored_content_digest: string;
   readonly project_id: string;
+  readonly api_name: string;
   readonly resource_state: ResourceState;
   readonly revision_family: ResourceFamily;
   readonly revision_state: ResourceRevisionState;
@@ -273,42 +283,85 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
             "The Ready Release no longer matches its sealed Stage context.",
           );
         }
+        const runtimePlan = await deriveAndPersistRuntimePlan(
+          client,
+          evaluated.release,
+          evaluated.pins,
+        );
+        if (
+          runtimePlan.members.length > 0 &&
+          !(await releaseRuntimeMembersReady(client, evaluated.release.release_id))
+        ) {
+          throw new MetadataApplicationError(
+            "CONCURRENT_MODIFICATION",
+            "The Ready Release no longer has a complete current Runtime compatibility set.",
+          );
+        }
         return Object.freeze({ ...validation, staged: true });
       }
-      if (evaluated.release.state !== "draft") {
+      if (evaluated.release.state !== "draft" && evaluated.release.state !== "staging") {
         throw new MetadataApplicationError(
           "INVALID_STATE",
-          "Only a Draft Release can enter Stage.",
+          "Only a Draft or Staging Release can enter Stage.",
         );
       }
       if (!validation.report.valid) {
+        if (evaluated.release.state === "staging") {
+          throw new MetadataApplicationError(
+            "CONCURRENT_MODIFICATION",
+            "The Staging Release no longer passes its sealed validation gate.",
+          );
+        }
         return Object.freeze({ ...validation, staged: false });
       }
 
-      await client.query(
-        `UPDATE meta.releases
-         SET state = 'staging',
-             staged_from_release_id = $2,
-             staged_from_activation_id = $3,
-             staged_channel_control_sequence = $4,
-             staged_validation_context_digest = $5,
-             staged_at = clock_timestamp(),
-             changed_at = clock_timestamp()
-         WHERE release_id = $1`,
-        [
-          evaluated.release.release_id,
-          evaluated.channel?.release_id ?? null,
-          evaluated.channel?.activation_id ?? null,
-          evaluated.channel?.control_sequence ?? "0",
-          evaluated.contextDigest,
-        ],
+      if (evaluated.release.state === "draft") {
+        await client.query(
+          `UPDATE meta.releases
+           SET state = 'staging',
+               staged_from_release_id = $2,
+               staged_from_activation_id = $3,
+               staged_channel_control_sequence = $4,
+               staged_validation_context_digest = $5,
+               staged_at = clock_timestamp(),
+               changed_at = clock_timestamp()
+           WHERE release_id = $1`,
+          [
+            evaluated.release.release_id,
+            evaluated.channel?.release_id ?? null,
+            evaluated.channel?.activation_id ?? null,
+            evaluated.channel?.control_sequence ?? "0",
+            evaluated.contextDigest,
+          ],
+        );
+      } else if (evaluated.release.staged_validation_context_digest !== evaluated.contextDigest) {
+        throw new MetadataApplicationError(
+          "CONCURRENT_MODIFICATION",
+          "The Staging Release no longer matches its sealed Stage context.",
+        );
+      }
+
+      const runtimePlan = await deriveAndPersistRuntimePlan(
+        client,
+        evaluated.release,
+        evaluated.pins,
       );
-      const readyResult = await client.query<ReleaseRow>(
-        `${releaseUpdateToReady()} RETURNING ${releaseColumns()}`,
-        [evaluated.release.release_id],
+      const runtimeReady =
+        runtimePlan.members.length === 0 ||
+        (await releaseRuntimeMembersReady(client, evaluated.release.release_id));
+      const stateResult = runtimeReady
+        ? await client.query<ReleaseRow>(
+            `${releaseUpdateToReady()} RETURNING ${releaseColumns()}`,
+            [evaluated.release.release_id],
+          )
+        : await client.query<ReleaseRow>(releaseSelect(false), [evaluated.release.release_id]);
+      const stateRow = requireRow(
+        stateResult.rows[0],
+        runtimeReady
+          ? "Ready Release update returned no row."
+          : "Staging Release reread returned no row.",
       );
-      const readyRow = requireRow(readyResult.rows[0], "Ready Release update returned no row.");
-      const release = releaseRecord(readyRow, evaluated.pins);
+      const release = releaseRecord(stateRow, evaluated.pins);
       return Object.freeze({ ...validation, release, staged: true });
     });
   }
@@ -437,19 +490,44 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
         );
       }
 
-      const activationId = this.#uuid();
-      const activationDigest = digestCanonical({
-        schemaVersion: 1,
-        releaseId: release.release_id,
-        manifestDigest: release.manifest_digest,
-        memberCount: 0,
-      });
-      await client.query(
-        `INSERT INTO meta.runtime_activations
-           (activation_id, release_id, activation_digest, member_count, state)
-         VALUES ($1, $2, $3, 0, 'ready')`,
-        [activationId, release.release_id, activationDigest],
+      const runtimePlan = await client.query<{ readonly plan_digest: string }>(
+        `SELECT plan_digest FROM meta.release_runtime_plans WHERE release_id = $1`,
+        [release.release_id],
       );
+      let activationId: string;
+      if (runtimePlan.rows.length === 0) {
+        activationId = this.#uuid();
+        const activationDigest = digestCanonical({
+          schemaVersion: 1,
+          releaseId: release.release_id,
+          manifestDigest: release.manifest_digest,
+          memberCount: 0,
+        });
+        await client.query(
+          `INSERT INTO meta.runtime_activations
+             (activation_id, release_id, activation_digest, member_count, state)
+           VALUES ($1, $2, $3, 0, 'ready')`,
+          [activationId, release.release_id, activationDigest],
+        );
+      } else {
+        const candidate = await client.query<{ readonly activation_id: string }>(
+          `SELECT activation.activation_id
+           FROM meta.runtime_activations AS activation
+           WHERE activation.release_id = $1 AND activation.state = 'ready'
+           ORDER BY activation.created_at DESC, activation.activation_id
+           LIMIT 1
+           FOR SHARE`,
+          [release.release_id],
+        );
+        const row = candidate.rows[0];
+        if (row === undefined) {
+          throw new MetadataApplicationError(
+            "INVALID_STATE",
+            "The data-bearing Release has no complete Ready Runtime Activation.",
+          );
+        }
+        activationId = row.activation_id;
+      }
       this.#faultInjector("after_activation");
 
       await client.query(
@@ -641,10 +719,11 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
         readonly family: ResourceFamily;
         readonly content_digest: string;
         readonly project_id: string;
+        readonly api_name: string;
         readonly state: ResourceRevisionState;
       }>(
         `SELECT revision.resource_id, revision.revision_id, revision.family,
-                revision.content_digest, resource.project_id, revision.state
+                revision.content_digest, resource.project_id, resource.api_name, revision.state
          FROM meta.resource_revisions AS revision
          JOIN meta.resources AS resource ON resource.resource_id = revision.resource_id
          WHERE revision.revision_id = ANY($1::uuid[])
@@ -829,6 +908,364 @@ interface EvaluatedRelease {
   readonly contextDigest: ArtifactDigest;
   readonly report: ValidationReportContract;
   readonly compatibility: CompatibilityReportContract;
+}
+
+interface RuntimePlanRootRow {
+  readonly plan_digest: string;
+  readonly member_count: number;
+}
+
+interface RuntimePlanGroupRow {
+  readonly snapshot_group_id: string;
+  readonly group_key: string;
+  readonly mapping_resource_ids: string[];
+}
+
+interface RuntimePlanIndexRow {
+  readonly target_resource_id: string;
+  readonly target_revision_id: string;
+  readonly index_plan_digest: string;
+}
+
+async function deriveAndPersistRuntimePlan(
+  client: pg.PoolClient,
+  release: ReleaseRow,
+  pins: readonly PinRow[],
+): Promise<RuntimeMemberPlanContract> {
+  try {
+    const existingResult = await client.query<RuntimePlanRootRow>(
+      `SELECT plan_digest, member_count
+       FROM meta.release_runtime_plans
+       WHERE project_id = $1 AND release_id = $2`,
+      [release.project_id, release.release_id],
+    );
+    const existing = existingResult.rows[0] ?? null;
+    const groupResult = await client.query<RuntimePlanGroupRow>(
+      `SELECT snapshot_group.snapshot_group_id,
+              snapshot_group.group_key,
+              array_agg(definition.mapping_resource_id::text
+                        ORDER BY definition.ordinal) AS mapping_resource_ids
+       FROM runtime.snapshot_groups AS snapshot_group
+       JOIN runtime.snapshot_group_definition_members AS definition
+         ON definition.project_id = snapshot_group.project_id
+        AND definition.snapshot_group_id = snapshot_group.snapshot_group_id
+       WHERE snapshot_group.project_id = $1
+         AND snapshot_group.definition_member_count > 0
+       GROUP BY snapshot_group.snapshot_group_id, snapshot_group.group_key,
+                snapshot_group.definition_member_count
+       HAVING count(*) = snapshot_group.definition_member_count
+       ORDER BY snapshot_group.group_key COLLATE "C", snapshot_group.snapshot_group_id`,
+      [release.project_id],
+    );
+    const snapshotGroups: RuntimePlanSnapshotGroupDefinition[] = groupResult.rows.map((row) =>
+      Object.freeze({
+        snapshotGroupId: row.snapshot_group_id,
+        groupKey: row.group_key,
+        mappingResourceIds: Object.freeze(row.mapping_resource_ids),
+      }),
+    );
+    const planPins: RuntimePlanPinnedResource[] = pins.map((pin) =>
+      Object.freeze({
+        resourceId: pin.resource_id,
+        revisionId: pin.revision_id,
+        family: pin.revision_family,
+        apiName: pin.api_name,
+        contentDigest: parseArtifactDigest(pin.revision_content_digest),
+        content: pin.content,
+      }),
+    );
+    const indexPlans =
+      existing === null
+        ? await readNewRuntimePlanIndexes(client, release, pins)
+        : await readPersistedRuntimePlanIndexes(client, release.release_id);
+    const plan = compileRuntimeMemberPlan(
+      {
+        projectId: release.project_id,
+        releaseId: release.release_id,
+        pins: planPins,
+        snapshotGroups,
+        indexPlans,
+      },
+      digestText,
+    );
+
+    if (plan.members.length === 0) {
+      if (existing !== null) {
+        throw new MetadataApplicationError(
+          "CONCURRENT_MODIFICATION",
+          "A persisted Runtime Plan cannot become metadata-only.",
+        );
+      }
+      return plan;
+    }
+    if (existing !== null) {
+      if (
+        existing.plan_digest !== plan.planDigest ||
+        existing.member_count !== plan.members.length
+      ) {
+        throw new MetadataApplicationError(
+          "CONCURRENT_MODIFICATION",
+          "The server-derived Runtime Plan differs from the immutable persisted Plan.",
+        );
+      }
+      await assertPersistedRuntimePlanMembers(client, plan, pins);
+      return plan;
+    }
+
+    await client.query(
+      `INSERT INTO meta.release_runtime_plans
+         (project_id, release_id, plan_digest, member_count)
+       VALUES ($1, $2, $3, $4)`,
+      [release.project_id, release.release_id, plan.planDigest, plan.members.length],
+    );
+    const pinByRevision = new Map(pins.map((pin) => [pin.revision_id, pin] as const));
+    for (const member of plan.members) {
+      const schema = pinByRevision.get(member.snapshotSchemaRevisionId);
+      const mapping = pinByRevision.get(member.mappingRevisionId);
+      if (schema === undefined || mapping === undefined) {
+        throw new MetadataApplicationError(
+          "STORAGE_FAILURE",
+          "The compiled Runtime Plan lost a pinned Schema or Mapping Resource.",
+        );
+      }
+      await client.query(
+        `INSERT INTO meta.release_runtime_plan_members (
+           project_id, release_id, runtime_plan_digest, member_key, member_kind,
+           target_resource_id, target_revision_id,
+           snapshot_schema_resource_id, snapshot_schema_revision_id,
+           mapping_resource_id, mapping_revision_id,
+           snapshot_group_id, index_plan_digest
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+         )`,
+        [
+          release.project_id,
+          release.release_id,
+          plan.planDigest,
+          member.memberKey,
+          member.memberKind,
+          member.targetResourceId,
+          member.targetRevisionId,
+          schema.resource_id,
+          member.snapshotSchemaRevisionId,
+          mapping.resource_id,
+          member.mappingRevisionId,
+          member.snapshotGroupId,
+          member.indexPlanDigest,
+        ],
+      );
+    }
+    return plan;
+  } catch (error) {
+    if (error instanceof MetadataApplicationError) throw error;
+    if (error instanceof RuntimePlanError) {
+      throw new MetadataApplicationError("INVALID_STATE", error.message, { cause: error });
+    }
+    throw error;
+  }
+}
+
+async function readNewRuntimePlanIndexes(
+  client: pg.PoolClient,
+  release: ReleaseRow,
+  pins: readonly PinRow[],
+): Promise<readonly RuntimePlanIndexReference[]> {
+  const result = await client.query<RuntimePlanIndexRow>(
+    `SELECT DISTINCT ON (plan.target_resource_id, plan.target_revision_id)
+            plan.target_resource_id, plan.target_revision_id,
+            plan.plan_digest AS index_plan_digest
+     FROM runtime.index_plan_admissions AS admission
+     JOIN runtime.index_plans AS plan
+       ON plan.project_id = admission.project_id
+      AND plan.index_plan_id = admission.index_plan_id
+     JOIN runtime.project_runtime_inventories AS inventory
+       ON inventory.project_id = admission.project_id
+      AND inventory.inventory_revision = admission.inventory_revision
+      AND inventory.measurement_complete
+     WHERE admission.project_id = $1
+       AND admission.release_id = $2
+       AND (
+         admission.approval_id IS NULL
+         OR EXISTS (
+           SELECT 1
+           FROM runtime.capacity_approvals AS approval
+           WHERE approval.project_id = admission.project_id
+             AND approval.approval_id = admission.approval_id
+             AND approval.state = 'active'
+             AND approval.expires_at = admission.approval_expires_at
+             AND approval.expires_at > clock_timestamp()
+         )
+       )
+     ORDER BY plan.target_resource_id, plan.target_revision_id,
+              admission.admitted_at DESC, admission.admission_id`,
+    [release.project_id, release.release_id],
+  );
+  const indexes: RuntimePlanIndexReference[] = result.rows.map(runtimePlanIndexReference);
+  for (const pin of pins) {
+    if (pin.revision_family !== "mapping") continue;
+    const mapping = parseMappingDefinition(pin.content);
+    if (mapping.targetKind !== "link") continue;
+    indexes.push(
+      await ensureLinkIndexPlan(
+        client,
+        release.project_id,
+        mapping.targetResourceId,
+        mapping.targetRevisionId,
+      ),
+    );
+  }
+  return Object.freeze(indexes);
+}
+
+async function readPersistedRuntimePlanIndexes(
+  client: pg.PoolClient,
+  releaseId: string,
+): Promise<readonly RuntimePlanIndexReference[]> {
+  const result = await client.query<RuntimePlanIndexRow>(
+    `SELECT DISTINCT target_resource_id, target_revision_id,
+            index_plan_digest
+     FROM meta.release_runtime_plan_members
+     WHERE release_id = $1
+     ORDER BY target_resource_id, target_revision_id`,
+    [releaseId],
+  );
+  return Object.freeze(result.rows.map(runtimePlanIndexReference));
+}
+
+async function ensureLinkIndexPlan(
+  client: pg.PoolClient,
+  projectId: string,
+  targetResourceId: string,
+  targetRevisionId: string,
+): Promise<RuntimePlanIndexReference> {
+  const planDigest = digestCanonical({
+    schemaVersion: 1,
+    compilerVersion: "g2-02-10-link-index-v1",
+    targetKind: "link",
+    targetResourceId,
+    targetRevisionId,
+    entries: [],
+  });
+  const indexPlanId = deterministicUuid(
+    "g2-02-10-link-index-plan",
+    projectId,
+    targetResourceId,
+    targetRevisionId,
+    planDigest,
+  );
+  await client.query(
+    `INSERT INTO runtime.index_plans (
+       project_id, index_plan_id, target_resource_id, target_revision_id,
+       plan_digest, entry_count, compiler_version
+     ) VALUES ($1, $2, $3, $4, $5, 0, 'g2-02-10-link-index-v1')
+     ON CONFLICT (project_id, plan_digest) DO NOTHING`,
+    [projectId, indexPlanId, targetResourceId, targetRevisionId, planDigest],
+  );
+  const result = await client.query<RuntimePlanIndexRow & { readonly entry_count: number }>(
+    `SELECT target_resource_id, target_revision_id,
+            plan_digest AS index_plan_digest, entry_count
+     FROM runtime.index_plans
+     WHERE project_id = $1 AND plan_digest = $2`,
+    [projectId, planDigest],
+  );
+  const row = requireRow(result.rows[0], "Link Index Plan insert was not visible.");
+  if (
+    row.target_resource_id !== targetResourceId ||
+    row.target_revision_id !== targetRevisionId ||
+    row.entry_count !== 0
+  ) {
+    throw new MetadataApplicationError(
+      "STORAGE_FAILURE",
+      "A reused Link Index Plan has a mismatched immutable identity.",
+    );
+  }
+  return runtimePlanIndexReference(row);
+}
+
+function runtimePlanIndexReference(row: RuntimePlanIndexRow): RuntimePlanIndexReference {
+  return Object.freeze({
+    targetResourceId: row.target_resource_id,
+    targetRevisionId: row.target_revision_id,
+    indexPlanDigest: parseArtifactDigest(row.index_plan_digest),
+  });
+}
+
+async function assertPersistedRuntimePlanMembers(
+  client: pg.PoolClient,
+  plan: RuntimeMemberPlanContract,
+  pins: readonly PinRow[],
+): Promise<void> {
+  const result = await client.query<{
+    readonly member_key: string;
+    readonly member_kind: "object" | "link";
+    readonly target_resource_id: string;
+    readonly target_revision_id: string;
+    readonly snapshot_schema_resource_id: string;
+    readonly snapshot_schema_revision_id: string;
+    readonly mapping_resource_id: string;
+    readonly mapping_revision_id: string;
+    readonly snapshot_group_id: string;
+    readonly index_plan_digest: string;
+  }>(
+    `SELECT member_key, member_kind, target_resource_id, target_revision_id,
+            snapshot_schema_resource_id, snapshot_schema_revision_id,
+            mapping_resource_id, mapping_revision_id,
+            snapshot_group_id, index_plan_digest
+     FROM meta.release_runtime_plan_members
+     WHERE release_id = $1
+     ORDER BY member_key COLLATE "C"`,
+    [plan.releaseId],
+  );
+  const pinByRevision = new Map(pins.map((pin) => [pin.revision_id, pin] as const));
+  const expected = plan.members.map((member) => {
+    const schema = pinByRevision.get(member.snapshotSchemaRevisionId);
+    const mapping = pinByRevision.get(member.mappingRevisionId);
+    return {
+      member_key: member.memberKey,
+      member_kind: member.memberKind,
+      target_resource_id: member.targetResourceId,
+      target_revision_id: member.targetRevisionId,
+      snapshot_schema_resource_id: schema?.resource_id,
+      snapshot_schema_revision_id: member.snapshotSchemaRevisionId,
+      mapping_resource_id: mapping?.resource_id,
+      mapping_revision_id: member.mappingRevisionId,
+      snapshot_group_id: member.snapshotGroupId,
+      index_plan_digest: member.indexPlanDigest,
+    };
+  });
+  if (JSON.stringify(result.rows) !== JSON.stringify(expected)) {
+    throw new MetadataApplicationError(
+      "CONCURRENT_MODIFICATION",
+      "Persisted Runtime Plan members differ from the server-derived Plan.",
+    );
+  }
+}
+
+async function releaseRuntimeMembersReady(
+  client: pg.PoolClient,
+  releaseId: string,
+): Promise<boolean> {
+  const result = await client.query<{ readonly ready: boolean }>(
+    `SELECT NOT EXISTS (
+       SELECT 1
+       FROM (
+         SELECT member.snapshot_group_id, count(*)::integer AS expected_count
+         FROM meta.release_runtime_plan_members AS member
+         WHERE member.release_id = $1
+         GROUP BY member.snapshot_group_id
+       ) AS expected
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM runtime.current_compatibility_certificates AS certificate
+         WHERE certificate.target_release_id = $1
+           AND certificate.snapshot_group_id = expected.snapshot_group_id
+         GROUP BY certificate.group_version
+         HAVING count(DISTINCT certificate.target_member_key) = expected.expected_count
+       )
+     ) AS ready`,
+    [releaseId],
+  );
+  return result.rows[0]?.ready === true;
 }
 
 async function lockAndEvaluateRelease(
@@ -1218,6 +1655,7 @@ async function readPins(
             pin.family AS stored_family,
             pin.content_digest AS stored_content_digest,
             resource.project_id,
+            resource.api_name,
             resource.state AS resource_state,
             revision.family AS revision_family,
             revision.state AS revision_state,
@@ -1457,6 +1895,7 @@ function pinRowFromCreation(
     readonly family: ResourceFamily;
     readonly content_digest: string;
     readonly project_id: string;
+    readonly api_name: string;
     readonly state: ResourceRevisionState;
   },
   order: number,
@@ -1468,6 +1907,7 @@ function pinRowFromCreation(
     stored_family: row.family,
     stored_content_digest: row.content_digest,
     project_id: row.project_id,
+    api_name: row.api_name,
     resource_state: "active",
     revision_family: row.family,
     revision_state: row.state,

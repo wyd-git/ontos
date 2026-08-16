@@ -319,9 +319,10 @@ export class PostgresIndexPlanAdmissionRepository implements IndexPlanAdmissionR
              project_id, admission_id, release_id, release_plan_digest,
              index_plan_id, inventory_revision,
              release_units, project_union_units, project_physical_index_count,
-             admission_mode, approval_id, report_digest
+             admission_mode, approval_id, approval_expires_at, report_digest
            ) VALUES (
-             $1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10, $11::uuid, $12
+             $1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10,
+             $11::uuid, $12::timestamptz, $13
            )
            ON CONFLICT (project_id, release_id, index_plan_id, inventory_revision) DO NOTHING`,
           [
@@ -336,6 +337,7 @@ export class PostgresIndexPlanAdmissionRepository implements IndexPlanAdmissionR
             input.admission.projectPhysicalIndexCount,
             input.admission.admissionMode,
             input.admission.approvalId,
+            input.approval === undefined ? null : new Date(input.approval.expiresAt).toISOString(),
             input.reportDigest,
           ],
         );
@@ -346,6 +348,7 @@ export class PostgresIndexPlanAdmissionRepository implements IndexPlanAdmissionR
           readonly projectPhysicalIndexCount: number;
           readonly admissionMode: string;
           readonly approvalId: string | null;
+          readonly approvalExpiresAt: string | null;
           readonly reportDigest: string;
         }>(
           `SELECT release_plan_digest AS "releasePlanDigest",
@@ -353,6 +356,9 @@ export class PostgresIndexPlanAdmissionRepository implements IndexPlanAdmissionR
                   project_union_units AS "projectUnionUnits",
                   project_physical_index_count AS "projectPhysicalIndexCount",
                   admission_mode AS "admissionMode", approval_id AS "approvalId",
+                  CASE WHEN approval_expires_at IS NULL THEN NULL
+                       ELSE floor(extract(epoch FROM approval_expires_at) * 1000)::bigint::text
+                  END AS "approvalExpiresAt",
                   report_digest AS "reportDigest"
            FROM runtime.index_plan_admissions
            WHERE project_id = $1::uuid AND release_id = $2::uuid
@@ -374,6 +380,8 @@ export class PostgresIndexPlanAdmissionRepository implements IndexPlanAdmissionR
           admitted.projectPhysicalIndexCount !== input.admission.projectPhysicalIndexCount ||
           admitted.admissionMode !== input.admission.admissionMode ||
           admitted.approvalId !== input.admission.approvalId ||
+          admitted.approvalExpiresAt !==
+            (input.approval === undefined ? null : input.approval.expiresAt.toString()) ||
           admitted.reportDigest !== input.reportDigest
         ) {
           protocolConflict();
@@ -430,12 +438,13 @@ export class PostgresProjectionCapacityAdmissionRepository implements Projection
            project_id, admission_id, generation_id, phase, inventory_revision,
            index_plan_digest, source_forecast_digest, physical_measurement_digest,
            measured_bytes, observed_project_physical_bytes, reserved_bytes,
-           steady_reserved_bytes, peak_reserved_bytes, approval_id, report, report_digest
+           steady_reserved_bytes, peak_reserved_bytes, approval_id, approval_expires_at,
+           report, report_digest
          ) VALUES (
            $1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8,
-           $9, $10, $11, $12, $13, $14::uuid, $15::jsonb, $16
+           $9, $10, $11, $12, $13, $14::uuid, $15::timestamptz, $16::jsonb, $17
          )
-         ON CONFLICT (project_id, generation_id, phase) DO NOTHING`,
+         ON CONFLICT (project_id, generation_id, phase, inventory_revision) DO NOTHING`,
         [
           input.projectId,
           input.admissionId,
@@ -451,6 +460,7 @@ export class PostgresProjectionCapacityAdmissionRepository implements Projection
           input.report.steadyReservedBytes.toString(),
           input.report.peakReservedBytes.toString(),
           input.report.approvalId,
+          input.approval === undefined ? null : new Date(input.approval.expiresAt).toISOString(),
           JSON.stringify(report),
           input.reportDigest,
         ],
@@ -466,6 +476,7 @@ export class PostgresProjectionCapacityAdmissionRepository implements Projection
         readonly steadyReservedBytes: string;
         readonly peakReservedBytes: string;
         readonly approvalId: string | null;
+        readonly approvalExpiresAt: string | null;
         readonly reportDigest: string;
       }>(
         `SELECT inventory_revision::text AS "inventoryRevision",
@@ -477,10 +488,20 @@ export class PostgresProjectionCapacityAdmissionRepository implements Projection
                 reserved_bytes::text AS "reservedBytes",
                 steady_reserved_bytes::text AS "steadyReservedBytes",
                 peak_reserved_bytes::text AS "peakReservedBytes",
-                approval_id AS "approvalId", report_digest AS "reportDigest"
+                approval_id AS "approvalId",
+                CASE WHEN approval_expires_at IS NULL THEN NULL
+                     ELSE floor(extract(epoch FROM approval_expires_at) * 1000)::bigint::text
+                END AS "approvalExpiresAt",
+                report_digest AS "reportDigest"
          FROM runtime.capacity_admissions
-         WHERE project_id = $1::uuid AND generation_id = $2::uuid AND phase = $3`,
-        [input.projectId, input.generationId, input.phase],
+         WHERE project_id = $1::uuid AND generation_id = $2::uuid AND phase = $3
+           AND inventory_revision = $4`,
+        [
+          input.projectId,
+          input.generationId,
+          input.phase,
+          input.snapshot.inventoryRevision.toString(),
+        ],
       );
       const persisted = existing.rows[0];
       if (
@@ -498,6 +519,8 @@ export class PostgresProjectionCapacityAdmissionRepository implements Projection
         persisted.steadyReservedBytes !== input.report.steadyReservedBytes.toString() ||
         persisted.peakReservedBytes !== input.report.peakReservedBytes.toString() ||
         persisted.approvalId !== input.report.approvalId ||
+        persisted.approvalExpiresAt !==
+          (input.approval === undefined ? null : input.approval.expiresAt.toString()) ||
         persisted.reportDigest !== input.reportDigest
       ) {
         protocolConflict();

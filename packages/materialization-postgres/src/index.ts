@@ -22,6 +22,7 @@ export * from "./quality.ts";
 export * from "./worker.ts";
 export * from "./index-capacity.ts";
 export * from "./projection-ddl.ts";
+export * from "./runtime-plan.ts";
 
 interface SessionRow extends pg.QueryResultRow {
   readonly projectId: string;
@@ -155,7 +156,7 @@ export class PostgresSnapshotUploadSessionRepository implements SnapshotUploadSe
            JOIN meta.releases AS release
              ON release.project_id = member.project_id
             AND release.release_id = member.release_id
-            AND release.state IN ('ready', 'published')
+            AND release.state IN ('staging', 'ready', 'published')
           WHERE member.project_id = $10 AND member.release_id = $11
             AND member.member_key = $12`,
         [

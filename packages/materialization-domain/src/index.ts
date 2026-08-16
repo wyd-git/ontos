@@ -11,6 +11,7 @@ export * from "./mapping.ts";
 export * from "./index-plan.ts";
 export * from "./projection-baseline.ts";
 export * from "./projection-capacity.ts";
+export * from "./runtime-plan.ts";
 
 export const MANAGED_CSV_HARD_LIMITS = Object.freeze({
   maximumFileBytes: 512 * 1024 * 1024,
