@@ -393,6 +393,18 @@ void test(
       const walBytes = await walBytesSince(admin, walStart);
       ownerToken = await required(oidc).token({ subject: "clean-room-owner", name: "Owner" });
 
+      const firstRefresh = await api(
+        apiRuntime,
+        ownerToken,
+        "POST",
+        `/api/v1/admin/projects/${primaryProjectId}/snapshot-groups/${commerce.snapshotGroupId}/versions/1/refresh`,
+        { headers: { "idempotency-key": "g20214-first-refresh-0001" }, json: {} },
+      );
+      assert.equal(firstRefresh.status, 202, firstRefresh.text);
+      assert.equal(
+        record(required(arrayField(record(firstRefresh.json), "releases")[0]))["outcome"],
+        "ready",
+      );
       const readyStage = await api(
         apiRuntime,
         ownerToken,
@@ -2031,6 +2043,12 @@ function record(value: unknown): Readonly<Record<string, unknown>> {
   assert.notEqual(value, null);
   assert.equal(Array.isArray(value), false);
   return value as Readonly<Record<string, unknown>>;
+}
+
+function arrayField(value: Readonly<Record<string, unknown>>, key: string): readonly unknown[] {
+  const field = value[key];
+  assert.equal(Array.isArray(field), true);
+  return field as readonly unknown[];
 }
 
 function stringField(value: Readonly<Record<string, unknown>>, key: string): string {
