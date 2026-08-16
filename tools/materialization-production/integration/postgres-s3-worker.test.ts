@@ -418,7 +418,7 @@ void test(
            (SELECT state FROM runtime.generations
              WHERE project_id = $1 AND generation_id = $4) AS "generationState",
            (SELECT count(*)::integer FROM meta.release_serving_heads
-             WHERE project_id = $1 AND release_id = $2) AS "servingHeads",
+             WHERE release_id = $2) AS "servingHeads",
            (SELECT count(*)::integer FROM meta.release_channels
              WHERE project_id = $1 AND release_id = $2 AND channel_name = 'production') AS "channelCount"`,
         [projectId, releaseId, fixture.snapshotGroupId, build.generationId],
