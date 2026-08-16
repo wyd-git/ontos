@@ -33,7 +33,8 @@
       "migrations/db-00/0013_materialization_job_worker.sql",
       "migrations/db-00/0014_projection_index_capacity_ddl.sql",
       "migrations/db-00/0015_runtime_plan_compatibility.sql",
-      "migrations/db-00/0016_snapshot_group_cutover.sql"
+      "migrations/db-00/0016_snapshot_group_cutover.sql",
+      "migrations/db-00/0017_generation_index_gc.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -58,9 +59,17 @@
       "meta.runtime_activations",
       "meta.validation_reports",
       "ontos_migration.schema_migrations",
+      "ops.gc_batch_events",
+      "ops.gc_execution_contexts",
+      "ops.gc_orphan_deletions",
       "ops.gc_plan_candidates",
+      "ops.gc_plan_entries",
       "ops.gc_plans",
+      "ops.gc_root_epochs",
+      "ops.gc_root_provider_registry",
+      "ops.gc_root_provider_scans",
       "ops.gc_runs",
+      "ops.materialization_attempt_collections",
       "ops.materialization_attempts",
       "ops.materialization_checkpoints",
       "ops.materialization_error_samples",
@@ -80,8 +89,10 @@
       "runtime.capacity_approvals",
       "runtime.compatibility_certificates",
       "runtime.dataset_snapshots",
+      "runtime.generation_collections",
       "runtime.generation_measurements",
       "runtime.generations",
+      "runtime.head_set_collections",
       "runtime.index_inventory",
       "runtime.index_plan_admissions",
       "runtime.index_plan_entries",
@@ -90,6 +101,7 @@
       "runtime.link_current",
       "runtime.materialization_confirmations",
       "runtime.materialization_quality_bindings",
+      "runtime.materialization_report_collections",
       "runtime.materialization_report_reasons",
       "runtime.materialization_reports",
       "runtime.object_base",
@@ -198,6 +210,12 @@
       "path": "docs/architecture/adr/018-immutable-head-set-snapshot-group-cutover.md",
       "acceptedStatus": "Accepted for G2-02-11",
       "evidence": "docs/evidence/g2-02-11-snapshot-group-cutover.md"
+    },
+    {
+      "id": "ADR-019",
+      "path": "docs/architecture/adr/019-generation-index-mark-plan-commit-gc.md",
+      "acceptedStatus": "Accepted for G2-02-12",
+      "evidence": "docs/evidence/g2-02-12-generation-index-gc.md"
     }
   ],
   "requiredEvidence": [
@@ -236,7 +254,8 @@
     "docs/evidence/g2-02-08-materialization-worker.md",
     "docs/evidence/g2-02-09-index-capacity-ddl.md",
     "docs/evidence/g2-02-10-runtime-plan-compatibility.md",
-    "docs/evidence/g2-02-11-snapshot-group-cutover.md"
+    "docs/evidence/g2-02-11-snapshot-group-cutover.md",
+    "docs/evidence/g2-02-12-generation-index-gc.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",
