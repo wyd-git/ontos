@@ -8,7 +8,7 @@ import {
 } from "../database/postgres-test-image.ts";
 
 const postgresContainerMarker = "POSTGRES_DB=";
-const postgresDataTmpfs = "/var/lib/postgresql/data:rw,noexec,nosuid,size=1g";
+const boundedPostgresDataTmpfs = /\/var\/lib\/postgresql\/data:rw,noexec,nosuid,size=(?:1|2)g/u;
 const volumeSafeCleanup =
   /docker\(\["rm",\s*"--force",\s*"--volumes",\s*containerName\],\s*true\)/u;
 
@@ -26,9 +26,9 @@ void test("PostgreSQL Docker tests cannot leak anonymous data volumes", async ()
       true,
       `${path} must use the immutable PostgreSQL image resolver`,
     );
-    assert.equal(
-      source.includes(postgresDataTmpfs),
-      true,
+    assert.match(
+      source,
+      boundedPostgresDataTmpfs,
       `${path} must mount PostgreSQL data on a bounded tmpfs`,
     );
     assert.match(

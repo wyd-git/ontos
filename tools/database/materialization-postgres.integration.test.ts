@@ -302,7 +302,7 @@ void test(
       `POSTGRES_DB=${database}`,
       ...(projectionCapacityMode
         ? []
-        : ["--tmpfs", "/var/lib/postgresql/data:rw,noexec,nosuid,size=1g"]),
+        : ["--tmpfs", "/var/lib/postgresql/data:rw,noexec,nosuid,size=2g"]),
       "--publish",
       "127.0.0.1::5432",
       postgresImage,
@@ -4976,7 +4976,7 @@ async function exerciseSnapshotGroupRefreshCutover(
   });
 
   const before = await withClient(adminConfig, readObjectHeads);
-  assert.equal(before.length, 2);
+  assert.equal(before.length, capacityMetrics.objectRows);
   await prepareRefreshFixture(adminConfig, apiConfig, workerConfig, 3);
 
   const apiPool = new pg.Pool(apiConfig);
@@ -5043,7 +5043,12 @@ async function exerciseSnapshotGroupRefreshCutover(
         repointed: refresh2.repointedHeadCount,
         releaseCount: refresh2.releases.length,
       },
-      { inserted: 0, updated: 0, repointed: 2, releaseCount: 2 },
+      {
+        inserted: 0,
+        updated: 0,
+        repointed: capacityMetrics.objectRows,
+        releaseCount: 2,
+      },
     );
     const winningPreparation =
       preparations[concurrent.findIndex((result) => result.status === "fulfilled")];
@@ -5106,12 +5111,18 @@ async function exerciseSnapshotGroupRefreshCutover(
         servingMoved: refresh3.releases.filter((release) => release.servingHeadMoved).length,
         channelMoved: refresh3.releases.filter((release) => release.channelMoved).length,
       },
-      { inserted: 0, updated: 2, repointed: 0, servingMoved: 2, channelMoved: 1 },
+      {
+        inserted: 0,
+        updated: 2,
+        repointed: capacityMetrics.objectRows - 2,
+        servingMoved: 2,
+        channelMoved: 1,
+      },
     );
     const afterBusinessChange = await withClient(adminConfig, readObjectHeads);
     assert.deepEqual(
       afterBusinessChange.map((head) => head.head_version),
-      before.map((head) => head.head_version + 1),
+      before.map((head, index) => head.head_version + (index < 2 ? 1 : 0)),
     );
     assert.equal(
       afterBusinessChange.every((head) => head.current_generation_id === ids.refresh3Generation),
