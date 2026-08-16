@@ -425,6 +425,12 @@ void test(
         servingHeads: 1,
         channelCount: 1,
       });
+    } catch (error) {
+      const { stdout, stderr } = await execFileAsync("docker", ["logs", postgresContainer]).catch(
+        () => ({ stdout: "", stderr: "" }),
+      );
+      process.stderr.write(`${stdout}${stderr}`);
+      throw error;
     } finally {
       if (apiRuntime !== null) await apiRuntime.close();
       if (admin !== null) await admin.end();
