@@ -118,6 +118,11 @@ function mapProblem(error: unknown): HttpProblem {
     switch (error.code) {
       case "ADMIN_REQUEST_INVALID":
         return invalidAdminRequest();
+      case "DATA_BEARING_PROJECT_LIMIT_EXCEEDED":
+        return conflictProblem(
+          "MATERIALIZATION_PROJECT_LIMIT_EXCEEDED",
+          "The reference deployment already has a data-bearing Project.",
+        );
       case "FORBIDDEN":
       case "OBJECT_NOT_ACCESSIBLE":
         return coreProblem("OBJECT_NOT_ACCESSIBLE", "The requested resource is not accessible.");

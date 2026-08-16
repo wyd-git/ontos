@@ -109,6 +109,11 @@ const gates: readonly GateDefinition[] = [
     arguments: ["run", "test:materialization:production"],
   },
   {
+    name: "materialization-clean-room",
+    command: "npm",
+    arguments: ["run", "test:materialization-clean-room"],
+  },
+  {
     name: "materialization-scope-evidence",
     command: "npm",
     arguments: ["run", "check:materialization-evidence"],

@@ -35,7 +35,8 @@
       "migrations/db-00/0015_runtime_plan_compatibility.sql",
       "migrations/db-00/0016_snapshot_group_cutover.sql",
       "migrations/db-00/0017_generation_index_gc.sql",
-      "migrations/db-00/0018_materialization_admin_boundary.sql"
+      "migrations/db-00/0018_materialization_admin_boundary.sql",
+      "migrations/db-00/0019_materialization_clean_room_guard.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -90,6 +91,7 @@
       "runtime.capacity_approvals",
       "runtime.compatibility_certificates",
       "runtime.dataset_snapshots",
+      "runtime.data_bearing_project_guard",
       "runtime.generation_collections",
       "runtime.generation_measurements",
       "runtime.generations",

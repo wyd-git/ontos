@@ -41,6 +41,14 @@ const mutations = [
     "materialization-evidence.test.ts",
     "unit",
   ],
+  [
+    "data_project_limit",
+    "tools/materialization-clean-room/clean-room.test.ts",
+    "PROJECT_LIMIT_MARKER",
+    "cleanroom",
+    "clean-room.test.ts",
+    "cleanroom",
+  ],
 ] as const;
 
 const policy: MaterializationEvidencePolicy = {
@@ -85,7 +93,7 @@ const policy: MaterializationEvidencePolicy = {
     routeFragment,
     requiredGate,
   })),
-  requiredGates: ["admin", "db", "oidc", "unit", "worker"],
+  requiredGates: ["admin", "cleanroom", "db", "oidc", "unit", "worker"],
   owner: "owner",
   residualRisks: [],
 };
@@ -139,9 +147,10 @@ void test("the manifest requires every unified gate exactly once", () => {
   };
   const acceptance = { status: "PASS", requiredGates: ["unit"] };
   const production = { status: "PASS", cleanCheckout: true, commit: "c".repeat(40) };
-  const manifest = materializationEvidenceManifest(report, acceptance, production);
+  const cleanRoom = cleanRoomEvidence();
+  const manifest = materializationEvidenceManifest(report, acceptance, production, cleanRoom);
   assert.equal(manifest.status, "PASS");
-  assert.equal(manifest.qualification, "PRODUCTION_BOUNDARY_PASS");
+  assert.equal(manifest.qualification, "CLEAN_ROOM_PASS");
   assert.equal(manifest.testCount, 7);
 
   assert.equal(
@@ -149,6 +158,7 @@ void test("the manifest requires every unified gate exactly once", () => {
       report,
       { status: "PASS", requiredGates: ["unit", "postgres"] },
       production,
+      cleanRoom,
     ).status,
     "FAIL",
   );
@@ -189,8 +199,64 @@ function validSnapshot(): MaterializationEvidenceSnapshot {
       completedStages: policy.productionStages,
       assertions: productionAssertions(),
     },
+    cleanRoom: cleanRoomEvidence(),
     sourceTexts,
     packageScripts,
+  };
+}
+
+function cleanRoomEvidence(): Readonly<Record<string, unknown>> {
+  return {
+    gate: "G2-02-14",
+    status: "PASS",
+    qualification: "CLEAN_ROOM_PASS",
+    commit: "c".repeat(40),
+    cleanCheckout: true,
+    reportSha256: digest,
+    migrations: { restartRunNoOp: true },
+    fixtures: { fixtureDigest: digest },
+    lifecycle: {
+      r1A0BeforeMaterialization: true,
+      firstObjectLinkGroupReady: true,
+      badVersionRejected: true,
+      badVersionPreservedServingHead: true,
+      goodRefreshReady: true,
+      refreshObservedOnlyOldOrNew: true,
+      idempotentJobAndRefresh: true,
+    },
+    performance: {
+      objectRows: 100_000,
+      linkRows: 1_000_000,
+      coldEndToEndMilliseconds: 100_000,
+      warmRefreshEndToEndMilliseconds: 90_000,
+      cutovers: { runs: 20, p95Milliseconds: 100, maxMilliseconds: 200 },
+    },
+    recovery: {
+      wholeEnvironmentRestarted: true,
+      stateManifestIdentical: true,
+      stateManifestBefore: digest,
+      stateManifestAfter: digest,
+    },
+    capacity: {
+      overHardLimitRejected: true,
+      approvalCreated: true,
+      hardLimitBytes: "12884901888",
+    },
+    security: {
+      invalidOidcRejected: true,
+      unauthorizedProjectHidden: true,
+      crossProjectHidden: true,
+      uploadTraversalRejected: true,
+      apiDirectTableDenied: true,
+      workerAuthTableDenied: true,
+      ddlMetadataTableDenied: true,
+      sensitiveErrorsRedacted: true,
+    },
+    garbageCollection: { orphanObjectVersionReclaimed: true, finalState: "COMMITTED" },
+    overlayBoundary: {
+      productionProvider: "certified-zero-overlay-only",
+      realPostgresOverlay: "DEFERRED_G2_04",
+    },
   };
 }
 

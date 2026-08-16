@@ -15,17 +15,21 @@
     "docs/evidence/g2-02-10-runtime-plan-compatibility.md",
     "docs/evidence/g2-02-11-snapshot-group-cutover.md",
     "docs/evidence/g2-02-12-generation-index-gc.md",
-    "docs/evidence/g2-02-13-admin-testkit-ci.md"
+    "docs/evidence/g2-02-13-admin-testkit-ci.md",
+    "docs/evidence/g2-02-14-clean-room-materialization.md"
   ],
   "requiredReviews": [
     "docs/reviews/g2-02-13-admin-testkit-ci-red-team.md",
-    "docs/reviews/g2-02-13-intended-vs-implemented.md"
+    "docs/reviews/g2-02-13-intended-vs-implemented.md",
+    "docs/reviews/g2-02-14-clean-room-red-team.md",
+    "docs/reviews/g2-02-14-intended-vs-implemented.md"
   ],
   "scope": {
     "allowedExactPaths": [
       ".github/workflows/foundation-ci.yml",
       "docs/README.md",
       "migrations/db-00/0018_materialization_admin_boundary.sql",
+      "migrations/db-00/0019_materialization_clean_room_guard.sql",
       "package-lock.json",
       "package.json",
       "packages/metadata-postgres/src/release.ts",
@@ -152,6 +156,14 @@
       "script": "test:unit",
       "routeFragment": "tools/ci/*.test.ts",
       "requiredGate": "unit"
+    },
+    {
+      "id": "data_project_limit",
+      "source": "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts",
+      "marker": "MATERIALIZATION_PROJECT_LIMIT_EXCEEDED",
+      "script": "test:materialization-clean-room",
+      "routeFragment": "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts",
+      "requiredGate": "materialization-clean-room"
     }
   ],
   "requiredGates": [
@@ -181,6 +193,7 @@
     "materialization-worker-postgres",
     "admin-api-oidc-postgres",
     "materialization-production",
+    "materialization-clean-room",
     "materialization-scope-evidence",
     "metadata-clean-room",
     "production-boundary-up",
@@ -189,12 +202,6 @@
   ],
   "owner": "wyd-git",
   "residualRisks": [
-    {
-      "id": "RISK-G2-02-13-01",
-      "risk": "The production-boundary scenario proves the full small-fixture path; the 100k Object / 1m Link end-to-end run remains a G2-02-14 clean-room obligation.",
-      "owner": "Runtime / Quality (accountable: wyd-git)",
-      "nextGate": "G2-02-14"
-    },
     {
       "id": "RISK-G2-02-13-02",
       "risk": "Production only accepts zero-overlay evidence; real PostgreSQL W0/W1 overlay replay remains owned by G2-04.",

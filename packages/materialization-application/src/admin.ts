@@ -29,6 +29,7 @@ import type { RuntimeRefreshPreparationResult } from "./runtime-plan.ts";
 
 export type MaterializationAdminErrorCode =
   | "ADMIN_REQUEST_INVALID"
+  | "DATA_BEARING_PROJECT_LIMIT_EXCEEDED"
   | "DEPENDENCY_UNAVAILABLE"
   | "FORBIDDEN"
   | "JOB_NOT_CANCELLABLE"
@@ -37,6 +38,8 @@ export type MaterializationAdminErrorCode =
 
 const adminErrorMessages = Object.freeze({
   ADMIN_REQUEST_INVALID: "The materialization administrator request is invalid.",
+  DATA_BEARING_PROJECT_LIMIT_EXCEEDED:
+    "The reference deployment already has a data-bearing Project.",
   DEPENDENCY_UNAVAILABLE: "A materialization administrator dependency is unavailable.",
   FORBIDDEN: "The materialization administrator operation is not permitted.",
   JOB_NOT_CANCELLABLE: "The materialization Job is not cancellable.",
