@@ -71,8 +71,8 @@ export async function startAdminApi(
     max: 12,
     connectionTimeoutMillis: 5_000,
     idleTimeoutMillis: 30_000,
-    statement_timeout: 15_000,
-    query_timeout: 20_000,
+    statement_timeout: config.databaseStatementTimeoutMilliseconds ?? 120_000,
+    query_timeout: config.databaseQueryTimeoutMilliseconds ?? 125_000,
   });
   try {
     await assertApiRuntimeDatabaseBoundary(pool);

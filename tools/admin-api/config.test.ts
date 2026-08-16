@@ -24,6 +24,8 @@ const valid = Object.freeze({
 void test("Admin API configuration closes and bounds the managed object-store surface", () => {
   const config = loadAdminApiConfig(valid);
   assert.equal(config.managedCsvMaximumBytes, 1_048_576);
+  assert.equal(config.databaseStatementTimeoutMilliseconds, 120_000);
+  assert.equal(config.databaseQueryTimeoutMilliseconds, 125_000);
   assert.deepEqual(config.objectStore, {
     endpoint: valid.ONTOS_S3_ENDPOINT,
     region: valid.ONTOS_S3_REGION,
@@ -40,7 +42,23 @@ void test("Admin API configuration closes and bounds the managed object-store su
     { ...valid, ONTOS_S3_MAX_ATTEMPTS: "6" },
     { ...valid, ONTOS_MANAGED_CSV_MAXIMUM_BYTES: "536870913" },
     { ...valid, ONTOS_MANAGED_CSV_MAXIMUM_BYTES: "0" },
+    { ...valid, ONTOS_ADMIN_API_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS: "1800000" },
+    {
+      ...valid,
+      ONTOS_ADMIN_API_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS: "120000",
+      ONTOS_ADMIN_API_DATABASE_QUERY_TIMEOUT_MILLISECONDS: "120000",
+    },
   ]) {
     assert.throws(() => loadAdminApiConfig(source));
   }
+});
+
+void test("Admin API loads bounded database timeout overrides", () => {
+  const config = loadAdminApiConfig({
+    ...valid,
+    ONTOS_ADMIN_API_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS: "300000",
+    ONTOS_ADMIN_API_DATABASE_QUERY_TIMEOUT_MILLISECONDS: "305000",
+  });
+  assert.equal(config.databaseStatementTimeoutMilliseconds, 300_000);
+  assert.equal(config.databaseQueryTimeoutMilliseconds, 305_000);
 });

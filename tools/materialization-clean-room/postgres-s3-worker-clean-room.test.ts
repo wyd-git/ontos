@@ -213,6 +213,8 @@ void test(
         },
         cursorHmacSecret: cursorSecret,
         managedCsvMaximumBytes: 128 * 1024 * 1024,
+        databaseStatementTimeoutMilliseconds: 120_000,
+        databaseQueryTimeoutMilliseconds: 125_000,
         objectStore,
       });
 
@@ -593,6 +595,8 @@ void test(
         },
         cursorHmacSecret: cursorSecret,
         managedCsvMaximumBytes: 128 * 1024 * 1024,
+        databaseStatementTimeoutMilliseconds: 120_000,
+        databaseQueryTimeoutMilliseconds: 125_000,
         objectStore,
       });
       const restartedOwnerToken = await required(oidc).token({
