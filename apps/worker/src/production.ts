@@ -60,7 +60,9 @@ export async function startProductionMaterializationWorker(
           crypto: nodeProductionCrypto,
         }),
       observe(event) {
-        process.stdout.write(`${JSON.stringify(event)}\n`);
+        if (event.kind !== "job_result" || event.outcome !== "idle") {
+          process.stdout.write(`${JSON.stringify(event)}\n`);
+        }
       },
     });
     let closing: Promise<void> | null = null;

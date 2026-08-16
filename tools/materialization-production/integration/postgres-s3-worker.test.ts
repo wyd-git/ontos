@@ -452,6 +452,8 @@ interface JobDiagnostic {
   readonly currentStage: string | null;
   readonly resultCode: string | null;
   readonly attemptCount: number;
+  readonly lastFailureCode: string | null;
+  readonly lastFailureCategory: string | null;
 }
 
 async function seedPublishedMaterializationResources(
@@ -682,12 +684,16 @@ async function waitForJob(
   for (let attempt = 0; attempt < 1_200; attempt += 1) {
     const result = await admin.query<JobDiagnostic & pg.QueryResultRow>(
       `SELECT state, current_stage AS "currentStage", result_code AS "resultCode",
-              attempt_count AS "attemptCount"
+              attempt_count AS "attemptCount",
+              last_failure_code AS "lastFailureCode",
+              last_failure_category AS "lastFailureCategory"
        FROM ops.materialization_jobs WHERE project_id = $1 AND job_id = $2`,
       [projectId, jobId],
     );
     latest = required(result.rows[0]);
-    if (["succeeded", "dead_letter", "cancelled"].includes(latest.state)) return latest;
+    if (["succeeded", "dead_letter", "cancelled", "retry_wait"].includes(latest.state)) {
+      return latest;
+    }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`Worker job did not finish: ${JSON.stringify(latest)}`);
