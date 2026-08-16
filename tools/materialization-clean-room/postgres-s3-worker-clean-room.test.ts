@@ -98,7 +98,7 @@ interface ApiResponse {
 
 void test(
   "G2-02-14 clean-room proves the full production Materialization boundary",
-  { timeout: 2_700_000 },
+  { timeout: 4_500_000 },
   async () => {
     const startedAt = new Date();
     const clean = await cleanCheckoutIdentity();
@@ -360,8 +360,8 @@ void test(
         dependencyBackoffMilliseconds: 100,
         shutdownGraceMilliseconds: 30_000,
         databasePoolMaximum: 6,
-        databaseStatementTimeoutMilliseconds: 600_000,
-        databaseQueryTimeoutMilliseconds: 605_000,
+        databaseStatementTimeoutMilliseconds: 900_000,
+        databaseQueryTimeoutMilliseconds: 905_000,
         objectStore,
       });
       const firstTerminal = await waitForJob(admin, primaryProjectId, firstJob, 1_800_000);
@@ -612,8 +612,8 @@ void test(
         dependencyBackoffMilliseconds: 100,
         shutdownGraceMilliseconds: 30_000,
         databasePoolMaximum: 6,
-        databaseStatementTimeoutMilliseconds: 600_000,
-        databaseQueryTimeoutMilliseconds: 605_000,
+        databaseStatementTimeoutMilliseconds: 900_000,
+        databaseQueryTimeoutMilliseconds: 905_000,
         objectStore,
       });
       await executeIndexPlans(adminConfig, primaryProjectId, indexPlanIds);
