@@ -26,6 +26,7 @@ void test("loads two full domain packages and all migrated vector groups without
   assert.deepEqual(Object.keys(objectField(assets.provenance, "groups")).sort(), [
     "compatibility",
     "generator",
+    "materialization",
     "metadataPackages",
     "overlay",
     "packages",
