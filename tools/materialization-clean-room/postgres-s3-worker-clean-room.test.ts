@@ -230,21 +230,27 @@ void test(
       const primaryProjectId = await createProject(apiRuntime, ownerToken, "CleanRoomCommerce");
       const secondProjectId = await createProject(apiRuntime, ownerToken, "CleanRoomWork");
       const principalId = await principalIdFor(admin, required(oidc).issuer, "clean-room-owner");
-      const commerce = await seedDomain(
-        admin,
-        primaryProjectId,
-        principalId,
-        required(MATERIALIZATION_DOMAINS.find(({ id }) => id === "commerce")),
+      const commerceFixture = required(MATERIALIZATION_DOMAINS.find(({ id }) => id === "commerce"));
+      const workFixture = required(
+        MATERIALIZATION_DOMAINS.find(({ id }) => id === "work-management"),
       );
-      const work = await seedDomain(
-        admin,
-        secondProjectId,
-        principalId,
-        required(MATERIALIZATION_DOMAINS.find(({ id }) => id === "work-management")),
+      const baselineObject = required(
+        commerceFixture.members.find(({ kind }) => kind === "object"),
       );
-
+      const baselineResourceId = randomUUID();
+      const baselineRevisionId = randomUUID();
+      await insertPublishedResource(admin, {
+        projectId: primaryProjectId,
+        principalId,
+        resourceId: baselineResourceId,
+        revisionId: baselineRevisionId,
+        namespace: "fixture.clean-room-baseline",
+        apiName: baselineObject.memberKey.slice(baselineObject.memberKey.indexOf(":") + 1),
+        family: "object_type",
+        content: baselineObject.definition,
+      });
       const baselineReleaseId = await createRelease(apiRuntime, ownerToken, primaryProjectId, [
-        required(commerce.members.find(({ kind }) => kind === "object")).revisionId,
+        baselineRevisionId,
       ]);
       await validateAndStageRelease(apiRuntime, ownerToken, baselineReleaseId, "ready");
       const baselinePublish = await api(
@@ -258,6 +264,9 @@ void test(
       const r1State = await stateCounts(admin, primaryProjectId);
       assert.equal(r1State.activations, 1);
       assert.equal(r1State.servingHeads, 0);
+
+      const commerce = await seedDomain(admin, primaryProjectId, principalId, commerceFixture);
+      const work = await seedDomain(admin, secondProjectId, principalId, workFixture);
 
       const releaseId = await createRelease(
         apiRuntime,
