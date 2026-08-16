@@ -21,8 +21,6 @@ import {
 } from "@ontos/materialization-application";
 import { PostgresIndexPlanAdmissionRepository } from "@ontos/materialization-postgres";
 import type { ReleaseIndexPlanInput } from "@ontos/materialization-domain";
-import { METADATA_RELEASE_VALIDATOR_VERSION } from "@ontos/metadata-domain";
-import { PostgresReleaseStore } from "@ontos/metadata-postgres";
 import {
   MATERIALIZATION_BENCHMARK_FIXTURE,
   MATERIALIZATION_DOMAINS,
@@ -796,12 +794,15 @@ async function seedDomain(
        VALUES ($1, $2, $3, $4)`,
       [projectId, snapshotGroupId, `${domain.id}-clean-room`, seededMembers.length],
     );
-    for (const [ordinal, member] of seededMembers.entries()) {
+    const mappingResourceIds = seededMembers
+      .map(({ mappingResourceId }) => mappingResourceId)
+      .sort();
+    for (const [ordinal, mappingResourceId] of mappingResourceIds.entries()) {
       await client.query(
         `INSERT INTO runtime.snapshot_group_definition_members
            (project_id, snapshot_group_id, ordinal, mapping_resource_id)
          VALUES ($1, $2, $3, $4)`,
-        [projectId, snapshotGroupId, ordinal, member.mappingResourceId],
+        [projectId, snapshotGroupId, ordinal, mappingResourceId],
       );
     }
     await client.query(
@@ -904,18 +905,6 @@ async function validateAndStageRelease(
   );
   assert.equal(validated.status, 200, validated.text);
   const staged = await api(runtime, token, "POST", `/api/v1/admin/releases/${releaseId}/stage`);
-  if (staged.status !== 200) {
-    try {
-      await new PostgresReleaseStore(runtime.pool).stageRelease({
-        releaseId,
-        validatorVersion: METADATA_RELEASE_VALIDATOR_VERSION,
-      });
-      throw new Error("Direct Stage diagnostic unexpectedly succeeded.");
-    } catch (error) {
-      const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
-      throw new Error(`Stage diagnostic failed: ${detail}; HTTP=${staged.text}`, { cause: error });
-    }
-  }
   assert.equal(staged.status, 200, staged.text);
   assert.equal(record(record(staged.json)["release"])["state"], expectedState);
 }
