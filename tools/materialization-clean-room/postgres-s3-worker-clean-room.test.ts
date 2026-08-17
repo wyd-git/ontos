@@ -512,17 +512,22 @@ void test(
           await delay(2);
         }
       })();
-      const refreshActivation = await activate(
-        admin,
-        apiRuntime,
-        ownerToken,
-        primaryProjectId,
-        commerce.snapshotGroupId,
-        3,
-        "g20214-good-refresh-activate-0003",
-      );
-      keepPolling = false;
-      await pointerPoll;
+      const refreshActivation = await (async () => {
+        try {
+          return await activate(
+            admin,
+            apiRuntime,
+            ownerToken,
+            primaryProjectId,
+            commerce.snapshotGroupId,
+            3,
+            "g20214-good-refresh-activate-0003",
+          );
+        } finally {
+          keepPolling = false;
+          await pointerPoll;
+        }
+      })();
       assert.equal(record(refreshActivation.json)["changed"], true);
       const newServingActivation = await servingActivation(admin, releaseId);
       observedActivations.add(newServingActivation);

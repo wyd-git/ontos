@@ -7378,18 +7378,33 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
   );
   assert.ok(result.rows.every(({ owner }) => owner === "migration_owner"));
 
-  const plannerGuard = await client.query<{ readonly proconfig: readonly string[] }>(`
-    SELECT COALESCE(procedure.proconfig, ARRAY[]::text[]) AS proconfig
+  const plannerGuards = await client.query<{
+    readonly functionName: string;
+    readonly proconfig: readonly string[];
+  }>(`
+    SELECT namespace.nspname || '.' || procedure.proname AS "functionName",
+           COALESCE(procedure.proconfig, ARRAY[]::text[]) AS proconfig
     FROM pg_catalog.pg_proc AS procedure
-    WHERE procedure.oid = pg_catalog.to_regprocedure(
-      'ops.prepare_materialization_staging_current(uuid,uuid,uuid,bigint,uuid,jsonb)'
-    )`);
-  const plannerConfig = plannerGuard.rows[0];
-  assert.ok(plannerConfig);
-  assert.deepEqual([...plannerConfig.proconfig].sort(), [
-    "enable_nestloop=off",
-    "search_path=pg_catalog",
-  ]);
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+    WHERE procedure.oid = ANY(ARRAY[
+      pg_catalog.to_regprocedure(
+        'ops.prepare_materialization_staging_current(uuid,uuid,uuid,bigint,uuid,jsonb)'
+      ),
+      pg_catalog.to_regprocedure(
+        'runtime.prepare_snapshot_group_cutover(uuid,uuid,bigint,bigint,text,text,text,bigint,bigint,text)'
+      )
+    ])
+    ORDER BY "functionName"`);
+  assert.deepEqual(
+    plannerGuards.rows.map(({ functionName }) => functionName),
+    ["ops.prepare_materialization_staging_current", "runtime.prepare_snapshot_group_cutover"],
+  );
+  for (const plannerGuard of plannerGuards.rows) {
+    assert.deepEqual([...plannerGuard.proconfig].sort(), [
+      "enable_nestloop=off",
+      "search_path=pg_catalog",
+    ]);
+  }
 }
 
 async function activationSnapshot(client: pg.Client, activationId: string) {
