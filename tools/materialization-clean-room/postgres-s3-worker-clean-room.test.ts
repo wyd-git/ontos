@@ -104,7 +104,10 @@ void test(
     const clean = await cleanCheckoutIdentity();
     assert.equal(clean.dirty, false, "G2-02-14 must run from a clean checkout");
     const expectedMigrations = await loadMigrationDefinitions(databaseMigrationDirectory);
-    assert.equal(expectedMigrations.at(-1)?.fileName, "0019_materialization_clean_room_guard.sql");
+    assert.equal(
+      expectedMigrations.at(-1)?.fileName,
+      "0020_materialization_head_lookup_planner.sql",
+    );
 
     const suffix = `${process.pid}-${randomUUID().slice(0, 8)}`;
     const postgresContainer = `ontos-g20214-pg-${suffix}`;
@@ -360,8 +363,8 @@ void test(
         dependencyBackoffMilliseconds: 100,
         shutdownGraceMilliseconds: 30_000,
         databasePoolMaximum: 6,
-        databaseStatementTimeoutMilliseconds: 900_000,
-        databaseQueryTimeoutMilliseconds: 905_000,
+        databaseStatementTimeoutMilliseconds: 300_000,
+        databaseQueryTimeoutMilliseconds: 305_000,
         objectStore,
       });
       const firstTerminal = await waitForJob(admin, primaryProjectId, firstJob, 1_800_000);
@@ -612,8 +615,8 @@ void test(
         dependencyBackoffMilliseconds: 100,
         shutdownGraceMilliseconds: 30_000,
         databasePoolMaximum: 6,
-        databaseStatementTimeoutMilliseconds: 900_000,
-        databaseQueryTimeoutMilliseconds: 905_000,
+        databaseStatementTimeoutMilliseconds: 300_000,
+        databaseQueryTimeoutMilliseconds: 305_000,
         objectStore,
       });
       await executeIndexPlans(adminConfig, primaryProjectId, indexPlanIds);

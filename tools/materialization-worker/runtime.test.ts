@@ -22,8 +22,8 @@ void test("loads a bounded Worker-only runtime configuration", () => {
     dependencyBackoffMilliseconds: 1000,
     shutdownGraceMilliseconds: 15000,
     databasePoolMaximum: 4,
-    databaseStatementTimeoutMilliseconds: 900000,
-    databaseQueryTimeoutMilliseconds: 905000,
+    databaseStatementTimeoutMilliseconds: 300000,
+    databaseQueryTimeoutMilliseconds: 305000,
   });
 });
 

@@ -348,7 +348,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -7220,29 +7220,40 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 19);
+  assert.equal(left.applied.length + right.applied.length, 20);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 19)).length, 19);
+    assert.equal((await migrationLedger(client, 20)).length, 20);
   });
 }
 
 async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): Promise<void> {
-  const probes = new Map<number, string>([
-    [7, "runtime.snapshot_groups"],
-    [8, "runtime.object_identities"],
-    [9, "ops.materialization_jobs"],
-    [10, "runtime.snapshot_upload_sessions"],
-    [11, "ops.materialization_generation_stages"],
-    [12, "runtime.materialization_quality_bindings"],
-    [13, "ops.materialization_job_error_samples"],
-    [14, "ops.projection_ddl_requests"],
-    [15, "runtime.snapshot_group_definition_members"],
-    [16, "runtime.snapshot_group_cutover_preparations"],
-    [17, "ops.gc_plan_entries"],
-    [18, "ops.materialization_admin_report_samples"],
-    [19, "runtime.data_bearing_project_guard"],
+  const probes = new Map<
+    number,
+    { readonly relation: string } | { readonly functionSignature: string; readonly setting: string }
+  >([
+    [7, { relation: "runtime.snapshot_groups" }],
+    [8, { relation: "runtime.object_identities" }],
+    [9, { relation: "ops.materialization_jobs" }],
+    [10, { relation: "runtime.snapshot_upload_sessions" }],
+    [11, { relation: "ops.materialization_generation_stages" }],
+    [12, { relation: "runtime.materialization_quality_bindings" }],
+    [13, { relation: "ops.materialization_job_error_samples" }],
+    [14, { relation: "ops.projection_ddl_requests" }],
+    [15, { relation: "runtime.snapshot_group_definition_members" }],
+    [16, { relation: "runtime.snapshot_group_cutover_preparations" }],
+    [17, { relation: "ops.gc_plan_entries" }],
+    [18, { relation: "ops.materialization_admin_report_samples" }],
+    [19, { relation: "runtime.data_bearing_project_guard" }],
+    [
+      20,
+      {
+        functionSignature:
+          "ops.prepare_materialization_staging_current(uuid,uuid,uuid,bigint,uuid,jsonb)",
+        setting: "enable_nestloop=off",
+      },
+    ],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -7260,15 +7271,31 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
           (error: unknown) =>
             isDatabaseMigrationError(error) && error.code === "DB_MIGRATION_EXECUTION_FAILED",
         );
-        const state = await client.query<{
-          readonly ledger_count: number;
-          readonly probe_exists: boolean;
-        }>(
-          `SELECT
-             (SELECT count(*)::integer FROM ontos_migration.schema_migrations) AS ledger_count,
-             pg_catalog.to_regclass($1) IS NOT NULL AS probe_exists`,
-          [probe],
-        );
+        const state =
+          "relation" in probe
+            ? await client.query<{
+                readonly ledger_count: number;
+                readonly probe_exists: boolean;
+              }>(
+                `SELECT
+                   (SELECT count(*)::integer FROM ontos_migration.schema_migrations) AS ledger_count,
+                   pg_catalog.to_regclass($1) IS NOT NULL AS probe_exists`,
+                [probe.relation],
+              )
+            : await client.query<{
+                readonly ledger_count: number;
+                readonly probe_exists: boolean;
+              }>(
+                `SELECT
+                   (SELECT count(*)::integer FROM ontos_migration.schema_migrations) AS ledger_count,
+                   EXISTS (
+                     SELECT 1
+                     FROM pg_catalog.pg_proc AS procedure
+                     WHERE procedure.oid = pg_catalog.to_regprocedure($1)
+                       AND $2 = ANY(COALESCE(procedure.proconfig, ARRAY[]::text[]))
+                   ) AS probe_exists`,
+                [probe.functionSignature, probe.setting],
+              );
         assert.deepEqual(state.rows[0], {
           ledger_count: version - 1,
           probe_exists: false,
@@ -7350,6 +7377,19 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     [...required].sort(),
   );
   assert.ok(result.rows.every(({ owner }) => owner === "migration_owner"));
+
+  const plannerGuard = await client.query<{ readonly proconfig: readonly string[] }>(`
+    SELECT COALESCE(procedure.proconfig, ARRAY[]::text[]) AS proconfig
+    FROM pg_catalog.pg_proc AS procedure
+    WHERE procedure.oid = pg_catalog.to_regprocedure(
+      'ops.prepare_materialization_staging_current(uuid,uuid,uuid,bigint,uuid,jsonb)'
+    )`);
+  const plannerConfig = plannerGuard.rows[0];
+  assert.ok(plannerConfig);
+  assert.deepEqual([...plannerConfig.proconfig].sort(), [
+    "enable_nestloop=off",
+    "search_path=pg_catalog",
+  ]);
 }
 
 async function activationSnapshot(client: pg.Client, activationId: string) {
@@ -7458,7 +7498,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(19);
+  const directory = await migrationPrefixDirectory(20);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);
