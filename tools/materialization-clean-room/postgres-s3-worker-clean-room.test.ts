@@ -556,6 +556,7 @@ void test(
         commerce.snapshotGroupId,
         3,
       );
+      cleanRoomCheckpoint("cutover_performance", cutoverPerformance);
       assert.equal(cutoverPerformance.p95Milliseconds < 1_000, true);
       assert.equal(cutoverPerformance.maxMilliseconds < 5_000, true);
 
@@ -570,6 +571,7 @@ void test(
         primaryProjectId,
         required(refreshBuild.generationIds[0]),
       );
+      cleanRoomCheckpoint("capacity", capacityEvidence);
       ownerToken = await required(oidc).token({
         subject: "clean-room-owner",
         name: "Owner",
@@ -586,6 +588,7 @@ void test(
         primaryProjectId,
         secondProjectId,
       });
+      cleanRoomCheckpoint("security", securityEvidence);
       ownerToken = await required(oidc).token({
         subject: "clean-room-owner",
         name: "Owner",
@@ -598,8 +601,10 @@ void test(
         releaseId,
         member: required(commerce.members[0]),
       });
+      cleanRoomCheckpoint("gc", gcEvidence);
 
       const stateBeforeRestart = await durableStateManifest(admin, primaryProjectId);
+      cleanRoomCheckpoint("restart_begin", { stateManifest: stateBeforeRestart.hash });
       await worker.close();
       worker = null;
       await apiRuntime.close();
@@ -661,6 +666,7 @@ void test(
       await executeIndexPlans(adminConfig, primaryProjectId, indexPlanIds);
       const stateAfterRestart = await durableStateManifest(admin, primaryProjectId);
       assert.deepEqual(stateAfterRestart, stateBeforeRestart);
+      cleanRoomCheckpoint("restart_verified", { stateManifest: stateAfterRestart.hash });
       const postRestartGroup = await api(
         apiRuntime,
         restartedOwnerToken,
@@ -728,6 +734,10 @@ const expectedStages = Object.freeze([
   "catch_up",
   "activate",
 ]);
+
+function cleanRoomCheckpoint(stage: string, evidence: unknown): void {
+  process.stdout.write(`${JSON.stringify({ kind: "g20214_checkpoint", stage, evidence })}\n`);
+}
 
 async function cleanCheckoutIdentity(): Promise<{
   readonly commit: string;
