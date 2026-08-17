@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "status": "candidate-locked-for-g2-03-01",
+  "toolchain": {
+    "node": "24.18.0",
+    "npm": "11.16.0",
+    "typescript": "6.0.3"
+  },
+  "selected": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "8.2.1",
+    "@vitejs/plugin-react": "6.0.5",
+    "react-router": "8.3.0",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-table": "8.21.3",
+    "oidc-client-ts": "3.5.0",
+    "@hey-api/openapi-ts": "0.99.0",
+    "@playwright/test": "1.62.1"
+  },
+  "securityOverrides": {
+    "js-yaml": {
+      "version": "4.3.1",
+      "reason": "The unoverridden generator tree resolves a YAML parser version affected by current quadratic-CPU denial-of-service advisories."
+    }
+  },
+  "compilerBoundary": {
+    "strict": true,
+    "exactOptionalPropertyTypes": false,
+    "reason": "The generated fetch-client source in 0.99.0 does not compile with exactOptionalPropertyTypes. The exception is isolated to this Spike and is a re-evaluation condition before apps/web."
+  },
+  "rejectedOrDeferred": [
+    {
+      "candidate": "@tanstack/react-table 9.1.2",
+      "decision": "rejected-for-now",
+      "reason": "The current major release replaced the established hook/core API and adds migration risk without improving the three-endpoint read Spike."
+    },
+    {
+      "candidate": "@axe-core/playwright",
+      "decision": "deferred",
+      "reason": "Automated accessibility coverage remains required for the product Web gate, but this dependency needs an explicit license-policy review before admission. The candidate uses semantic roles and pins Playwright meanwhile."
+    },
+    {
+      "candidate": "handwritten DTO and fetch wrapper",
+      "decision": "rejected",
+      "reason": "It would create a parallel contract and allow OpenAPI required/enum/nullability drift to reach the UI unnoticed."
+    }
+  ]
+}

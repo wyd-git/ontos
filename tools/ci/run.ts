@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { writeFoundationEvidenceManifest } from "./foundation-evidence.ts";
+import { writeG20301EvidenceManifest } from "./g2-03-01-evidence.ts";
 import { writeMaterializationEvidenceManifest } from "./materialization-evidence.ts";
 import { writeMetadataEvidenceManifest } from "./metadata-evidence.ts";
 import {
@@ -53,6 +54,11 @@ const fullGates: readonly GateDefinition[] = [
   { name: "lint", command: "npm", arguments: ["run", "lint"] },
   { name: "typecheck", command: "npm", arguments: ["run", "typecheck"] },
   { name: "unit", command: "npm", arguments: ["run", "test:unit"] },
+  {
+    name: "g2-03-01-web-spike",
+    command: "npm",
+    arguments: ["run", "check:g2-03-01-web"],
+  },
   {
     name: "materialization-mapping-capacity",
     command: "npm",
@@ -130,6 +136,11 @@ const fullGates: readonly GateDefinition[] = [
     name: "materialization-scope-evidence",
     command: "npm",
     arguments: ["run", "check:materialization-evidence"],
+  },
+  {
+    name: "g2-03-01-architecture-evidence",
+    command: "npm",
+    arguments: ["run", "check:g2-03-01-evidence"],
   },
   {
     name: "metadata-clean-room",
@@ -352,6 +363,13 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
       await writeUnavailableEvidenceManifest(outputDirectory, "G2-02", commit, error);
       evidenceFailure ??= "materialization-evidence-manifest";
       failure ??= new Error("Materialization evidence manifest could not be completed.");
+    }
+    try {
+      await writeG20301EvidenceManifest(outputDirectory, report);
+    } catch (error) {
+      await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-01", commit, error);
+      evidenceFailure ??= "g2-03-01-evidence-manifest";
+      failure ??= new Error("G2-03-01 evidence manifest could not be completed.");
     }
   }
   const finalReport = {
@@ -726,11 +744,18 @@ async function fingerprintPaths(repositoryRoot: string, paths: readonly string[]
 
 async function writeUnavailableEvidenceManifest(
   outputDirectory: string,
-  gate: "G2-00" | "G2-01" | "G2-02",
+  gate: "G2-00" | "G2-01" | "G2-02" | "G2-03-01",
   commit: string,
   error: unknown,
 ): Promise<void> {
-  const name = gate === "G2-00" ? "foundation" : gate === "G2-01" ? "metadata" : "materialization";
+  const name =
+    gate === "G2-00"
+      ? "foundation"
+      : gate === "G2-01"
+        ? "metadata"
+        : gate === "G2-02"
+          ? "materialization"
+          : "g2-03-01";
   await writeFile(
     join(outputDirectory, `${name}-evidence-manifest.json`),
     `${JSON.stringify(
@@ -768,7 +793,7 @@ function renderSummary(report: {
   const testCount = report.steps.reduce((sum, step) => sum + (step.testCount ?? 0), 0);
   const title =
     report.profile === "full"
-      ? "Foundation + Metadata + Materialization Gate"
+      ? "Foundation + Metadata + Materialization + Query Architecture Gate"
       : "Fast Documentation Gate";
   return `# ${title}: ${report.status}\n\n- Profile: \`${report.profile}\`\n- Reason: ${report.changeRisk.reason}\n- Changed files: ${String(report.changeRisk.changedFiles.length)}\n- Commit: \`${report.commit}\`\n- Tests: ${String(testCount)}\n- Duration: ${String(report.durationMs)} ms\n- Failed gate: ${report.failedGate ?? "none"}\n\n| Gate | Status | Tests | Duration |\n| --- | --- | ---: | ---: |\n${rows}\n`;
 }

@@ -1,0 +1,244 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ontos Runtime Read Candidate",
+    "version": "0.1.0-candidate",
+    "description": "G2-03-01 compile-only contract fixture. It is not a published API or SDK."
+  },
+  "servers": [{ "url": "https://runtime.example.invalid" }],
+  "security": [{ "oidc": [] }],
+  "paths": {
+    "/api/v1/runtime/projects/{projectId}/metadata/object-types": {
+      "get": {
+        "operationId": "listObjectTypes",
+        "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+        "responses": {
+          "200": {
+            "description": "Metadata visible to the current trusted execution context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data", "releaseId", "readTimestamp"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/ObjectTypeMetadata" }
+                    },
+                    "releaseId": { "type": "string", "format": "uuid" },
+                    "readTimestamp": { "type": "string", "format": "date-time" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runtime/projects/{projectId}/objects/{objectTypeApiName}/{objectPrimaryKey}": {
+      "get": {
+        "operationId": "getRuntimeObject",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "$ref": "#/components/parameters/ObjectTypeApiName" },
+          {
+            "name": "objectPrimaryKey",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 1024 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A policy-filtered typed object.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/RuntimeObject" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/RuntimeError" }
+        }
+      }
+    },
+    "/api/v1/runtime/projects/{projectId}/objects/{objectTypeApiName}/search": {
+      "post": {
+        "operationId": "searchRuntimeObjects",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "$ref": "#/components/parameters/ObjectTypeApiName" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/QueryRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "A policy-filtered cursor page.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/QueryPage" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/RuntimeError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "oidc": {
+        "type": "openIdConnect",
+        "openIdConnectUrl": "https://identity.example.invalid/.well-known/openid-configuration"
+      }
+    },
+    "parameters": {
+      "ProjectId": {
+        "name": "projectId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "ObjectTypeApiName": {
+        "name": "objectTypeApiName",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,62}$" }
+      }
+    },
+    "responses": {
+      "RuntimeError": {
+        "description": "Stable fail-closed runtime error.",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/RuntimeError" } }
+        }
+      }
+    },
+    "schemas": {
+      "PolicyDisposition": {
+        "type": "string",
+        "enum": ["allow", "mask", "restricted"]
+      },
+      "PropertyMetadata": {
+        "type": "object",
+        "required": [
+          "apiName",
+          "displayName",
+          "valueType",
+          "disposition",
+          "filterable",
+          "sortable",
+          "nullable"
+        ],
+        "properties": {
+          "apiName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,62}$" },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "valueType": { "type": "string", "enum": ["string", "integer", "decimal", "boolean", "timestamp"] },
+          "disposition": { "$ref": "#/components/schemas/PolicyDisposition" },
+          "filterable": { "type": "boolean" },
+          "sortable": { "type": "boolean" },
+          "nullable": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "ObjectTypeMetadata": {
+        "type": "object",
+        "required": ["apiName", "displayName", "properties"],
+        "properties": {
+          "apiName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,62}$" },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "properties": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 256,
+            "items": { "$ref": "#/components/schemas/PropertyMetadata" }
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeProperty": {
+        "type": "object",
+        "required": ["disposition", "value"],
+        "properties": {
+          "disposition": { "$ref": "#/components/schemas/PolicyDisposition" },
+          "value": { "type": ["string", "number", "boolean", "null"] }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeObject": {
+        "type": "object",
+        "required": [
+          "objectTypeApiName",
+          "primaryKey",
+          "properties",
+          "releaseId",
+          "readTimestamp",
+          "objectVersion"
+        ],
+        "properties": {
+          "objectTypeApiName": { "type": "string" },
+          "primaryKey": { "type": "string" },
+          "properties": {
+            "type": "object",
+            "additionalProperties": { "$ref": "#/components/schemas/RuntimeProperty" }
+          },
+          "releaseId": { "type": "string", "format": "uuid" },
+          "readTimestamp": { "type": "string", "format": "date-time" },
+          "objectVersion": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      },
+      "QueryFilter": {
+        "type": "object",
+        "required": ["property", "operator", "value"],
+        "properties": {
+          "property": { "type": "string" },
+          "operator": { "type": "string", "enum": ["eq", "lt", "lte", "gt", "gte"] },
+          "value": { "type": ["string", "number", "boolean"] }
+        },
+        "additionalProperties": false
+      },
+      "QueryRequest": {
+        "type": "object",
+        "required": ["select", "pageSize"],
+        "properties": {
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": { "type": "string" }
+          },
+          "where": { "$ref": "#/components/schemas/QueryFilter" },
+          "sortProperty": { "type": "string" },
+          "sortDirection": { "type": "string", "enum": ["asc", "desc"], "default": "asc" },
+          "pageSize": { "type": "integer", "minimum": 1, "maximum": 200 },
+          "cursor": { "type": ["string", "null"], "maxLength": 4096 }
+        },
+        "additionalProperties": false
+      },
+      "QueryPage": {
+        "type": "object",
+        "required": ["data", "nextCursor", "releaseId", "readTimestamp", "warnings"],
+        "properties": {
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/RuntimeObject" } },
+          "nextCursor": { "type": ["string", "null"] },
+          "releaseId": { "type": "string", "format": "uuid" },
+          "readTimestamp": { "type": "string", "format": "date-time" },
+          "warnings": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeError": {
+        "type": "object",
+        "required": ["code", "category", "retryable", "correlationId"],
+        "properties": {
+          "code": { "type": "string" },
+          "category": { "type": "string", "enum": ["input", "identity", "policy", "runtime", "dependency"] },
+          "retryable": { "type": "boolean" },
+          "correlationId": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}

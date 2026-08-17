@@ -141,7 +141,7 @@
       "apps/worker/"
     ],
     "forbiddenUiExtensions": [".html", ".jsx", ".tsx", ".vue", ".svelte"],
-    "ignoredPrefixes": ["spikes/g1/"]
+    "ignoredPrefixes": ["spikes/g1/", "spikes/g2-03-01/"]
   },
   "requiredDecisions": [
     {

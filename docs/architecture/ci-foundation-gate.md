@@ -65,7 +65,9 @@ Scanner 只扫描 Git 跟踪文件，不读取 `.git`、`node_modules` 或本机
 
 License Manifest 从 `package-lock.json` 生成，覆盖全部外部 Runtime/Dev/Optional 依赖，记录 Name、Version、License、Resolved、Integrity 和 Scope。Workspace Link 不伪装成第三方依赖。
 
-Foundation 当前 Allowlist：`0BSD`、`Apache-2.0`、`BSD-2-Clause`、`BSD-3-Clause`、`BlueOak-1.0.0`、`ISC`、`MIT`。外部依赖缺失 License 或出现未批准 SPDX Expression 时阻断；变更 Allowlist 必须由 Platform/Security 在独立审查中说明原因。
+Foundation 当前全局 Allowlist：`0BSD`、`Apache-2.0`、`BSD-2-Clause`、`BSD-3-Clause`、`BlueOak-1.0.0`、`ISC`、`MIT`。外部依赖缺失 License 或出现未批准 SPDX Expression 时阻断；变更全局 Allowlist 必须由 Platform/Security 在独立审查中说明原因。
+
+对不适合全局放宽的 build-only / optional 工具依赖，Policy v2 允许精确 Package Approval：必须同时匹配 `name + version + license + scope`，并记录 Owner 和 Reason。错版本、错 Scope、新增平台包或已不在 Lockfile 的批准条目都 fail closed；该批准不会让其他使用同 SPDX 的包自动通过。G2-03-01 当前只对 OpenAPI/Vite 的精确 build-time `argparse@2.0.1` 与 `lightningcss@1.33.0` 及其 Lockfile 平台二进制做了此类登记；它们不是 Runtime 服务或应用源码。
 
 ### 4.2 SBOM
 

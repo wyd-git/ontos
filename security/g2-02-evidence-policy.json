@@ -26,16 +26,22 @@
   ],
   "scope": {
     "allowedExactPaths": [
+      ".gitignore",
       ".github/workflows/foundation-ci.yml",
       "README.md",
       "docs/README.md",
       "docs/architecture/ci-foundation-gate.md",
       "docs/architecture/core-database-design.md",
+      "docs/architecture/adr/020-query-policy-identity-consumer-boundary.md",
       "docs/architecture/g2-03-ui-api-consumer-contract.md",
+      "docs/evidence/g2-03-01-query-policy-architecture.md",
       "docs/product/ontology-kernel-implementation-blueprint.md",
+      "docs/reviews/g2-03-01-intended-vs-implemented.md",
+      "docs/reviews/g2-03-01-query-policy-architecture-red-team.md",
       "docs/reviews/g2-03-task-pack-feasibility.md",
       "docs/reviews/g2-03-task-pack-red-team.md",
       "docs/reviews/g2-blueprint-red-team.md",
+      "docs/security/g2-03-01-identity-delegation-threat-model.md",
       "migrations/db-00/0018_materialization_admin_boundary.sql",
       "migrations/db-00/0019_materialization_clean_room_guard.sql",
       "migrations/db-00/0020_materialization_head_lookup_planner.sql",
@@ -44,7 +50,9 @@
       "package.json",
       "packages/metadata-postgres/src/release.ts",
       "security/g2-00-evidence-policy.json",
-      "security/g2-02-evidence-policy.json"
+      "security/g2-02-evidence-policy.json",
+      "security/g2-03-01-evidence-policy.json",
+      "security/license-policy.json"
     ],
     "allowedPrefixes": [
       "apps/api/src/",
@@ -57,12 +65,14 @@
       "packages/materialization-domain/",
       "packages/materialization-postgres/",
       "packages/testkit/",
+      "spikes/g2-03-01/",
       "tools/admin-api/",
       "tools/ci/",
       "tools/database/",
       "tools/materialization-",
       "tools/projection-capacity/",
       "tools/projection-ddl/",
+      "tools/query-policy-architecture/",
       "tools/testkit/"
     ],
     "forbiddenPrefixes": [

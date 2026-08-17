@@ -5,8 +5,18 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 interface LicensePolicy {
-  readonly schemaVersion: number;
+  readonly schemaVersion: 2;
   readonly allowedSpdxExpressions: readonly string[];
+  readonly approvedPackages: readonly LicenseApproval[];
+}
+
+export interface LicenseApproval {
+  readonly name: string;
+  readonly version: string;
+  readonly license: string;
+  readonly scope: "runtime" | "dev" | "optional";
+  readonly owner: string;
+  readonly reason: string;
 }
 
 export interface LicenseEntry {
@@ -16,6 +26,7 @@ export interface LicenseEntry {
   readonly resolved: string | null;
   readonly integrity: string | null;
   readonly scope: "runtime" | "dev" | "optional";
+  readonly policyApproval: Readonly<{ owner: string; reason: string }> | null;
 }
 
 export interface LicenseReport {
@@ -68,6 +79,7 @@ interface CapturedCommand {
 export function createLicenseReport(
   packageLock: unknown,
   allowedSpdxExpressions: ReadonlySet<string>,
+  approvedPackages: readonly LicenseApproval[] = [],
 ): LicenseReport {
   if (!isRecord(packageLock) || !isRecord(packageLock.packages)) {
     throw new Error("package-lock.json does not contain a packages map.");
@@ -80,19 +92,45 @@ export function createLicenseReport(
     const name = packageNameFromPath(path);
     const version = typeof candidate.version === "string" ? candidate.version : "";
     const license = typeof candidate.license === "string" ? candidate.license : null;
+    const scope =
+      candidate.optional === true ? "optional" : candidate.dev === true ? "dev" : "runtime";
+    const approval = approvedPackages.find(
+      (candidateApproval) =>
+        candidateApproval.name === name &&
+        candidateApproval.version === version &&
+        candidateApproval.license === license &&
+        candidateApproval.scope === scope,
+    );
     const entry: LicenseEntry = {
       name,
       version,
       license,
       resolved: typeof candidate.resolved === "string" ? candidate.resolved : null,
       integrity: typeof candidate.integrity === "string" ? candidate.integrity : null,
-      scope: candidate.optional === true ? "optional" : candidate.dev === true ? "dev" : "runtime",
+      scope,
+      policyApproval:
+        approval === undefined ? null : { owner: approval.owner, reason: approval.reason },
     };
     entries.push(entry);
     if (version.length === 0) violations.push(`${name} has no locked version.`);
     if (license === null) violations.push(`${name}@${version || "unknown"} has no license.`);
-    else if (!allowedSpdxExpressions.has(license)) {
+    else if (!allowedSpdxExpressions.has(license) && approval === undefined) {
       violations.push(`${name}@${version || "unknown"} uses unapproved license ${license}.`);
+    }
+  }
+  for (const approval of approvedPackages) {
+    if (
+      !entries.some(
+        (entry) =>
+          entry.name === approval.name &&
+          entry.version === approval.version &&
+          entry.license === approval.license &&
+          entry.scope === approval.scope,
+      )
+    ) {
+      violations.push(
+        `License approval for ${approval.name}@${approval.version} does not exactly match the lockfile.`,
+      );
     }
   }
   entries.sort((left, right) =>
@@ -187,9 +225,16 @@ async function runSupplyChain(repositoryRoot: string): Promise<void> {
     join(repositoryRoot, "security/license-policy.json"),
   );
   if (
-    licensePolicy.schemaVersion !== 1 ||
+    licensePolicy.schemaVersion !== 2 ||
     !Array.isArray(licensePolicy.allowedSpdxExpressions) ||
-    !licensePolicy.allowedSpdxExpressions.every((value) => typeof value === "string")
+    !licensePolicy.allowedSpdxExpressions.every((value) => typeof value === "string") ||
+    !Array.isArray(licensePolicy.approvedPackages) ||
+    !licensePolicy.approvedPackages.every(isLicenseApproval) ||
+    new Set(
+      licensePolicy.approvedPackages.map(
+        ({ name, version, license, scope }) => `${name}\0${version}\0${license}\0${scope}`,
+      ),
+    ).size !== licensePolicy.approvedPackages.length
   ) {
     throw new Error("License policy is invalid.");
   }
@@ -197,6 +242,7 @@ async function runSupplyChain(repositoryRoot: string): Promise<void> {
   const licenseReport = createLicenseReport(
     packageLock,
     new Set(licensePolicy.allowedSpdxExpressions),
+    licensePolicy.approvedPackages,
   );
   const licensePath = join(outputDirectory, "licenses.json");
   await writeJson(licensePath, licenseReport);
@@ -396,6 +442,23 @@ function safeTail(value: string): string {
     .trim()
     .slice(-1_000)
     .replaceAll(/(token|password|secret)=\S+/giu, "$1=[REDACTED]");
+}
+
+function isLicenseApproval(value: unknown): value is LicenseApproval {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    value.name.length > 0 &&
+    typeof value.version === "string" &&
+    value.version.length > 0 &&
+    typeof value.license === "string" &&
+    value.license.length > 0 &&
+    ["runtime", "dev", "optional"].includes(String(value.scope)) &&
+    typeof value.owner === "string" &&
+    value.owner.length > 0 &&
+    typeof value.reason === "string" &&
+    value.reason.length > 0
+  );
 }
 
 function isVulnerabilityPolicy(value: unknown): value is VulnerabilityPolicy {

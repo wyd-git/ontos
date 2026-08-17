@@ -37,6 +37,7 @@ import { startTestOidcProvider, type TestOidcProvider } from "../admin-api/oidc-
 import { loadMigrationDefinitions } from "../database/definitions.ts";
 import { databaseMigrationDirectory, runDatabaseMigrations } from "../database/migrator.ts";
 import { resolvePostgresTestImage } from "../database/postgres-test-image.ts";
+import { runQueryPolicyPostgresSpike } from "../query-policy-architecture/postgres-spike.ts";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -438,6 +439,28 @@ void test(
       );
       assert.equal(fullPublish.status, 200, fullPublish.text);
       const oldServingActivation = await servingActivation(admin, releaseId);
+      const queryPolicySpike = await runQueryPolicyPostgresSpike({
+        repositoryRoot,
+        pool: admin,
+        commit: clean.commit,
+        cleanCheckout: !clean.dirty,
+        projectId: primaryProjectId,
+        releaseId,
+        sourceMemberKey: "object:Customer",
+        linkMemberKey: "link:CustomerPlacedOrder",
+        targetMemberKey: "object:Order",
+        propertyApiName: "name",
+        sourcePrimaryKeyValue: "customer-000001",
+        sourcePolicyUpperBound: "Customer 000100",
+        targetPolicyUpperBound: "Order 000015",
+        expectedListRows: 25,
+        expectedPolicyCount: 99,
+        expectedLinkRows: 14,
+      });
+      cleanRoomCheckpoint("g2_03_01_query_policy", {
+        status: queryPolicySpike["status"],
+        qualification: queryPolicySpike["qualification"],
+      });
 
       const badCsv = new Map<string, Buffer>();
       for (const member of commerce.members) {

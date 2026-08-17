@@ -33,6 +33,8 @@ __pycache__/
 
 # Runtime and generated state
 generated/
+!spikes/g2-03-01/web/src/generated/
+!spikes/g2-03-01/web/src/generated/**
 tmp/
 *.log
 *.pid
