@@ -688,7 +688,12 @@ void test(
         databaseQueryTimeoutMilliseconds: 305_000,
         objectStore,
       });
-      await executeIndexPlans(restartedAdminConfig, primaryProjectId, indexPlanIds);
+      const restartIndexEvidence = await verifyProjectionIndexesAfterRestart(
+        admin,
+        primaryProjectId,
+        indexPlanIds,
+      );
+      cleanRoomCheckpoint("restart_indexes", restartIndexEvidence);
       const stateAfterRestart = await durableStateManifest(admin, primaryProjectId);
       assert.deepEqual(stateAfterRestart, stateBeforeRestart);
       cleanRoomCheckpoint("restart_verified", { stateManifest: stateAfterRestart.hash });
@@ -728,6 +733,7 @@ void test(
         gcEvidence,
         stateBeforeRestart,
         stateAfterRestart,
+        restartIndexEvidence,
         environmentEvidence,
       });
       await writeCleanRoomArtifact(artifact);
@@ -1920,6 +1926,66 @@ async function durableStateManifest(
   return Object.freeze({ hash: digestJson(facts), facts: Object.freeze(facts) });
 }
 
+async function verifyProjectionIndexesAfterRestart(
+  admin: pg.Pool,
+  projectId: string,
+  indexPlanIds: readonly string[],
+): Promise<Readonly<Record<string, unknown>>> {
+  const result = await admin.query<{
+    readonly indexName: string;
+    readonly physicalSignature: string;
+    readonly inventoryState: string | null;
+    readonly catalogPresent: boolean;
+    readonly signatureBound: boolean;
+  }>(
+    `WITH expected AS (
+       SELECT DISTINCT entry.index_name, entry.physical_signature
+       FROM runtime.index_plan_entries AS entry
+       WHERE entry.project_id = $1::uuid
+         AND entry.index_plan_id = ANY($2::uuid[])
+     )
+     SELECT expected.index_name AS "indexName",
+            expected.physical_signature AS "physicalSignature",
+            inventory.state AS "inventoryState",
+            catalog_index.oid IS NOT NULL AS "catalogPresent",
+            COALESCE(
+              obj_description(catalog_index.oid, 'pg_class') =
+                'ontos:index-signature:' || expected.physical_signature,
+              false
+            ) AS "signatureBound"
+     FROM expected
+     LEFT JOIN runtime.index_inventory AS inventory
+       ON inventory.project_id = $1::uuid
+      AND inventory.index_name = expected.index_name
+      AND inventory.physical_signature = expected.physical_signature
+     LEFT JOIN pg_namespace AS index_schema ON index_schema.nspname = 'runtime'
+     LEFT JOIN pg_class AS catalog_index
+       ON catalog_index.relnamespace = index_schema.oid
+      AND catalog_index.relname = expected.index_name
+      AND catalog_index.relkind = 'i'
+     ORDER BY expected.index_name`,
+    [projectId, indexPlanIds],
+  );
+  assert.equal(result.rows.length > 0, true);
+  for (const row of result.rows) {
+    assert.equal(row.inventoryState, "ready");
+    assert.equal(row.catalogPresent, true);
+    assert.equal(row.signatureBound, true);
+  }
+  const indexes = result.rows.map((row) => ({
+    indexName: row.indexName,
+    physicalSignature: row.physicalSignature,
+    inventoryState: row.inventoryState,
+    catalogPresent: row.catalogPresent,
+    signatureBound: row.signatureBound,
+  }));
+  return Object.freeze({
+    count: indexes.length,
+    catalogStateDigest: digestJson(indexes),
+    allReadyAndPresent: true,
+  });
+}
+
 async function readEnvironmentEvidence(
   admin: pg.Pool,
   postgresContainer: string,
@@ -1986,6 +2052,7 @@ function buildCleanRoomArtifact(input: {
   readonly gcEvidence: Readonly<Record<string, unknown>>;
   readonly stateBeforeRestart: DurableStateManifest;
   readonly stateAfterRestart: DurableStateManifest;
+  readonly restartIndexEvidence: Readonly<Record<string, unknown>>;
   readonly environmentEvidence: Readonly<Record<string, unknown>>;
 }): Readonly<Record<string, unknown>> & { readonly reportSha256: ArtifactDigest } {
   const completedAt = new Date();
@@ -2051,6 +2118,7 @@ function buildCleanRoomArtifact(input: {
       noDoubleLeaseActivationOrFacts: true,
       noVisibleStaging: true,
       wholeEnvironmentRestarted: true,
+      projectionIndexes: input.restartIndexEvidence,
       stateManifestBefore: input.stateBeforeRestart.hash,
       stateManifestAfter: input.stateAfterRestart.hash,
       stateManifestIdentical: input.stateBeforeRestart.hash === input.stateAfterRestart.hash,
