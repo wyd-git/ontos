@@ -10,7 +10,11 @@ import {
 const postgresContainerMarker = "POSTGRES_DB=";
 const boundedPostgresDataTmpfs = /\/var\/lib\/postgresql\/data:rw,noexec,nosuid,size=(?:1|2)g/u;
 const volumeSafeCleanup =
-  /docker\(\["rm",\s*"--force",\s*"--volumes",\s*containerName\],\s*true\)/u;
+  /docker\(\["rm",\s*"--force",\s*"--volumes",\s*[A-Za-z][A-Za-z0-9]*\],\s*true\)/u;
+const labelledRestartVolume = '"volume", "create", "--label", "ontos.gate=G2-02-14"';
+const namedPostgresDataMount =
+  "type=volume,source=${postgresVolume},target=/var/lib/postgresql/data";
+const namedPostgresDataCleanup = '"volume", "rm", "--force", postgresVolume';
 
 void test("PostgreSQL Docker tests cannot leak anonymous data volumes", async () => {
   const postgresTests: string[] = [];
@@ -26,10 +30,15 @@ void test("PostgreSQL Docker tests cannot leak anonymous data volumes", async ()
       true,
       `${path} must use the immutable PostgreSQL image resolver`,
     );
-    assert.match(
-      source,
-      boundedPostgresDataTmpfs,
-      `${path} must mount PostgreSQL data on a bounded tmpfs`,
+    const usesBoundedTmpfs = boundedPostgresDataTmpfs.test(source);
+    const usesRestartProofVolume =
+      source.includes(labelledRestartVolume) &&
+      source.includes(namedPostgresDataMount) &&
+      source.includes(namedPostgresDataCleanup);
+    assert.equal(
+      usesBoundedTmpfs || usesRestartProofVolume,
+      true,
+      `${path} must use a bounded tmpfs or an explicitly labelled and removed restart-proof volume`,
     );
     assert.match(
       source,

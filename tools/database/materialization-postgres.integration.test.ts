@@ -348,7 +348,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -5334,59 +5334,13 @@ async function exerciseGenerationGarbageCollection(
       await admin.query(
         "ALTER TABLE runtime.snapshot_upload_sessions ENABLE TRIGGER snapshot_upload_sessions_validate_insert",
       );
-      await admin.query(
-        `INSERT INTO runtime.generation_measurements (
-           project_id, generation_id, measurement_id, object_row_count, link_row_count,
-           heap_bytes, fixed_index_bytes, dynamic_index_bytes, scanner_version,
-           inventory_revision, measurement_digest
-         )
-         SELECT generation.project_id, generation.generation_id, gen_random_uuid(),
-                (SELECT count(*) FROM runtime.object_base AS object_row
-                  WHERE object_row.project_id = generation.project_id
-                    AND object_row.generation_id = generation.generation_id),
-                (SELECT count(*) FROM runtime.link_base AS link_row
-                  WHERE link_row.project_id = generation.project_id
-                    AND link_row.generation_id = generation.generation_id),
-                COALESCE(physical.bytes, 0), 0, 0, 'g2-02-12-fixture-scanner-v1',
-                inventory.inventory_revision + 1,
-                'sha256:' || encode(sha256(convert_to(
-                  generation.project_id::text || ':' || generation.generation_id::text ||
-                  ':g2-02-12', 'UTF8')), 'hex')
-         FROM runtime.generations AS generation
-         JOIN runtime.project_runtime_inventories AS inventory
-           ON inventory.project_id = generation.project_id
-         LEFT JOIN LATERAL (
-           SELECT sum(bytes)::bigint AS bytes FROM (
-             SELECT pg_column_size(row_value)::bigint AS bytes
-             FROM runtime.object_base AS row_value
-             WHERE row_value.project_id = generation.project_id
-               AND row_value.generation_id = generation.generation_id
-             UNION ALL
-             SELECT pg_column_size(row_value)::bigint
-             FROM runtime.object_current AS row_value
-             WHERE row_value.project_id = generation.project_id
-               AND row_value.generation_id = generation.generation_id
-             UNION ALL
-             SELECT pg_column_size(row_value)::bigint
-             FROM runtime.link_base AS row_value
-             WHERE row_value.project_id = generation.project_id
-               AND row_value.generation_id = generation.generation_id
-             UNION ALL
-             SELECT pg_column_size(row_value)::bigint
-             FROM runtime.link_current AS row_value
-             WHERE row_value.project_id = generation.project_id
-               AND row_value.generation_id = generation.generation_id
-           ) AS rows
-         ) AS physical ON true
-         WHERE generation.project_id = $1::uuid
-           AND generation.state IN ('ready', 'active', 'retired')
-           AND NOT EXISTS (
-             SELECT 1 FROM runtime.generation_measurements AS measurement
-             WHERE measurement.project_id = generation.project_id
-               AND measurement.generation_id = generation.generation_id
-           )`,
+      const persistedGenerationMeasurements = await admin.query<{ readonly count: number }>(
+        `SELECT count(*)::integer AS count
+         FROM runtime.generation_measurements
+         WHERE project_id = $1::uuid`,
         [ids.project],
       );
+      assert.equal(persistedGenerationMeasurements.rows[0]?.count, 0);
       await admin.query(
         `UPDATE runtime.project_runtime_inventories
          SET state_revision = state_revision + 1,
@@ -7220,28 +7174,50 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 18);
+  assert.equal(left.applied.length + right.applied.length, 21);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 18)).length, 18);
+    assert.equal((await migrationLedger(client, 21)).length, 21);
   });
 }
 
 async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): Promise<void> {
-  const probes = new Map<number, string>([
-    [7, "runtime.snapshot_groups"],
-    [8, "runtime.object_identities"],
-    [9, "ops.materialization_jobs"],
-    [10, "runtime.snapshot_upload_sessions"],
-    [11, "ops.materialization_generation_stages"],
-    [12, "runtime.materialization_quality_bindings"],
-    [13, "ops.materialization_job_error_samples"],
-    [14, "ops.projection_ddl_requests"],
-    [15, "runtime.snapshot_group_definition_members"],
-    [16, "runtime.snapshot_group_cutover_preparations"],
-    [17, "ops.gc_plan_entries"],
-    [18, "ops.materialization_admin_report_samples"],
+  const probes = new Map<
+    number,
+    | { readonly relation: string }
+    | { readonly functionSignature: string; readonly setting: string }
+    | { readonly relationComment: string; readonly expectedComment: string }
+  >([
+    [7, { relation: "runtime.snapshot_groups" }],
+    [8, { relation: "runtime.object_identities" }],
+    [9, { relation: "ops.materialization_jobs" }],
+    [10, { relation: "runtime.snapshot_upload_sessions" }],
+    [11, { relation: "ops.materialization_generation_stages" }],
+    [12, { relation: "runtime.materialization_quality_bindings" }],
+    [13, { relation: "ops.materialization_job_error_samples" }],
+    [14, { relation: "ops.projection_ddl_requests" }],
+    [15, { relation: "runtime.snapshot_group_definition_members" }],
+    [16, { relation: "runtime.snapshot_group_cutover_preparations" }],
+    [17, { relation: "ops.gc_plan_entries" }],
+    [18, { relation: "ops.materialization_admin_report_samples" }],
+    [19, { relation: "runtime.data_bearing_project_guard" }],
+    [
+      20,
+      {
+        functionSignature:
+          "ops.prepare_materialization_staging_current(uuid,uuid,uuid,bigint,uuid,jsonb)",
+        setting: "enable_nestloop=off",
+      },
+    ],
+    [
+      21,
+      {
+        relationComment: "ops.gc_generation_inventory",
+        expectedComment:
+          "Authoritative live per-Generation row inventory for fail-closed GC planning; dynamic index bytes are inventoried separately.",
+      },
+    ],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -7259,15 +7235,44 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
           (error: unknown) =>
             isDatabaseMigrationError(error) && error.code === "DB_MIGRATION_EXECUTION_FAILED",
         );
-        const state = await client.query<{
-          readonly ledger_count: number;
-          readonly probe_exists: boolean;
-        }>(
-          `SELECT
-             (SELECT count(*)::integer FROM ontos_migration.schema_migrations) AS ledger_count,
-             pg_catalog.to_regclass($1) IS NOT NULL AS probe_exists`,
-          [probe],
-        );
+        const state =
+          "relation" in probe
+            ? await client.query<{
+                readonly ledger_count: number;
+                readonly probe_exists: boolean;
+              }>(
+                `SELECT
+                   (SELECT count(*)::integer FROM ontos_migration.schema_migrations) AS ledger_count,
+                   pg_catalog.to_regclass($1) IS NOT NULL AS probe_exists`,
+                [probe.relation],
+              )
+            : "functionSignature" in probe
+              ? await client.query<{
+                  readonly ledger_count: number;
+                  readonly probe_exists: boolean;
+                }>(
+                  `SELECT
+                   (SELECT count(*)::integer FROM ontos_migration.schema_migrations) AS ledger_count,
+                   EXISTS (
+                     SELECT 1
+                     FROM pg_catalog.pg_proc AS procedure
+                     WHERE procedure.oid = pg_catalog.to_regprocedure($1)
+                       AND $2 = ANY(COALESCE(procedure.proconfig, ARRAY[]::text[]))
+                   ) AS probe_exists`,
+                  [probe.functionSignature, probe.setting],
+                )
+              : await client.query<{
+                  readonly ledger_count: number;
+                  readonly probe_exists: boolean;
+                }>(
+                  `SELECT
+                     (SELECT count(*)::integer FROM ontos_migration.schema_migrations) AS ledger_count,
+                     COALESCE(
+                       pg_catalog.obj_description(pg_catalog.to_regclass($1), 'pg_class') = $2,
+                       false
+                     ) AS probe_exists`,
+                  [probe.relationComment, probe.expectedComment],
+                );
         assert.deepEqual(state.rows[0], {
           ledger_count: version - 1,
           probe_exists: false,
@@ -7309,6 +7314,7 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     "ops.link_base_staging",
     "runtime.compatibility_certificates",
     "runtime.dataset_snapshots",
+    "runtime.data_bearing_project_guard",
     "runtime.generations",
     "runtime.generation_collections",
     "runtime.head_set_collections",
@@ -7348,6 +7354,36 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     [...required].sort(),
   );
   assert.ok(result.rows.every(({ owner }) => owner === "migration_owner"));
+
+  const plannerGuards = await client.query<{
+    readonly functionName: string;
+    readonly proconfig: readonly string[];
+  }>(`
+    SELECT namespace.nspname || '.' || procedure.proname AS "functionName",
+           COALESCE(procedure.proconfig, ARRAY[]::text[]) AS proconfig
+    FROM pg_catalog.pg_proc AS procedure
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+    WHERE procedure.oid = ANY(ARRAY[
+      pg_catalog.to_regprocedure(
+        'ops.prepare_materialization_staging_current(uuid,uuid,uuid,bigint,uuid,jsonb)'
+      ),
+      pg_catalog.to_regprocedure(
+        'runtime.prepare_snapshot_group_cutover(uuid,uuid,bigint,bigint,text,text,text,bigint,bigint,text)'
+      )
+    ])
+    ORDER BY "functionName"`);
+  assert.deepEqual(
+    plannerGuards.rows.map(({ functionName }) => functionName),
+    ["ops.prepare_materialization_staging_current", "runtime.prepare_snapshot_group_cutover"],
+  );
+  for (const plannerGuard of plannerGuards.rows) {
+    assert.deepEqual(
+      [...plannerGuard.proconfig].sort(),
+      plannerGuard.functionName === "runtime.prepare_snapshot_group_cutover"
+        ? ["enable_nestloop=off", "jit=off", "search_path=pg_catalog"]
+        : ["enable_nestloop=off", "search_path=pg_catalog"],
+    );
+  }
 }
 
 async function activationSnapshot(client: pg.Client, activationId: string) {
@@ -7456,7 +7492,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(18);
+  const directory = await migrationPrefixDirectory(21);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);

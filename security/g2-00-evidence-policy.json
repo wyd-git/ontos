@@ -35,7 +35,10 @@
       "migrations/db-00/0015_runtime_plan_compatibility.sql",
       "migrations/db-00/0016_snapshot_group_cutover.sql",
       "migrations/db-00/0017_generation_index_gc.sql",
-      "migrations/db-00/0018_materialization_admin_boundary.sql"
+      "migrations/db-00/0018_materialization_admin_boundary.sql",
+      "migrations/db-00/0019_materialization_clean_room_guard.sql",
+      "migrations/db-00/0020_materialization_head_lookup_planner.sql",
+      "migrations/db-00/0021_gc_generation_live_measurement.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",
@@ -90,6 +93,7 @@
       "runtime.capacity_approvals",
       "runtime.compatibility_certificates",
       "runtime.dataset_snapshots",
+      "runtime.data_bearing_project_guard",
       "runtime.generation_collections",
       "runtime.generation_measurements",
       "runtime.generations",
@@ -257,7 +261,8 @@
     "docs/evidence/g2-02-10-runtime-plan-compatibility.md",
     "docs/evidence/g2-02-11-snapshot-group-cutover.md",
     "docs/evidence/g2-02-12-generation-index-gc.md",
-    "docs/evidence/g2-02-13-admin-testkit-ci.md"
+    "docs/evidence/g2-02-13-admin-testkit-ci.md",
+    "docs/evidence/g2-02-14-clean-room-materialization.md"
   ],
   "delivery": {
     "accountableOwner": "wyd-git",
@@ -318,12 +323,6 @@
       "risk": "Handler process seam tests do not prove Linux container egress, cgroup, seccomp or AppArmor enforcement.",
       "owner": "Backend / Security (accountable: wyd-git)",
       "nextGate": "G2-05 and G2-08"
-    },
-    {
-      "id": "RISK-G2-00-03",
-      "risk": "Capacity bounds have a first-round 100k/1m database measurement; final HTTP/S3/OIDC/Worker/Cutover-shape confirmation remains required before materialization cutover.",
-      "owner": "Runtime / Database (accountable: wyd-git)",
-      "nextGate": "G2-02-14"
     },
     {
       "id": "RISK-G2-00-04",

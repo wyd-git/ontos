@@ -547,6 +547,9 @@ function mapAdminDatabaseError(error: unknown): MaterializationAdminError {
   if (/JOB_NOT_CANCELLABLE/u.test(message)) {
     return new MaterializationAdminError("JOB_NOT_CANCELLABLE", { cause: error });
   }
+  if (/G20214_DATA_BEARING_PROJECT_LIMIT_EXCEEDED/u.test(message)) {
+    return new MaterializationAdminError("DATA_BEARING_PROJECT_LIMIT_EXCEEDED", { cause: error });
+  }
   if (candidate.code === "22023" || /_INPUT_INVALID/u.test(message)) {
     return new MaterializationAdminError("ADMIN_REQUEST_INVALID", { cause: error });
   }

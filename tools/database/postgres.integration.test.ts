@@ -166,6 +166,9 @@ void test(
             "0016_snapshot_group_cutover.sql",
             "0017_generation_index_gc.sql",
             "0018_materialization_admin_boundary.sql",
+            "0019_materialization_clean_room_guard.sql",
+            "0020_materialization_head_lookup_planner.sql",
+            "0021_gc_generation_live_measurement.sql",
           ],
         );
 
@@ -240,7 +243,7 @@ async function assertSecondDatabaseAndConcurrentRunner(
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 18);
+  assert.equal(left.applied.length + right.applied.length, 21);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
 }
 
@@ -652,9 +655,12 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
   const sixteenthMigration = resolve(directory, "0016_snapshot_group_cutover.sql");
   const seventeenthMigration = resolve(directory, "0017_generation_index_gc.sql");
   const eighteenthMigration = resolve(directory, "0018_materialization_admin_boundary.sql");
-  const failedMigration = resolve(directory, "0019_failed_attempt.sql");
-  const defectMigration = resolve(directory, "0019_forward_repair_probe.sql");
-  const repairMigration = resolve(directory, "0020_forward_repair.sql");
+  const nineteenthMigration = resolve(directory, "0019_materialization_clean_room_guard.sql");
+  const twentiethMigration = resolve(directory, "0020_materialization_head_lookup_planner.sql");
+  const twentyFirstMigration = resolve(directory, "0021_gc_generation_live_measurement.sql");
+  const failedMigration = resolve(directory, "0022_failed_attempt.sql");
+  const defectMigration = resolve(directory, "0022_forward_repair_probe.sql");
+  const repairMigration = resolve(directory, "0023_forward_repair.sql");
 
   try {
     await copyFile(resolve(databaseMigrationDirectory, "0001_foundation.sql"), firstMigration);
@@ -726,6 +732,18 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       resolve(databaseMigrationDirectory, "0018_materialization_admin_boundary.sql"),
       eighteenthMigration,
     );
+    await copyFile(
+      resolve(databaseMigrationDirectory, "0019_materialization_clean_room_guard.sql"),
+      nineteenthMigration,
+    );
+    await copyFile(
+      resolve(databaseMigrationDirectory, "0020_materialization_head_lookup_planner.sql"),
+      twentiethMigration,
+    );
+    await copyFile(
+      resolve(databaseMigrationDirectory, "0021_gc_generation_live_measurement.sql"),
+      twentyFirstMigration,
+    );
     await writeFile(
       failedMigration,
       `CREATE TABLE ops.db01_forward_repair_probe (
@@ -739,7 +757,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_EXECUTION_FAILED",
     );
-    await assertProbeAndLedgerState(client, false, 18);
+    await assertProbeAndLedgerState(client, false, 21);
 
     await rm(failedMigration);
     await writeFile(
@@ -753,7 +771,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const defectRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       defectRun.applied.map(({ version }) => version),
-      [19],
+      [22],
     );
 
     await writeFile(
@@ -767,7 +785,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const repairRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       repairRun.applied.map(({ version }) => version),
-      [20],
+      [23],
     );
 
     const definitions = await loadMigrationDefinitions(directory);
@@ -803,7 +821,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_HISTORY_DIVERGED",
     );
-    await assertProbeAndLedgerState(client, true, 20);
+    await assertProbeAndLedgerState(client, true, 23);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

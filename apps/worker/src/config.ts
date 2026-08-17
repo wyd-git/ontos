@@ -7,6 +7,8 @@ export interface MaterializationWorkerConfig {
   readonly dependencyBackoffMilliseconds: number;
   readonly shutdownGraceMilliseconds: number;
   readonly databasePoolMaximum: number;
+  readonly databaseStatementTimeoutMilliseconds: number;
+  readonly databaseQueryTimeoutMilliseconds: number;
 }
 
 export interface ProductionMaterializationWorkerConfig extends MaterializationWorkerConfig {
@@ -53,6 +55,23 @@ export function loadMaterializationWorkerConfig(
   if (heartbeatIntervalMilliseconds * 2 >= leaseSeconds * 1000) {
     throw new Error("ONTOS_WORKER_HEARTBEAT_MILLISECONDS must be less than half the lease.");
   }
+  const databaseStatementTimeoutMilliseconds = boundedInteger(
+    source["ONTOS_WORKER_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS"] ?? "300000",
+    "ONTOS_WORKER_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS",
+    1_000,
+    1_795_000,
+  );
+  const databaseQueryTimeoutMilliseconds = boundedInteger(
+    source["ONTOS_WORKER_DATABASE_QUERY_TIMEOUT_MILLISECONDS"] ?? "305000",
+    "ONTOS_WORKER_DATABASE_QUERY_TIMEOUT_MILLISECONDS",
+    1_001,
+    1_800_000,
+  );
+  if (databaseQueryTimeoutMilliseconds <= databaseStatementTimeoutMilliseconds) {
+    throw new Error(
+      "ONTOS_WORKER_DATABASE_QUERY_TIMEOUT_MILLISECONDS must exceed the statement timeout.",
+    );
+  }
 
   return Object.freeze({
     databaseUrl: required(source, "ONTOS_DATABASE_URL"),
@@ -83,6 +102,8 @@ export function loadMaterializationWorkerConfig(
       1,
       16,
     ),
+    databaseStatementTimeoutMilliseconds,
+    databaseQueryTimeoutMilliseconds,
   });
 }
 

@@ -22,6 +22,8 @@ void test("loads a bounded Worker-only runtime configuration", () => {
     dependencyBackoffMilliseconds: 1000,
     shutdownGraceMilliseconds: 15000,
     databasePoolMaximum: 4,
+    databaseStatementTimeoutMilliseconds: 300000,
+    databaseQueryTimeoutMilliseconds: 305000,
   });
 });
 
@@ -69,6 +71,28 @@ void test("rejects a heartbeat interval that cannot renew safely before lease ex
       ...minimumConfig,
       ONTOS_WORKER_LEASE_SECONDS: "2",
       ONTOS_WORKER_HEARTBEAT_MILLISECONDS: "1000",
+    }),
+  );
+});
+
+void test("loads bounded database timeouts and requires the client timeout to exceed PostgreSQL", () => {
+  assert.deepEqual(
+    loadMaterializationWorkerConfig({
+      ...minimumConfig,
+      ONTOS_WORKER_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS: "600000",
+      ONTOS_WORKER_DATABASE_QUERY_TIMEOUT_MILLISECONDS: "605000",
+    }),
+    {
+      ...loadMaterializationWorkerConfig(minimumConfig),
+      databaseStatementTimeoutMilliseconds: 600000,
+      databaseQueryTimeoutMilliseconds: 605000,
+    },
+  );
+  assert.throws(() =>
+    loadMaterializationWorkerConfig({
+      ...minimumConfig,
+      ONTOS_WORKER_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS: "600000",
+      ONTOS_WORKER_DATABASE_QUERY_TIMEOUT_MILLISECONDS: "600000",
     }),
   );
 });

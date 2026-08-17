@@ -9,6 +9,8 @@ export interface AdminApiConfig {
   };
   readonly cursorHmacSecret: string;
   readonly managedCsvMaximumBytes: number;
+  readonly databaseStatementTimeoutMilliseconds?: number;
+  readonly databaseQueryTimeoutMilliseconds?: number;
   readonly objectStore: {
     readonly endpoint: string;
     readonly region: string;
@@ -53,6 +55,23 @@ export function loadAdminApiConfig(
     1,
     5,
   );
+  const databaseStatementTimeoutMilliseconds = boundedInteger(
+    source["ONTOS_ADMIN_API_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS"] ?? "120000",
+    "ONTOS_ADMIN_API_DATABASE_STATEMENT_TIMEOUT_MILLISECONDS",
+    1_000,
+    1_795_000,
+  );
+  const databaseQueryTimeoutMilliseconds = boundedInteger(
+    source["ONTOS_ADMIN_API_DATABASE_QUERY_TIMEOUT_MILLISECONDS"] ?? "125000",
+    "ONTOS_ADMIN_API_DATABASE_QUERY_TIMEOUT_MILLISECONDS",
+    1_001,
+    1_800_000,
+  );
+  if (databaseQueryTimeoutMilliseconds <= databaseStatementTimeoutMilliseconds) {
+    throw new Error(
+      "ONTOS_ADMIN_API_DATABASE_QUERY_TIMEOUT_MILLISECONDS must exceed the statement timeout.",
+    );
+  }
   return Object.freeze({
     host: source["ONTOS_ADMIN_API_HOST"] ?? "127.0.0.1",
     port,
@@ -64,6 +83,8 @@ export function loadAdminApiConfig(
     }),
     cursorHmacSecret,
     managedCsvMaximumBytes,
+    databaseStatementTimeoutMilliseconds,
+    databaseQueryTimeoutMilliseconds,
     objectStore: Object.freeze({
       endpoint: required(source, "ONTOS_S3_ENDPOINT"),
       region: required(source, "ONTOS_S3_REGION"),

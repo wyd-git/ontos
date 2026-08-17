@@ -55,6 +55,7 @@ export interface MaterializationEvidenceSnapshot {
   readonly metadataAcceptance: unknown;
   readonly fixtures: unknown;
   readonly production: unknown;
+  readonly cleanRoom: unknown;
   readonly sourceTexts: Readonly<Record<string, string | undefined>>;
   readonly packageScripts: Readonly<Record<string, string>>;
 }
@@ -90,6 +91,7 @@ export function evaluateMaterializationEvidenceSnapshot(
   validatePriorAcceptance(snapshot.metadataAcceptance, "Metadata", violations);
   validateFixtures(snapshot.fixtures, policy, violations);
   validateProduction(snapshot.production, policy, snapshot.currentCommit, violations);
+  validateCleanRoom(snapshot.cleanRoom, policy, snapshot.currentCommit, violations);
   validateMutations(snapshot, policy, tracked, violations);
   return violations;
 }
@@ -98,6 +100,7 @@ export function materializationEvidenceManifest(
   report: Readonly<Record<string, unknown>>,
   acceptance: Readonly<Record<string, unknown>>,
   production: unknown,
+  cleanRoom: unknown,
 ): Readonly<Record<string, unknown>> {
   const steps = Array.isArray(report.steps) ? report.steps.filter(isRecord) : [];
   const requiredGates = stringArrayProperty(acceptance, "requiredGates");
@@ -109,18 +112,28 @@ export function materializationEvidenceManifest(
     production.status === "PASS" &&
     production.cleanCheckout === true &&
     production.commit === report.commit;
+  const cleanRoomPassed =
+    isRecord(cleanRoom) &&
+    cleanRoom.status === "PASS" &&
+    cleanRoom.qualification === "CLEAN_ROOM_PASS" &&
+    cleanRoom.cleanCheckout === true &&
+    cleanRoom.commit === report.commit;
   const status =
-    report.status === "PASS" && acceptance.status === "PASS" && gatesPassed && productionPassed
+    report.status === "PASS" &&
+    acceptance.status === "PASS" &&
+    gatesPassed &&
+    productionPassed &&
+    cleanRoomPassed
       ? "PASS"
       : "FAIL";
   const cleanCheckout = report.dirty === false;
   return {
     schemaVersion: 1,
-    gate: "G2-02-13",
+    gate: "G2-02-14",
     status,
     qualification:
       status === "PASS" && cleanCheckout
-        ? "PRODUCTION_BOUNDARY_PASS"
+        ? "CLEAN_ROOM_PASS"
         : status === "PASS"
           ? "WORKTREE_PASS"
           : "FAIL",
@@ -141,6 +154,7 @@ export function materializationEvidenceManifest(
     reviews: acceptance.reviews ?? [],
     fixtures: acceptance.fixtures ?? null,
     production,
+    cleanRoom,
     mutations: acceptance.mutations ?? null,
     scope: acceptance.scope ?? null,
     owner: acceptance.owner ?? null,
@@ -159,7 +173,10 @@ export async function writeMaterializationEvidenceManifest(
   const production = await readOptionalJson(
     resolve(outputDirectory, "materialization-production.json"),
   );
-  const manifest = materializationEvidenceManifest(report, acceptance, production);
+  const cleanRoom = await readOptionalJson(
+    resolve(outputDirectory, "materialization-clean-room.json"),
+  );
+  const manifest = materializationEvidenceManifest(report, acceptance, production, cleanRoom);
   await writeFile(
     resolve(outputDirectory, "materialization-evidence-manifest.json"),
     `${JSON.stringify(manifest, null, 2)}\n`,
@@ -177,6 +194,7 @@ async function checkMaterializationEvidence(repositoryRoot: string): Promise<voi
   await mkdir(outputDirectory, { recursive: true });
   const fixtureRecord = isRecord(snapshot.fixtures) ? snapshot.fixtures : {};
   const productionRecord = isRecord(snapshot.production) ? snapshot.production : {};
+  const cleanRoomRecord = isRecord(snapshot.cleanRoom) ? snapshot.cleanRoom : {};
   const mutationSources = Object.fromEntries(
     [...new Set(policy.mutationChecks.map(({ source }) => source))].map((path) => [
       path,
@@ -185,7 +203,7 @@ async function checkMaterializationEvidence(repositoryRoot: string): Promise<voi
   );
   const mutationArtifact = {
     schemaVersion: 1,
-    gate: "G2-02-13",
+    gate: "G2-02-14",
     status: violations.some((violation) => violation.startsWith("Mutation ")) ? "FAIL" : "PASS",
     checks: policy.mutationChecks.map(({ id, source, requiredGate }) => ({
       id,
@@ -200,7 +218,7 @@ async function checkMaterializationEvidence(repositoryRoot: string): Promise<voi
   );
   const artifact = {
     schemaVersion: 1,
-    gate: "G2-02-13",
+    gate: "G2-02-14",
     status: violations.length === 0 ? "PASS" : "FAIL",
     evidence: policy.requiredEvidence,
     reviews: policy.requiredReviews,
@@ -221,6 +239,15 @@ async function checkMaterializationEvidence(repositoryRoot: string): Promise<voi
       completedStages: productionRecord.completedStages ?? [],
       dependencies: productionRecord.dependencies ?? null,
       assertions: productionRecord.assertions ?? null,
+    },
+    cleanRoom: {
+      qualification: cleanRoomRecord.qualification ?? null,
+      reportSha256: cleanRoomRecord.reportSha256 ?? null,
+      performance: cleanRoomRecord.performance ?? null,
+      recovery: cleanRoomRecord.recovery ?? null,
+      security: cleanRoomRecord.security ?? null,
+      garbageCollection: cleanRoomRecord.garbageCollection ?? null,
+      overlayBoundary: cleanRoomRecord.overlayBoundary ?? null,
     },
     mutations: mutationArtifact,
     requiredGates: policy.requiredGates,
@@ -298,6 +325,7 @@ async function loadSnapshot(
     ),
     fixtures: await readOptionalJson(resolve(outputDirectory, "materialization-fixtures.json")),
     production: await readOptionalJson(resolve(outputDirectory, "materialization-production.json")),
+    cleanRoom: await readOptionalJson(resolve(outputDirectory, "materialization-clean-room.json")),
     sourceTexts,
     packageScripts: readScripts(packageValue),
   };
@@ -366,6 +394,120 @@ function validateProduction(
     violations.push("Serving pointer became visible before Owner activation.");
 }
 
+function validateCleanRoom(
+  value: unknown,
+  policy: MaterializationEvidencePolicy,
+  currentCommit: string,
+  violations: string[],
+): void {
+  if (!isRecord(value) || value.status !== "PASS") {
+    violations.push("Materialization clean-room total acceptance must PASS.");
+    return;
+  }
+  if (
+    value.gate !== "G2-02-14" ||
+    value.qualification !== "CLEAN_ROOM_PASS" ||
+    value.commit !== currentCommit ||
+    value.cleanCheckout !== true
+  ) {
+    violations.push("Clean-room evidence must bind the current clean G2-02-14 commit.");
+  }
+  if (
+    typeof value.reportSha256 !== "string" ||
+    !/^sha256:[0-9a-f]{64}$/u.test(value.reportSha256)
+  ) {
+    violations.push("Clean-room report must carry a canonical SHA-256 binding.");
+  }
+  const performance = isRecord(value.performance) ? value.performance : {};
+  if (
+    performance.objectRows !== policy.fixtures.benchmarkObjectCount ||
+    performance.linkRows !== policy.fixtures.benchmarkLinkCount ||
+    typeof performance.coldEndToEndMilliseconds !== "number" ||
+    performance.coldEndToEndMilliseconds >= 30 * 60 * 1_000 ||
+    typeof performance.warmRefreshEndToEndMilliseconds !== "number" ||
+    performance.warmRefreshEndToEndMilliseconds >= 30 * 60 * 1_000
+  ) {
+    violations.push("Clean-room must complete cold and warm 100k/1m runs within 30 minutes.");
+  }
+  const cutovers = isRecord(performance.cutovers) ? performance.cutovers : {};
+  if (
+    cutovers.runs !== 20 ||
+    typeof cutovers.p95Microseconds !== "number" ||
+    !Number.isInteger(cutovers.p95Microseconds) ||
+    cutovers.p95Microseconds < 0 ||
+    cutovers.p95Microseconds >= 1_000_000 ||
+    typeof cutovers.maxMicroseconds !== "number" ||
+    !Number.isInteger(cutovers.maxMicroseconds) ||
+    cutovers.maxMicroseconds < 0 ||
+    cutovers.maxMicroseconds >= 5_000_000
+  ) {
+    violations.push("Clean-room Cutover evidence must contain 20 runs within the P95/max SLO.");
+  }
+  const recovery = isRecord(value.recovery) ? value.recovery : {};
+  if (
+    recovery.wholeEnvironmentRestarted !== true ||
+    recovery.stateManifestIdentical !== true ||
+    recovery.stateManifestBefore !== recovery.stateManifestAfter
+  ) {
+    violations.push("Clean-room restart must preserve an identical durable state manifest.");
+  }
+  const migrations = isRecord(value.migrations) ? value.migrations : {};
+  if (migrations.restartRunNoOp !== true)
+    violations.push("Clean-room restart Migration must be a no-op.");
+  const capacity = isRecord(value.capacity) ? value.capacity : {};
+  if (
+    capacity.overHardLimitRejected !== true ||
+    capacity.approvalCreated !== true ||
+    capacity.hardLimitBytes !== "12884901888"
+  ) {
+    violations.push("Clean-room capacity normal/hard/approval evidence is incomplete.");
+  }
+  const security = isRecord(value.security) ? value.security : {};
+  for (const key of [
+    "invalidOidcRejected",
+    "unauthorizedProjectHidden",
+    "crossProjectHidden",
+    "uploadTraversalRejected",
+    "apiDirectTableDenied",
+    "workerAuthTableDenied",
+    "ddlMetadataTableDenied",
+    "sensitiveErrorsRedacted",
+  ]) {
+    if (security[key] !== true)
+      violations.push(`Clean-room security assertion ${key} must be true.`);
+  }
+  const gc = isRecord(value.garbageCollection) ? value.garbageCollection : {};
+  if (gc.orphanObjectVersionReclaimed !== true || gc.finalState !== "COMMITTED") {
+    violations.push("Clean-room garbage-collection ledger did not reach COMMITTED.");
+  }
+  const lifecycle = isRecord(value.lifecycle) ? value.lifecycle : {};
+  for (const key of [
+    "r1A0BeforeMaterialization",
+    "firstObjectLinkGroupReady",
+    "badVersionRejected",
+    "badVersionPreservedServingHead",
+    "goodRefreshReady",
+    "refreshObservedOnlyOldOrNew",
+    "idempotentJobAndRefresh",
+  ]) {
+    if (lifecycle[key] !== true)
+      violations.push(`Clean-room lifecycle assertion ${key} must be true.`);
+  }
+  const overlay = isRecord(value.overlayBoundary) ? value.overlayBoundary : {};
+  if (
+    overlay.productionProvider !== "certified-zero-overlay-only" ||
+    overlay.realPostgresOverlay !== "DEFERRED_G2_04"
+  ) {
+    violations.push(
+      "Clean-room must preserve the zero-overlay production boundary and G2-04 deferral.",
+    );
+  }
+  const fixtures = isRecord(value.fixtures) ? value.fixtures : {};
+  if (fixtures.fixtureDigest !== policy.fixtures.digest) {
+    violations.push("Clean-room fixture digest differs from policy.");
+  }
+}
+
 function validateMutations(
   snapshot: MaterializationEvidenceSnapshot,
   policy: MaterializationEvidencePolicy,
@@ -375,6 +517,7 @@ function validateMutations(
   const expectedIds = [
     "capacity",
     "cutover_atomicity",
+    "data_project_limit",
     "job_fencing",
     "migration",
     "oidc",
@@ -388,7 +531,7 @@ function validateMutations(
       expectedIds,
     )
   ) {
-    violations.push("Mutation checks must cover exactly the eight G2-02-13 failure classes.");
+    violations.push("Mutation checks must cover exactly the nine G2-02 failure classes.");
   }
   for (const mutation of policy.mutationChecks) {
     if (!tracked.has(mutation.source))

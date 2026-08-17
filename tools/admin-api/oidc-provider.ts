@@ -20,8 +20,15 @@ export interface TestOidcProvider {
   close(): Promise<void>;
 }
 
-export async function startTestOidcProvider(): Promise<TestOidcProvider> {
-  const audience = "ontos-admin-test";
+export interface TestOidcProviderOptions {
+  readonly audience?: string;
+  readonly port?: number;
+}
+
+export async function startTestOidcProvider(
+  options: TestOidcProviderOptions = {},
+): Promise<TestOidcProvider> {
+  const audience = options.audience ?? "ontos-admin-test";
   const kid = randomUUID();
   const { publicKey, privateKey } = await generateKeyPair("RS256", { extractable: true });
   const jwk = await publicJwk(publicKey, kid);
@@ -41,7 +48,7 @@ export async function startTestOidcProvider(): Promise<TestOidcProvider> {
     }
     response.writeHead(404).end();
   });
-  await listen(server);
+  await listen(server, options.port ?? 0);
   const address = server.address();
   if (address === null || typeof address === "string")
     throw new Error("OIDC fixture did not bind.");
@@ -85,10 +92,10 @@ function json(response: ServerResponse, value: unknown): void {
   response.end(body);
 }
 
-function listen(server: Server): Promise<void> {
+function listen(server: Server, port: number): Promise<void> {
   return new Promise((resolveListen, rejectListen) => {
     server.once("error", rejectListen);
-    server.listen(0, "127.0.0.1", resolveListen);
+    server.listen(port, "127.0.0.1", resolveListen);
   });
 }
 

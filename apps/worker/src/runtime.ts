@@ -44,8 +44,8 @@ export async function startMaterializationWorker(
     max: config.databasePoolMaximum,
     connectionTimeoutMillis: 5_000,
     idleTimeoutMillis: 30_000,
-    statement_timeout: 30_000,
-    query_timeout: 35_000,
+    statement_timeout: config.databaseStatementTimeoutMilliseconds,
+    query_timeout: config.databaseQueryTimeoutMilliseconds,
   });
   pool.on("error", () => {
     dependencies.observe?.(Object.freeze({ kind: "dependency_retry" }));

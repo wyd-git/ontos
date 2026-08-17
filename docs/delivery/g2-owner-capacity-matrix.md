@@ -152,9 +152,17 @@
 - 剩余 1 项是 G2-02-14 clean-room 总验收：独立 Clone/空卷、整体重启、100k/1m 端到端、20 次 Cutover、容量/第二 Project 拒绝和总 Manifest。
 - 当前只放行 G2-02-14；不得跳到 Query、Policy、页面或 Action。
 
+### G2-02-14 后检查点（2026-08-17）
+
+- G2-02-14 已 PASS，G2-02 当前进度为 **14/14**；Materialization 数据运行面任务包关闭。
+- 独立 Ubuntu 24 / x86_64 / 8C16G Runner 从 clean checkout 和空卷完成 PG/S3/OIDC/API/Worker/DDL 全链路；冷 100k Object + 1m Link 为 998,564 ms，热 Refresh 为 740,459 ms；20 次 Cutover P95 109.582 ms、max 110.406 ms。
+- 容量实测 5,672,337,408 bytes 并取代较小 Forecast 参与准入；12 GiB 超限、第二 data-bearing Project、无效 OIDC、跨 Project、角色越权和上传穿越均稳定拒绝。
+- 整体重启后 21 个 Migration 二次运行 no-op，四个 Projection Index 仍存在且 READY，持久状态 Manifest 前后一致；GC/上传后台清理竞态以 fail-closed 幂等重试通过。
+- 当前只放行 G2-03 Query + Policy 任务包编写、可行性复审与红队冻结；冻结前不直接编码 Query，G2-04 前不移除 zero-overlay 限制。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01 与 G2-02-01～13 已 PASS；G2-02 只按 [Materialization 任务包](g2-02-materialization-task-pack.md) 顺序执行，当前只允许开始 G2-02-14，不得跳到 Query、页面或 Action。
+1. G2-00、G2-01 与 G2-02-01～14 已 PASS；当前只允许创建和审查 G2-03 Query + Policy 任务包，任务包冻结前不得直接编码 Query、页面或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

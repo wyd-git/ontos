@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-02-14",
+  "status": "PASS",
+  "qualification": "CLEAN_ROOM_PASS",
+  "commit": "29024bab891d38f5128d0f423c38de6890c8fe00",
+  "cleanCheckout": true,
+  "command": "npm run test:materialization-clean-room",
+  "startedAt": "2026-08-17T08:52:58.539Z",
+  "completedAt": "2026-08-17T09:32:23.176Z",
+  "durationMs": 2364637,
+  "environment": {
+    "hardware": {
+      "architecture": "x64",
+      "cpuCount": 8,
+      "cpuModel": "Intel(R) Xeon(R) CPU E5-2673 v4 @ 2.30GHz",
+      "totalMemoryBytes": 16768651264
+    },
+    "software": {
+      "platform": "linux",
+      "node": "24.18.0",
+      "docker": "Docker version 29.7.2, build a7dcaa6",
+      "postgresImage": "postgres:16.14-bookworm@sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8",
+      "postgresContainerImageId": "sha256:64154d0babcb1741988719e703419af0382b19953706149f9872fbd0f438efa8",
+      "s3Image": "chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d",
+      "s3ContainerImageId": "sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d"
+    },
+    "postgresSettings": {
+      "maintenance_work_mem": "65536kB",
+      "max_wal_size": "1024MB",
+      "server_version_num": "160014",
+      "shared_buffers": "163848kB",
+      "synchronous_commit": "on",
+      "work_mem": "4096kB"
+    },
+    "runClass": {
+      "cold": "empty named volumes",
+      "warm": "same volumes after restart"
+    }
+  },
+  "dependencies": {
+    "postgres": "empty named volume -> stop/start -> preserved",
+    "objectStore": "empty versioned named volume -> stop/start -> preserved",
+    "identity": "OIDC discovery/JWKS process restarted on the same issuer",
+    "apiRole": "api_runtime",
+    "workerRole": "worker_runtime",
+    "ddlRole": "dedicated NOINHERIT login"
+  },
+  "migrations": {
+    "emptyDatabaseApplied": 21,
+    "restartRunNoOp": true
+  },
+  "fixtures": {
+    "fixtureDigest": "sha256:b516136d11968f9f75ed1af0d26e9f1cc760dcd065fb1ca4a6cd807f5f8860bf",
+    "benchmarkFixtureDigest": "sha256:4cf9491ef477c7c98c9fba693dd3028100cc7f419bf8f7c53eac1fd1d6328446",
+    "domains": ["commerce", "work-management"],
+    "primaryProjectId": "14b30cb1-1199-4858-808a-bec4b6954c72",
+    "rejectedSecondProjectId": "b58a8135-2f60-4892-9075-39a76d3238ab",
+    "firstGroup": {
+      "groupVersion": 1,
+      "memberCount": 3,
+      "totalBytes": 31900035,
+      "digests": {
+        "object:Customer": "sha256:66050cb5e4b830736e734ed8c1a99f2b049b73ee51a3e8f23e29bb2bd0b60e74",
+        "object:Order": "sha256:9e9207e0f6c261e370481452919cfe15c88d3f01c200f479253e7e9a8fd25833",
+        "link:CustomerPlacedOrder": "sha256:7103bd1dd02eb64dffd74ab10de4c478a2923430131298c5815c963ee124c5a6"
+      }
+    },
+    "rawCsvDigests": {
+      "object:Customer": "sha256:66050cb5e4b830736e734ed8c1a99f2b049b73ee51a3e8f23e29bb2bd0b60e74",
+      "object:Order": "sha256:9e9207e0f6c261e370481452919cfe15c88d3f01c200f479253e7e9a8fd25833",
+      "link:CustomerPlacedOrder": "sha256:7103bd1dd02eb64dffd74ab10de4c478a2923430131298c5815c963ee124c5a6"
+    }
+  },
+  "lifecycle": {
+    "r1A0BeforeMaterialization": true,
+    "firstObjectLinkGroupReady": true,
+    "firstCompletedStages": [
+      "scan",
+      "map",
+      "validate",
+      "build_stage",
+      "build_index",
+      "ready_for_activation",
+      "catch_up",
+      "activate"
+    ],
+    "badVersionRejected": true,
+    "badVersionPreservedServingHead": true,
+    "goodRefreshReady": true,
+    "refreshObservedOnlyOldOrNew": true,
+    "idempotentJobAndRefresh": true
+  },
+  "performance": {
+    "objectRows": 100000,
+    "linkRows": 1000000,
+    "sourceBytes": 31900035,
+    "coldEndToEndMilliseconds": 998564,
+    "warmRefreshEndToEndMilliseconds": 740459,
+    "objectiveMilliseconds": 1800000,
+    "walBytes": "5333764768",
+    "peakNodeRssBytes": 688840704,
+    "unexpectedErrorRate": 0,
+    "expectedRejectedJobs": 1,
+    "cutovers": {
+      "runs": 20,
+      "p95Microseconds": 109582,
+      "maxMicroseconds": 110406,
+      "samplesMicroseconds": [
+        103514, 109446, 109175, 110406, 109582, 108653, 7023, 7011, 7054, 6942, 7025, 83847, 7062,
+        7023, 6991, 7034, 82952, 5476, 5446, 5266
+      ]
+    }
+  },
+  "recovery": {
+    "allStageKillResumeGate": "materialization-worker-postgres",
+    "cutoverAndGcKillResumeGate": "postgres-integration",
+    "noDoubleLeaseActivationOrFacts": true,
+    "noVisibleStaging": true,
+    "wholeEnvironmentRestarted": true,
+    "projectionIndexes": {
+      "count": 4,
+      "catalogStateDigest": "sha256:0699448ae824310619512d97995de86b58c989de87aaa0beb3882f31a218ed87",
+      "allReadyAndPresent": true
+    },
+    "stateManifestBefore": "sha256:396952d56751156c1938a684a9e7b4032dabd6a41b1d3b9bf46c49a30337e0d5",
+    "stateManifestAfter": "sha256:396952d56751156c1938a684a9e7b4032dabd6a41b1d3b9bf46c49a30337e0d5",
+    "stateManifestIdentical": true
+  },
+  "capacity": {
+    "normalAdmission": true,
+    "hardLimitBytes": "12884901888",
+    "overHardLimitRejected": true,
+    "approvalCreated": true,
+    "forecastBytes": "256000000",
+    "observedBytes": "5672337408",
+    "selectedMaximumBytes": "5672337408",
+    "capacityMeasuredBytes": "5672337408"
+  },
+  "security": {
+    "invalidOidcRejected": true,
+    "unauthorizedProjectHidden": true,
+    "crossProjectHidden": true,
+    "uploadTraversalRejected": true,
+    "apiDirectTableDenied": true,
+    "workerAuthTableDenied": true,
+    "ddlMetadataTableDenied": true,
+    "sensitiveErrorsRedacted": true
+  },
+  "garbageCollection": {
+    "planId": "cc81b12a-ea6d-4207-bca1-c83dd12d2eb7",
+    "planDigest": "sha256:7f1e39ecefb24a7d9245cb5834d2f5b42a7e49135b26fc18a77e6b42c5badad4",
+    "batches": 1,
+    "dryRunDependencyRetries": 1,
+    "staleReplans": 0,
+    "totalAffectedRows": 0,
+    "orphanObjectVersionReclaimed": true,
+    "finalState": "COMMITTED"
+  },
+  "overlayBoundary": {
+    "productionProvider": "certified-zero-overlay-only",
+    "adversarialW0W1Gate": "materialization-fixtures + unit",
+    "realPostgresOverlay": "DEFERRED_G2_04"
+  },
+  "deferred": ["G2-03 Query/Policy", "G2-04 PostgreSQL Overlay/AC-03", "UI", "SDK"],
+  "reportSha256": "sha256:f1d23f619d91208371f439a666824ea318d0b15aefb9e7ce6368ca144a55fa5e"
+}
