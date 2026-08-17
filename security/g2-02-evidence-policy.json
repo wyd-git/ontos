@@ -29,6 +29,7 @@
       ".github/workflows/foundation-ci.yml",
       "README.md",
       "docs/README.md",
+      "docs/architecture/core-database-design.md",
       "docs/architecture/g2-03-ui-api-consumer-contract.md",
       "docs/product/ontology-kernel-implementation-blueprint.md",
       "docs/reviews/g2-03-task-pack-feasibility.md",
