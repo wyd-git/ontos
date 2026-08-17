@@ -29,6 +29,7 @@
       ".github/workflows/foundation-ci.yml",
       "README.md",
       "docs/README.md",
+      "docs/architecture/ci-foundation-gate.md",
       "docs/architecture/core-database-design.md",
       "docs/architecture/g2-03-ui-api-consumer-contract.md",
       "docs/product/ontology-kernel-implementation-blueprint.md",
@@ -167,6 +168,14 @@
       "requiredGate": "unit"
     },
     {
+      "id": "ci_risk_routing",
+      "source": "tools/ci/change-risk.test.ts",
+      "marker": "a mixed or suspicious diff always fails closed to the full profile",
+      "script": "test:unit",
+      "routeFragment": "tools/ci/*.test.ts",
+      "requiredGate": "unit"
+    },
+    {
       "id": "data_project_limit",
       "source": "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts",
       "marker": "MATERIALIZATION_PROJECT_LIMIT_EXCEEDED",
@@ -179,6 +188,7 @@
     "lockfile-install",
     "toolchain",
     "format",
+    "documentation-links",
     "lint",
     "typecheck",
     "unit",

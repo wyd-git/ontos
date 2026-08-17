@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -32,6 +35,10 @@ jobs:
           cache: npm
 
       - name: Run the local/CI-identical gate
+        env:
+          ONTOS_CI_EVENT_NAME: ${{ github.event_name }}
+          ONTOS_CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          ONTOS_CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: npm run verify
 
       - name: Upload gate evidence

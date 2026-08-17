@@ -8,6 +8,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { writeFoundationEvidenceManifest } from "./foundation-evidence.ts";
 import { writeMaterializationEvidenceManifest } from "./materialization-evidence.ts";
 import { writeMetadataEvidenceManifest } from "./metadata-evidence.ts";
+import {
+  classifyChangedPaths,
+  type ChangeRiskClassification,
+  type GateProfile,
+  isCommitSha,
+  isTrustedFastGateEvent,
+  unavailableRangeClassification,
+} from "./change-risk.ts";
 
 interface GateDefinition {
   readonly name: string;
@@ -33,10 +41,15 @@ interface CommandResult {
   readonly output: string;
 }
 
-const gates: readonly GateDefinition[] = [
+const fullGates: readonly GateDefinition[] = [
   { name: "lockfile-install", command: "npm", arguments: ["ci"] },
   { name: "toolchain", command: "npm", arguments: ["run", "check:toolchain"] },
   { name: "format", command: "npm", arguments: ["run", "format:check"] },
+  {
+    name: "documentation-links",
+    command: "npm",
+    arguments: ["run", "check:documentation"],
+  },
   { name: "lint", command: "npm", arguments: ["run", "lint"] },
   { name: "typecheck", command: "npm", arguments: ["run", "typecheck"] },
   { name: "unit", command: "npm", arguments: ["run", "test:unit"] },
@@ -138,6 +151,15 @@ const gates: readonly GateDefinition[] = [
   },
 ];
 
+const fastGateNames = new Set([
+  "lockfile-install",
+  "toolchain",
+  "format",
+  "documentation-links",
+  "unit",
+  "secret-private-key",
+]);
+
 export function redactOutput(value: string): string {
   return value
     .replaceAll(
@@ -149,9 +171,15 @@ export function redactOutput(value: string): string {
 }
 
 async function runFoundationGate(repositoryRoot: string): Promise<void> {
+  const changeRisk = await classifyChangeRisk(repositoryRoot);
+  const gates = gateDefinitionsForProfile(changeRisk.profile);
   const outputDirectory = join(repositoryRoot, "generated/ci-report");
   await rm(outputDirectory, { recursive: true, force: true });
   await mkdir(outputDirectory, { recursive: true });
+  await writeFile(
+    join(outputDirectory, "change-risk.json"),
+    `${JSON.stringify(changeRisk, null, 2)}\n`,
+  );
   const startedAt = new Date();
   const commit = await captureValue("git", ["rev-parse", "HEAD"], repositoryRoot);
   const dirty = (await captureValue("git", ["status", "--porcelain"], repositoryRoot)).length > 0;
@@ -184,7 +212,7 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
   }
 
   if (environmentTouched && !environmentDown) {
-    const teardown = gates.find((gate) => gate.tearsDownEnvironment === true);
+    const teardown = fullGates.find((gate) => gate.tearsDownEnvironment === true);
     if (teardown === undefined) throw new Error("Environment teardown gate is not defined.");
     const cleanup = await executeGate(teardown, repositoryRoot);
     const index = stepResults.findIndex(({ name }) => name === teardown.name);
@@ -194,6 +222,39 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
   }
 
   const completedAt = new Date();
+  if (changeRisk.profile === "fast-docs") {
+    await writeFile(
+      join(outputDirectory, "fast-docs-evidence.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          gate: "Foundation Gate",
+          profile: changeRisk.profile,
+          status: failure === null ? "PASS" : "FAIL",
+          qualification:
+            failure === null && !dirty
+              ? "FAST_DOCS_PASS"
+              : failure === null
+                ? "WORKTREE_PASS"
+                : "FAIL",
+          commit,
+          cleanCheckout: !dirty,
+          changeRisk,
+          results: stepResults.map(({ name, command, status, durationMs, testCount }) => ({
+            name,
+            command,
+            status,
+            durationMs,
+            testCount,
+          })),
+          statement:
+            "This profile validates low-risk Markdown documentation only and does not regenerate or replace G2-00, G2-01, or G2-02 clean-room evidence.",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
   const artifacts = await describeArtifacts(outputDirectory);
   const artifactCounts = await readArtifactCounts(outputDirectory);
   const postgresOutput = stepResults
@@ -221,6 +282,8 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
     "tools/contracts",
   ]);
   const report: Readonly<Record<string, unknown>> & {
+    readonly profile: GateProfile;
+    readonly changeRisk: ChangeRiskClassification;
     readonly status: string;
     readonly commit: string;
     readonly durationMs: number;
@@ -228,6 +291,8 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
     readonly failedGate: string | null;
   } = {
     schemaVersion: 1,
+    profile: changeRisk.profile,
+    changeRisk,
     status: failure === null ? "PASS" : "FAIL",
     commit,
     dirty,
@@ -266,26 +331,28 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
     failedGate: stepResults.find(({ status }) => status === "FAIL")?.name ?? null,
   };
   let evidenceFailure: string | null = null;
-  try {
-    await writeFoundationEvidenceManifest(outputDirectory, report);
-  } catch (error) {
-    await writeUnavailableEvidenceManifest(outputDirectory, "G2-00", commit, error);
-    evidenceFailure = "foundation-evidence-manifest";
-    failure ??= new Error("Foundation evidence manifest could not be completed.");
-  }
-  try {
-    await writeMetadataEvidenceManifest(outputDirectory, report);
-  } catch (error) {
-    await writeUnavailableEvidenceManifest(outputDirectory, "G2-01", commit, error);
-    evidenceFailure ??= "metadata-evidence-manifest";
-    failure ??= new Error("Metadata evidence manifest could not be completed.");
-  }
-  try {
-    await writeMaterializationEvidenceManifest(outputDirectory, report);
-  } catch (error) {
-    await writeUnavailableEvidenceManifest(outputDirectory, "G2-02", commit, error);
-    evidenceFailure ??= "materialization-evidence-manifest";
-    failure ??= new Error("Materialization evidence manifest could not be completed.");
+  if (changeRisk.profile === "full") {
+    try {
+      await writeFoundationEvidenceManifest(outputDirectory, report);
+    } catch (error) {
+      await writeUnavailableEvidenceManifest(outputDirectory, "G2-00", commit, error);
+      evidenceFailure = "foundation-evidence-manifest";
+      failure ??= new Error("Foundation evidence manifest could not be completed.");
+    }
+    try {
+      await writeMetadataEvidenceManifest(outputDirectory, report);
+    } catch (error) {
+      await writeUnavailableEvidenceManifest(outputDirectory, "G2-01", commit, error);
+      evidenceFailure ??= "metadata-evidence-manifest";
+      failure ??= new Error("Metadata evidence manifest could not be completed.");
+    }
+    try {
+      await writeMaterializationEvidenceManifest(outputDirectory, report);
+    } catch (error) {
+      await writeUnavailableEvidenceManifest(outputDirectory, "G2-02", commit, error);
+      evidenceFailure ??= "materialization-evidence-manifest";
+      failure ??= new Error("Materialization evidence manifest could not be completed.");
+    }
   }
   const finalReport = {
     ...report,
@@ -374,6 +441,119 @@ function runCommand(
         return;
       }
       resolveRun({ exitCode: code ?? 1, output });
+    });
+  });
+}
+
+async function classifyChangeRisk(repositoryRoot: string): Promise<ChangeRiskClassification> {
+  const eventName = process.env.ONTOS_CI_EVENT_NAME?.trim();
+  const baseCommit = process.env.ONTOS_CI_BASE_SHA?.trim();
+  const headCommit = process.env.ONTOS_CI_HEAD_SHA?.trim();
+  const safeBase = isCommitSha(baseCommit) ? baseCommit : null;
+  const safeHead = isCommitSha(headCommit) ? headCommit : null;
+  if (!isTrustedFastGateEvent(process.env.GITHUB_ACTIONS, eventName)) {
+    return unavailableRangeClassification(
+      safeBase,
+      safeHead,
+      "Only a trusted GitHub pull_request or push event may select the fast profile; local, scheduled, and manual runs default to full.",
+    );
+  }
+  if (safeBase === null || safeHead === null) {
+    return unavailableRangeClassification(
+      safeBase,
+      safeHead,
+      "A complete trusted Git comparison range was not provided, so the gate defaults to full.",
+    );
+  }
+  try {
+    const checkedOutCommit = await captureValue("git", ["rev-parse", "HEAD"], repositoryRoot);
+    if (eventName === "push" && checkedOutCommit !== safeHead) {
+      return unavailableRangeClassification(
+        safeBase,
+        safeHead,
+        "The push Head does not equal the checked-out commit, so the gate defaults to full.",
+      );
+    }
+    for (const commit of [safeBase, safeHead]) {
+      const ancestry = await runCommand(
+        "git",
+        ["merge-base", "--is-ancestor", commit, checkedOutCommit],
+        repositoryRoot,
+        false,
+      );
+      if (ancestry.exitCode !== 0) {
+        return unavailableRangeClassification(
+          safeBase,
+          safeHead,
+          "The comparison range is not contained in the checked-out commit, so the gate defaults to full.",
+        );
+      }
+    }
+    return classifyChangedPaths(
+      await captureChangedPaths(repositoryRoot, safeBase, safeHead),
+      safeBase,
+      safeHead,
+    );
+  } catch (error) {
+    return unavailableRangeClassification(
+      safeBase,
+      safeHead,
+      `The Git comparison could not be evaluated, so the gate defaults to full: ${redactOutput(String(error))}`,
+    );
+  }
+}
+
+function gateDefinitionsForProfile(profile: GateProfile): readonly GateDefinition[] {
+  return profile === "fast-docs"
+    ? fullGates.filter(({ name }) => fastGateNames.has(name))
+    : fullGates;
+}
+
+export function gateNamesForProfile(profile: GateProfile): readonly string[] {
+  return gateDefinitionsForProfile(profile).map(({ name }) => name);
+}
+
+function captureChangedPaths(
+  repositoryRoot: string,
+  baseCommit: string,
+  headCommit: string,
+): Promise<readonly string[]> {
+  return new Promise((resolvePaths, rejectPaths) => {
+    const child = spawn(
+      "git",
+      ["diff", "--name-only", "--no-renames", "-z", baseCommit, headCommit, "--"],
+      { cwd: repositoryRoot, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let overflow = false;
+    let errorOutput = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > 4 * 1024 * 1024) {
+        overflow = true;
+        return;
+      }
+      chunks.push(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      errorOutput = `${errorOutput}${chunk.toString("utf8")}`.slice(-4_000);
+    });
+    child.once("error", rejectPaths);
+    child.once("close", (code, signal) => {
+      if (signal !== null) {
+        rejectPaths(new Error(`git diff ended with signal ${signal}.`));
+        return;
+      }
+      if (code !== 0) {
+        rejectPaths(new Error(`git diff failed: ${errorOutput.trim()}`));
+        return;
+      }
+      if (overflow) {
+        rejectPaths(new Error("git diff path output exceeded the 4 MiB safety limit."));
+        return;
+      }
+      resolvePaths(Buffer.concat(chunks).toString("utf8").split("\0").filter(Boolean));
     });
   });
 }
@@ -571,6 +751,8 @@ async function writeUnavailableEvidenceManifest(
 }
 
 function renderSummary(report: {
+  readonly profile: GateProfile;
+  readonly changeRisk: ChangeRiskClassification;
   readonly status: string;
   readonly commit: string;
   readonly durationMs: number;
@@ -584,7 +766,11 @@ function renderSummary(report: {
     )
     .join("\n");
   const testCount = report.steps.reduce((sum, step) => sum + (step.testCount ?? 0), 0);
-  return `# Foundation + Metadata + Materialization Gate: ${report.status}\n\n- Commit: \`${report.commit}\`\n- Tests: ${String(testCount)}\n- Duration: ${String(report.durationMs)} ms\n- Failed gate: ${report.failedGate ?? "none"}\n\n| Gate | Status | Tests | Duration |\n| --- | --- | ---: | ---: |\n${rows}\n`;
+  const title =
+    report.profile === "full"
+      ? "Foundation + Metadata + Materialization Gate"
+      : "Fast Documentation Gate";
+  return `# ${title}: ${report.status}\n\n- Profile: \`${report.profile}\`\n- Reason: ${report.changeRisk.reason}\n- Changed files: ${String(report.changeRisk.changedFiles.length)}\n- Commit: \`${report.commit}\`\n- Tests: ${String(testCount)}\n- Duration: ${String(report.durationMs)} ms\n- Failed gate: ${report.failedGate ?? "none"}\n\n| Gate | Status | Tests | Duration |\n| --- | --- | ---: | ---: |\n${rows}\n`;
 }
 
 if (

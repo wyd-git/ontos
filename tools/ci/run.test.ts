@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { parseTestCount, redactOutput } from "./run.ts";
+import { gateNamesForProfile, parseTestCount, redactOutput } from "./run.ts";
 
 const workflow = await readFile(resolve(".github/workflows/foundation-ci.yml"), "utf8");
 
@@ -21,11 +21,38 @@ void test("extracts the final TAP test count for the evidence report", () => {
   assert.equal(parseTestCount("no TAP summary"), null);
 });
 
-void test("GitHub CI reserves the full clean-room window and calls only the unified gate", () => {
+void test("GitHub CI keeps one required gate and provides a trusted comparison range", () => {
   const timeout = /^\s*timeout-minutes:\s*(\d+)\s*$/mu.exec(workflow);
   assert.ok(timeout);
   assert.ok(Number(timeout[1]) >= 90);
   assert.equal((workflow.match(/^\s*run:\s*npm run verify\s*$/gmu) ?? []).length, 1);
   assert.equal((workflow.match(/^\s*run:/gmu) ?? []).length, 1);
   assert.equal(workflow.includes("test:materialization-clean-room"), false);
+  assert.equal(workflow.includes("ONTOS_CI_BASE_SHA"), true);
+  assert.equal(workflow.includes("github.event.pull_request.base.sha"), true);
+  assert.equal(workflow.includes("github.event.before"), true);
+  assert.equal(workflow.includes("ONTOS_CI_HEAD_SHA"), true);
+  assert.equal(workflow.includes("ONTOS_CI_EVENT_NAME"), true);
+  assert.match(workflow, /^\s*schedule:\s*$/mu);
+  assert.match(workflow, /^\s*workflow_dispatch:\s*$/mu);
+});
+
+void test("the fast profile is bounded and the full profile retains clean-room", () => {
+  assert.deepEqual(gateNamesForProfile("fast-docs"), [
+    "lockfile-install",
+    "toolchain",
+    "format",
+    "documentation-links",
+    "unit",
+    "secret-private-key",
+  ]);
+  const full = gateNamesForProfile("full");
+  assert.equal(full.length, 33);
+  assert.ok(full.includes("materialization-clean-room"));
+  assert.ok(full.includes("metadata-clean-room"));
+  assert.deepEqual(full.slice(-3), [
+    "production-boundary-up",
+    "production-boundary-smoke",
+    "production-boundary-down",
+  ]);
 });
