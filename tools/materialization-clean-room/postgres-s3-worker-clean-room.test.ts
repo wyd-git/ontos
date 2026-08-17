@@ -1289,16 +1289,17 @@ async function readBuildEvidence(admin: pg.Pool, projectId: string, jobId: strin
        ARRAY(SELECT generation_id::text FROM selected ORDER BY generation_id) AS "generationIds",
        (SELECT selected_generation.generation_id::text
           FROM selected AS selected_generation
-          JOIN runtime.source_forecasts AS forecast
-            ON forecast.project_id = $1
-           AND forecast.generation_id = selected_generation.generation_id
-          JOIN runtime.generation_measurements AS measurement
-            ON measurement.project_id = forecast.project_id
-           AND measurement.generation_id = forecast.generation_id
          WHERE EXISTS (
-           SELECT 1 FROM runtime.capacity_admissions AS admission
-           WHERE admission.project_id = forecast.project_id
-             AND admission.generation_id = forecast.generation_id
+           SELECT 1
+           FROM runtime.capacity_admissions AS admission
+           JOIN runtime.source_forecasts AS forecast
+             ON forecast.project_id = admission.project_id
+            AND forecast.forecast_digest = admission.source_forecast_digest
+           JOIN runtime.project_physical_measurements AS measurement
+             ON measurement.project_id = admission.project_id
+            AND measurement.measurement_digest = admission.physical_measurement_digest
+           WHERE admission.project_id = $1
+             AND admission.generation_id = selected_generation.generation_id
              AND admission.phase = 'POSTBUILD'
          )
          ORDER BY selected_generation.generation_id
@@ -1510,35 +1511,34 @@ async function exerciseCapacityApproval(
   const evidence = await admin.query<{
     readonly forecastBytes: string;
     readonly observedBytes: string;
+    readonly admissionObservedBytes: string;
     readonly capacityMeasuredBytes: string;
     readonly selectedMaximum: string;
     readonly admissionMode: string;
   }>(
     `SELECT forecast.projected_measured_bytes::text AS "forecastBytes",
-            (measurement.heap_bytes + measurement.fixed_index_bytes +
-             measurement.dynamic_index_bytes)::text AS "observedBytes",
+            measurement.total_relation_bytes::text AS "observedBytes",
+            admission.observed_project_physical_bytes::text AS "admissionObservedBytes",
             admission.measured_bytes::text AS "capacityMeasuredBytes",
             GREATEST(forecast.projected_measured_bytes,
-                     measurement.heap_bytes + measurement.fixed_index_bytes +
-                     measurement.dynamic_index_bytes)::text
+                     measurement.total_relation_bytes)::text
               AS "selectedMaximum",
             admission.report ->> 'accepted' AS "admissionMode"
-     FROM runtime.source_forecasts AS forecast
-     JOIN runtime.generation_measurements AS measurement
-       ON measurement.project_id = forecast.project_id
-      AND measurement.generation_id = forecast.generation_id
-     JOIN LATERAL (
-       SELECT candidate.* FROM runtime.capacity_admissions AS candidate
-       WHERE candidate.project_id = forecast.project_id
-         AND candidate.generation_id = forecast.generation_id
-         AND candidate.phase = 'POSTBUILD'
-       ORDER BY candidate.inventory_revision DESC, candidate.admitted_at DESC
-       LIMIT 1
-     ) AS admission ON true
-     WHERE forecast.project_id = $1 AND forecast.generation_id = $2`,
+     FROM runtime.capacity_admissions AS admission
+     JOIN runtime.source_forecasts AS forecast
+       ON forecast.project_id = admission.project_id
+      AND forecast.forecast_digest = admission.source_forecast_digest
+     JOIN runtime.project_physical_measurements AS measurement
+       ON measurement.project_id = admission.project_id
+      AND measurement.measurement_digest = admission.physical_measurement_digest
+     WHERE admission.project_id = $1 AND admission.generation_id = $2
+       AND admission.phase = 'POSTBUILD'
+     ORDER BY admission.inventory_revision DESC, admission.admitted_at DESC
+     LIMIT 1`,
     [projectId, generationId],
   );
   const row = required(evidence.rows[0]);
+  assert.equal(row.admissionObservedBytes, row.observedBytes);
   assert.equal(BigInt(row.capacityMeasuredBytes) >= BigInt(row.selectedMaximum), true);
   return Object.freeze({
     normalAdmission: record(capacity.json)["reportDigest"] !== null,
