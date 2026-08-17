@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import test from "node:test";
 
 import {
@@ -9,6 +11,9 @@ import {
 } from "./materialization-evidence.ts";
 
 const digest = `sha256:${"a".repeat(64)}`;
+const repositoryPolicy = JSON.parse(
+  await readFile(resolve("security/g2-02-evidence-policy.json"), "utf8"),
+) as MaterializationEvidencePolicy;
 const evidencePath = "docs/evidence/g2-02-13.md";
 const reviewPath = "docs/reviews/g2-02-13.md";
 const mutations = [
@@ -98,8 +103,16 @@ const policy: MaterializationEvidencePolicy = {
   residualRisks: [],
 };
 
-void test("accepts bounded scope, fixtures, production stages and eight mutation guards", () => {
+void test("accepts bounded scope, fixtures, production stages and nine mutation guards", () => {
   assert.deepEqual(evaluateMaterializationEvidenceSnapshot(validSnapshot(), policy), []);
+});
+
+void test("the repository policy preserves nine failure classes and every full gate exactly once", () => {
+  assert.equal(repositoryPolicy.mutationChecks.length, 9);
+  assert.equal(new Set(repositoryPolicy.mutationChecks.map(({ id }) => id)).size, 9);
+  assert.equal(new Set(repositoryPolicy.requiredGates).size, repositoryPolicy.requiredGates.length);
+  assert.ok(repositoryPolicy.requiredGates.includes("documentation-links"));
+  assert.ok(repositoryPolicy.requiredGates.includes("materialization-clean-room"));
 });
 
 void test("rejects an out-of-scope Query path mutation", () => {
