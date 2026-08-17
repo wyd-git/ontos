@@ -9,5 +9,3 @@ SET LOCAL ROLE migration_owner;
 ALTER FUNCTION ops.prepare_materialization_staging_current(
   uuid, uuid, uuid, bigint, uuid, jsonb
 ) SET enable_nestloop = off;
-
-RESET ROLE;
