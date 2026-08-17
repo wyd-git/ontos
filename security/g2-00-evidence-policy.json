@@ -287,7 +287,7 @@
       {
         "area": "Web, SDK and portability",
         "accountable": "wyd-git",
-        "execution": "One sequential Codex-supported lane"
+        "execution": "One sequential Codex-supported lane; G2-03 read-only consumer, G2-04 Action consumer, G2-05 complete UI and publishable SDK"
       }
     ],
     "independentReview": {
@@ -298,13 +298,13 @@
     "calendar": {
       "withdrawnScenario": "G2-01 through G2-05 in six weeks with four to six people and four parallel lanes",
       "planningRangeEngineeringWeeks": {
-        "minimum": 16,
-        "maximum": 25
+        "minimum": 27,
+        "maximum": 44
       },
       "gates": [
         { "id": "G2-01", "minimumWeeks": 4, "maximumWeeks": 7 },
-        { "id": "G2-02", "minimumWeeks": 4, "maximumWeeks": 6 },
-        { "id": "G2-03", "minimumWeeks": 3, "maximumWeeks": 4 },
+        { "id": "G2-02", "minimumWeeks": 7, "maximumWeeks": 11 },
+        { "id": "G2-03", "minimumWeeks": 11, "maximumWeeks": 18 },
         { "id": "G2-04", "minimumWeeks": 3, "maximumWeeks": 4 },
         { "id": "G2-05", "minimumWeeks": 2, "maximumWeeks": 4 }
       ],

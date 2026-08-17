@@ -8,9 +8,10 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
 - G2-00 Foundation：**PASS，13/13 已合并**；
 - G2-01 Metadata：**PASS，G2-01-01～12 已实现并通过 clean-room 总验收**；
-- 正式产品实现：**Metadata/Package 控制面与 Materialization 数据运行面已具备真实 OIDC、受限 HTTP、最小 RBAC、PostgreSQL、版本化 S3、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；统一 Gate 共 32 道**；
+- 正式产品实现：**Metadata/Package 控制面与 Materialization 数据运行面已具备真实 OIDC、受限 HTTP、最小 RBAC、PostgreSQL、版本化 S3、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；统一 Gate 共 32 道**；Query/Policy 与真实 Web 消费者尚未实现；
 - G2-02 Materialization：**PASS，G2-02-01～14 全部完成；独立 Ubuntu 24 / 8C16G clean-room 已跑通冷/热 100k Object + 1m Link、20 次 Cutover、容量、安全、GC 与整体重启恢复**；
-- 下一唯一允许的工作项：**创建 G2-03 Query + Policy 任务包并完成可行性与红队审查；任务包冻结前不得直接编码 Query Endpoint**。
+- G2-03 Query + Policy 规划：**15 项任务包、UI/API 早期消费者合同、可行性复审与红队已冻结；结论为 Conditional Go for G2-03-01 only**；
+- 下一唯一允许的工作项：**执行 G2-03-01，用 ADR/Spike 同时验证 Identity/Delegation、Policy SQL、Query Lease/GC、OpenAPI Generated Client 和 Web 栈；未 PASS 前不建正式 Query Endpoint、G2-03 事实表或产品页**。
 
 ## 权威文档
 
@@ -34,6 +35,10 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [ADR-019 与 G2-02-12 Evidence](docs/architecture/adr/019-generation-index-mark-plan-commit-gc.md) | 完整 Root/Inventory、单调 Root Epoch、分批 Kill/Resume、精确对象版本删除与 GC-bound Index Drop |
 | [G2-02-13 Admin/Testkit/CI Evidence](docs/evidence/g2-02-13-admin-testkit-ci.md) | 最小 Admin HTTP、生产 Worker 八阶段、真 OIDC/PG/S3/API/DDL 闭环与统一 CI |
 | [G2-02-14 Clean-room 总验收](docs/evidence/g2-02-14-clean-room-materialization.md) | 空环境 100k/1m 冷/热全链路、20 次 Cutover、容量/安全/GC、整体重启和总 Manifest |
+| [G2-03 Query + Policy 任务包](docs/delivery/g2-03-query-policy-task-pack.md) | 15 个顺序工作项、依赖、WWA 验收、停止条件和总 Gate |
+| [G2-03 UI/API 早期消费者合同](docs/architecture/g2-03-ui-api-consumer-contract.md) | G2-03 只读 Web、G2-04 Action 和 G2-05 完整 UI/SDK 的责任分界与防返工 Gate |
+| [G2-03 可行性复审](docs/reviews/g2-03-task-pack-feasibility.md) | 代码现状核验、端到端落地走查、55–90 理想工程日对账和 Conditional Go |
+| [G2-03 任务包红队](docs/reviews/g2-03-task-pack-red-team.md) | Identity、Policy SQL、Query Lease/GC、OpenAPI/Web 和工期的 Kill Assumption 与修订结论 |
 | [ADR-007 Runtime Activation](docs/architecture/adr/007-runtime-activation-serving-head.md) | Release/Generation 一致绑定、90 天支持、容量与 GC 语义 |
 | [ADR-010 Job/Lease 与 Outbox](docs/architecture/adr/010-postgresql-job-lease-outbox.md) | 持久 Job 恢复、租约 fencing、至少一次投递与同对象顺序 |
 | [G1 可行性报告](spikes/g1/docs/g1-feasibility-report.md) | 已验证结论、性能和限制 |

@@ -121,4 +121,4 @@ GC 正式路径形成规范 Plan 并到达 `COMMITTED`，同时确认孤儿对�
 - PostgreSQL Overlay/Conflict/Action 和完整 AC-03 属于 G2-04。
 - Web、SDK、第二领域完整业务应用、HA、PITR、灾难恢复、生产告警和最终上线验收均未完成。
 
-因此 G2-02 关闭后，只放行 **G2-03 Query + Policy 任务包的编写、可行性复审和红队冻结**；任务包冻结前不直接编码 Query Endpoint。
+因此 G2-02 关闭时，只放行 **G2-03 Query + Policy 任务包的编写、可行性复审和红队冻结**，不直接编码 Query Endpoint。该步骤现已完成；现行规划只放行 [G2-03-01](../delivery/g2-03-query-policy-task-pack.md)，其未 PASS 前不建正式 Query Endpoint、G2-03 事实表或产品页。
