@@ -31,6 +31,7 @@
 4. **重启后用写路径验证索引违反状态机。** GC 物理变化会使 Capacity Measurement 按设计 incomplete；验收改为只读验证计划、Inventory、Catalog 和签名注释，不绕过准入重发 DDL。
 5. **浮点性能值破坏规范报告。** Cutover 样本改为整数微秒；清单同步按微秒校验阈值，并增加刚好越界的失败向量。
 6. **验收清单标签落后一关。** Materialization Acceptance 从 G2-02-13 更正为 G2-02-14，防止总 Manifest 在语义上仍指向中间 Gate。
+7. **Foundation 聚合范围未登记 0021。** 聚合 Policy 补入第 21 个连续 Migration 和 G2-02-14 Evidence，并移除已由全量 HTTP/S3/Worker/Cutover 运行关闭的旧风险。
 
 ## 保留差距不是偏差
 
