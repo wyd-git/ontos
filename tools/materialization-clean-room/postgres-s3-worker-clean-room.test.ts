@@ -1710,8 +1710,41 @@ async function exerciseOrphanGarbageCollection(input: {
       `/api/v1/admin/projects/${input.projectId}/gc/plans/${planId}/commit`,
       { headers: { "if-match": planDigest }, json: {} },
     );
-    assert.equal(committed.status, 202, committed.text);
     const body = record(committed.json);
+    cleanRoomCheckpoint("gc_batch", {
+      batch: batches + 1,
+      status: committed.status,
+      response: body,
+    });
+    if (committed.status !== 202) {
+      const diagnostic = await input.admin.query<Readonly<Record<string, unknown>>>(
+        `SELECT plan.state AS "planState", plan.phase,
+                plan.current_state_revision::text AS "planStateRevision",
+                inventory.state_revision::text AS "inventoryStateRevision",
+                plan.current_inventory_revision::text AS "planInventoryRevision",
+                inventory.inventory_revision::text AS "inventoryRevision",
+                inventory.measurement_complete AS "measurementComplete",
+                plan.root_state_digest AS "planRootDigest",
+                ontos_migration.g20212_root_state_digest($1::uuid) AS "liveRootDigest",
+                COALESCE(epoch.root_revision, 0)::text AS "rootRevision",
+                run.state AS "runState", run.result_code AS "runResultCode",
+                (SELECT count(*)::integer FROM ops.gc_plan_entries AS entry
+                 WHERE entry.project_id = plan.project_id
+                   AND entry.gc_plan_id = plan.gc_plan_id
+                   AND entry.disposition = 'CANDIDATE'
+                   AND entry.completed_at IS NULL) AS "remainingCandidates"
+         FROM ops.gc_plans AS plan
+         JOIN ops.gc_runs AS run
+           ON run.project_id = plan.project_id AND run.gc_run_id = plan.gc_run_id
+         JOIN runtime.project_runtime_inventories AS inventory
+           ON inventory.project_id = plan.project_id
+         LEFT JOIN ops.gc_root_epochs AS epoch ON epoch.project_id = plan.project_id
+         WHERE plan.project_id = $1::uuid AND plan.gc_plan_id = $2::uuid`,
+        [input.projectId, planId],
+      );
+      cleanRoomCheckpoint("gc_batch_failure", required(diagnostic.rows[0]));
+    }
+    assert.equal(committed.status, 202, committed.text);
     state = stringField(body, "state");
     totalAffectedRows += Number(body["affectedRows"]);
     if (state === "COMMITTED") break;
@@ -2056,13 +2089,13 @@ function createS3Client(endpoint: string): S3Client {
 
 async function waitForS3(client: S3Client, bucket: string): Promise<void> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 240; attempt += 1) {
     try {
       await client.send(new HeadBucketCommand({ Bucket: bucket }));
       return;
     } catch (error) {
       lastError = error;
-      await delay(250);
+      await delay(500);
     }
   }
   throw new Error("S3 did not become ready.", { cause: lastError });
@@ -2070,13 +2103,13 @@ async function waitForS3(client: S3Client, bucket: string): Promise<void> {
 
 async function waitForPostgreSql(config: pg.ClientConfig): Promise<void> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 240; attempt += 1) {
     try {
       await withClient(config, (client) => client.query("SELECT 1").then(() => undefined));
       return;
     } catch (error) {
       lastError = error;
-      await delay(250);
+      await delay(500);
     }
   }
   throw new Error("PostgreSQL did not become ready.", { cause: lastError });
