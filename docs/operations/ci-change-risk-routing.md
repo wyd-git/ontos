@@ -58,3 +58,15 @@ GitHub Job Summary 顶部显示 `Profile`、选择原因和 Changed File 数。A
 - 风险路由判断“文件是否可以影响运行时”，不判断文档观点是否正确；人工评审仍需要对 PRD/架构内容负责。
 - 外部依赖或基础镜像可能在两次代码变更之间发生问题；每日完整 Gate 承担这一检测责任。
 - `fast-docs` 不是 G2 阶段关闭证据；任何 Gate PASS 声明仍要求对应的完整、Commit-bound Manifest。
+
+## 7. 上线后快速路径核对清单
+
+第一次上线以及以后每次修改路由规则时，使用一个只改本运行手册的独立 PR 做端到端核对：
+
+1. `change-risk.json` 的 `profile` 必须为 `fast-docs`，且 `changedFiles` 只包含预期 Markdown；
+2. 报告必须且只能执行六项快速 Gate，不能出现 Materialization、PostgreSQL 或生产环境启动步骤；
+3. `fast-docs-evidence.json` 必须为 `FAST_DOCS_PASS`，并绑定该 PR Head Commit；
+4. Artifact 不得包含新生成的 Foundation、Metadata 或 Materialization Clean-room Manifest；
+5. 同一 PR 若混入代码、ADR、Evidence、Review、Workflow 或机器策略，路由测试必须证明结果立刻变为 `full`。
+
+只有以上五项同时成立，才能把快速路径视为已完成真实 GitHub 验证；本地单元测试不能替代这次远端事件上下文验证。
