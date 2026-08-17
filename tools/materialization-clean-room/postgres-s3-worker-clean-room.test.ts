@@ -2110,7 +2110,16 @@ function buildCleanRoomArtifact(input: {
       peakNodeRssBytes: input.peakRssBytes,
       unexpectedErrorRate: 0,
       expectedRejectedJobs: 1,
-      cutovers: input.cutoverPerformance,
+      cutovers: Object.freeze({
+        runs: input.cutoverPerformance.runs,
+        p95Microseconds: Math.round(input.cutoverPerformance.p95Milliseconds * 1_000),
+        maxMicroseconds: Math.round(input.cutoverPerformance.maxMilliseconds * 1_000),
+        samplesMicroseconds: Object.freeze(
+          input.cutoverPerformance.samplesMilliseconds.map((milliseconds) =>
+            Math.round(milliseconds * 1_000),
+          ),
+        ),
+      }),
     }),
     recovery: Object.freeze({
       allStageKillResumeGate: "materialization-worker-postgres",
