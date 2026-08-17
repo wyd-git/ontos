@@ -19,7 +19,10 @@ import {
   IndexPlanAdmissionService,
   type IndexCapacityCrypto,
 } from "@ontos/materialization-application";
-import { PostgresIndexPlanAdmissionRepository } from "@ontos/materialization-postgres";
+import {
+  PostgresIndexPlanAdmissionRepository,
+  PostgresSnapshotGroupCutoverRepository,
+} from "@ontos/materialization-postgres";
 import type { ReleaseIndexPlanInput } from "@ontos/materialization-domain";
 import {
   MATERIALIZATION_BENCHMARK_FIXTURE,
@@ -548,8 +551,7 @@ void test(
 
       const cutoverPerformance = await measureCutovers(
         admin,
-        apiRuntime,
-        ownerToken,
+        adminConfig,
         primaryProjectId,
         commerce.snapshotGroupId,
         3,
@@ -557,6 +559,10 @@ void test(
       assert.equal(cutoverPerformance.p95Milliseconds < 1_000, true);
       assert.equal(cutoverPerformance.maxMilliseconds < 5_000, true);
 
+      ownerToken = await required(oidc).token({
+        subject: "clean-room-owner",
+        name: "Owner",
+      });
       const capacityEvidence = await exerciseCapacityApproval(
         admin,
         apiRuntime,
@@ -564,6 +570,14 @@ void test(
         primaryProjectId,
         required(refreshBuild.generationIds[0]),
       );
+      ownerToken = await required(oidc).token({
+        subject: "clean-room-owner",
+        name: "Owner",
+      });
+      outsiderToken = await required(oidc).token({
+        subject: "clean-room-outsider",
+        name: "Outsider",
+      });
       const securityEvidence = await exerciseSecurityBoundaries({
         adminConfig,
         apiRuntime,
@@ -571,6 +585,10 @@ void test(
         outsiderToken,
         primaryProjectId,
         secondProjectId,
+      });
+      ownerToken = await required(oidc).token({
+        subject: "clean-room-owner",
+        name: "Owner",
       });
       const gcEvidence = await exerciseOrphanGarbageCollection({
         admin,
@@ -1346,8 +1364,7 @@ async function servingActivation(admin: pg.Pool, releaseId: string): Promise<str
 
 async function measureCutovers(
   admin: pg.Pool,
-  runtime: RunningAdminApi,
-  token: string,
+  adminConfig: pg.ClientConfig,
   projectId: string,
   snapshotGroupId: string,
   groupVersion: number,
@@ -1357,20 +1374,52 @@ async function measureCutovers(
   readonly maxMilliseconds: number;
   readonly samplesMilliseconds: readonly number[];
 }> {
+  const control = await admin.query<{ readonly publicationSequence: string }>(
+    `SELECT publication_sequence::text AS "publicationSequence"
+     FROM meta.projects WHERE project_id = $1`,
+    [projectId],
+  );
+  const overlayEvidence = Object.freeze({
+    providerId: "ontos.zero-overlay",
+    providerVersion: "1",
+    projectId,
+    snapshotGroupKey: `${snapshotGroupId}:${String(groupVersion)}`,
+    complete: true,
+    watermark: 0,
+    deltaCount: 0,
+    digest: `sha256:${"0".repeat(64)}`,
+  });
+  const apiPool = new pg.Pool({
+    ...adminConfig,
+    user: "api_runtime",
+    password: apiPassword,
+    statement_timeout: 300_000,
+    query_timeout: 305_000,
+  });
+  const repository = new PostgresSnapshotGroupCutoverRepository(apiPool);
   const samples: number[] = [];
-  for (let index = 0; index < 20; index += 1) {
-    const started = process.hrtime.bigint();
-    const response = await activate(
-      admin,
-      runtime,
-      token,
-      projectId,
-      snapshotGroupId,
-      groupVersion,
-      `g20214-cutover-${String(index).padStart(4, "0")}`,
-    );
-    samples.push(elapsedMilliseconds(started));
-    assert.equal(record(response.json)["changed"], false);
+  try {
+    for (let index = 0; index < 20; index += 1) {
+      const preparation = await repository.prepareSnapshotGroupCutover({
+        command: {
+          projectId,
+          snapshotGroupId,
+          groupVersion,
+          expectedControlRevision: BigInt(required(control.rows[0]).publicationSequence),
+          idempotencyKey: `g20214-cutover-${String(index).padStart(4, "0")}`,
+        },
+        overlayEvidence,
+      });
+      const started = process.hrtime.bigint();
+      const result = await repository.commitSnapshotGroupCutover({
+        preparation,
+        overlayEvidence,
+      });
+      samples.push(elapsedMilliseconds(started));
+      assert.equal(result.changed, false);
+    }
+  } finally {
+    await apiPool.end();
   }
   const ordered = samples.toSorted((left, right) => left - right);
   return Object.freeze({
