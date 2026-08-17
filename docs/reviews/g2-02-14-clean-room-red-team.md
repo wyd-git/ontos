@@ -76,6 +76,13 @@
 - **Evidence：** 机器报告和 Evidence 都固定列出 `G2-03 Query/Policy`、`G2-04 PostgreSQL Overlay/AC-03`、UI、SDK 为 deferred；范围黑名单机器拒绝新增路径。
 - **状态：CLOSED。**
 
+### 11. GitHub Required Check 可能在正确结果产生前超时
+
+- **Claim：** 最终 PR Head 能在远端执行与专用 Runner 相同的 32 Gate。
+- **Fails if：** Workflow 仍使用 30 分钟 Job 超时，而单次正式 clean-room 已约 39 分钟。
+- **Evidence：** Workflow 超时调整为 90 分钟；源码 Guard 要求超时不得低于 90 分钟、只允许一个 `run:` 且精确为 `npm run verify`；Artifact 仍使用 `always()` 上传，未拆分或跳过性能/恢复 Gate。
+- **状态：CLOSED（实际发现并返工）。**
+
 ## 风险排序
 
 | 风险                   | 影响 | 可能性（验证前） | 最低验证成本 | 处理结果                          |

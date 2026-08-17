@@ -32,6 +32,7 @@
 5. **浮点性能值破坏规范报告。** Cutover 样本改为整数微秒；清单同步按微秒校验阈值，并增加刚好越界的失败向量。
 6. **验收清单标签落后一关。** Materialization Acceptance 从 G2-02-13 更正为 G2-02-14，防止总 Manifest 在语义上仍指向中间 Gate。
 7. **Foundation 聚合范围未登记 0021。** 聚合 Policy 补入第 21 个连续 Migration 和 G2-02-14 Evidence，并移除已由全量 HTTP/S3/Worker/Cutover 运行关闭的旧风险。
+8. **远端 CI 超时短于总 Gate。** Workflow 超时从 30 分钟调整为 90 分钟；本地与 GitHub 仍只执行同一 `npm run verify`，没有为远端删减 clean-room。
 
 ## 保留差距不是偏差
 

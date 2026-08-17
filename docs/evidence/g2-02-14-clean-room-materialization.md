@@ -110,6 +110,7 @@ GC 正式路径形成规范 Plan 并到达 `COMMITTED`，同时确认孤儿对�
 5. Cutover 浮点毫秒不能进入规范 JSON Digest，报告改为整数微秒；
 6. 总清单仍读取旧毫秒字段且标签停在 G2-02-13，改为微秒 SLO 校验和 G2-02-14 标签，并增加超限反例。
 7. Foundation 聚合证据清单只登记到 Migration 0020，补入实时 GC 测量 Migration 0021 和本 Gate Evidence，并关闭已由本次全量运行履行的历史容量风险。
+8. GitHub Workflow 仍保留 G2-02-13 之前的 30 分钟 Job 超时，短于单次完整 clean-room；调整为至少 90 分钟并增加源码 Guard，但仍只调用同一个 `npm run verify`，不拆分或跳过 Gate。
 
 这些返工没有扩大 Query、Policy、Action、Overlay、UI 或 SDK 范围，也没有通过放宽权限、SLO、容量或恢复条件换取 PASS。
 
