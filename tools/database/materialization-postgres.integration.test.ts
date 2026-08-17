@@ -7400,10 +7400,12 @@ async function assertDb02Catalog(client: pg.Client): Promise<void> {
     ["ops.prepare_materialization_staging_current", "runtime.prepare_snapshot_group_cutover"],
   );
   for (const plannerGuard of plannerGuards.rows) {
-    assert.deepEqual([...plannerGuard.proconfig].sort(), [
-      "enable_nestloop=off",
-      "search_path=pg_catalog",
-    ]);
+    assert.deepEqual(
+      [...plannerGuard.proconfig].sort(),
+      plannerGuard.functionName === "runtime.prepare_snapshot_group_cutover"
+        ? ["enable_nestloop=off", "jit=off", "search_path=pg_catalog"]
+        : ["enable_nestloop=off", "search_path=pg_catalog"],
+    );
   }
 }
 

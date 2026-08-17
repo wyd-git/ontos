@@ -6,7 +6,12 @@ SET LOCAL ROLE migration_owner;
 -- single current row and rescan the complete active Head Set once per object.
 -- Keep the security boundary and constrain only the two controlled build
 -- functions that join the view to same-transaction rows. The setting is
--- restored automatically when each function returns.
+-- restored automatically when each function returns. The cutover function
+-- contains several independently planned statements; disabling nested loops
+-- can push their estimated costs above PostgreSQL's JIT threshold. Compiling
+-- those one-shot plans dominates small cutovers, so disable JIT for that
+-- function while retaining the bounded hash/merge plans needed at target
+-- scale.
 ALTER FUNCTION ops.prepare_materialization_staging_current(
   uuid, uuid, uuid, bigint, uuid, jsonb
 ) SET enable_nestloop = off;
@@ -14,3 +19,7 @@ ALTER FUNCTION ops.prepare_materialization_staging_current(
 ALTER FUNCTION runtime.prepare_snapshot_group_cutover(
   uuid, uuid, bigint, bigint, text, text, text, bigint, bigint, text
 ) SET enable_nestloop = off;
+
+ALTER FUNCTION runtime.prepare_snapshot_group_cutover(
+  uuid, uuid, bigint, bigint, text, text, text, bigint, bigint, text
+) SET jit = off;
