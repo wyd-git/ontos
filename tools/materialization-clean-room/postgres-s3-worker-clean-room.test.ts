@@ -490,14 +490,6 @@ void test(
         subject: "clean-room-outsider",
         name: "Outsider",
       });
-      const observedActivations = new Set<string>();
-      let keepPolling = true;
-      const pointerPoll = (async () => {
-        while (keepPolling) {
-          observedActivations.add(await servingActivation(admin, releaseId));
-          await delay(2);
-        }
-      })();
       const refresh = await api(
         apiRuntime,
         ownerToken,
@@ -505,9 +497,33 @@ void test(
         `/api/v1/admin/projects/${primaryProjectId}/snapshot-groups/${commerce.snapshotGroupId}/versions/3/refresh`,
         { headers: { "idempotency-key": "g20214-good-refresh-0003" }, json: {} },
       );
+      assert.equal(refresh.status, 202, refresh.text);
+      assert.equal(
+        record(required(arrayField(record(refresh.json), "releases")[0]))["outcome"],
+        "ready",
+      );
+      assert.equal(await servingActivation(admin, releaseId), oldServingActivation);
+
+      const observedActivations = new Set<string>([oldServingActivation]);
+      let keepPolling = true;
+      const pointerPoll = (async () => {
+        while (keepPolling) {
+          observedActivations.add(await servingActivation(admin, releaseId));
+          await delay(2);
+        }
+      })();
+      const refreshActivation = await activate(
+        admin,
+        apiRuntime,
+        ownerToken,
+        primaryProjectId,
+        commerce.snapshotGroupId,
+        3,
+        "g20214-good-refresh-activate-0003",
+      );
       keepPolling = false;
       await pointerPoll;
-      assert.equal(refresh.status, 202, refresh.text);
+      assert.equal(record(refreshActivation.json)["changed"], true);
       const newServingActivation = await servingActivation(admin, releaseId);
       observedActivations.add(newServingActivation);
       assert.equal(newServingActivation === oldServingActivation, false);
