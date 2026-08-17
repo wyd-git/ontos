@@ -612,12 +612,25 @@ void test(
       s3 = null;
       await required(oidc).close();
       oidc = null;
-      await docker(["stop", postgresContainer]);
-      await docker(["stop", s3Container]);
+      await docker(["stop", "--timeout", "300", postgresContainer]);
+      await docker(["stop", "--timeout", "120", s3Container]);
       await docker(["start", postgresContainer]);
       await docker(["start", s3Container]);
       oidc = await startTestOidcProvider({ port: oidcPort });
-      await waitForPostgreSql(adminConfig);
+      try {
+        await waitForPostgreSql(adminConfig, 600);
+      } catch (error) {
+        cleanRoomCheckpoint("restart_failure", {
+          postgresState: await dockerOutput([
+            "inspect",
+            "--format",
+            "{{json .State}}",
+            postgresContainer,
+          ]),
+          postgresLogs: await dockerOutput(["logs", "--tail", "80", postgresContainer]),
+        });
+        throw error;
+      }
       s3 = createS3Client(s3Endpoint);
       await waitForS3(s3, bucket);
       const secondMigration = await withClient(adminConfig, runDatabaseMigrations);
@@ -2145,9 +2158,9 @@ async function waitForS3(client: S3Client, bucket: string): Promise<void> {
   throw new Error("S3 did not become ready.", { cause: lastError });
 }
 
-async function waitForPostgreSql(config: pg.ClientConfig): Promise<void> {
+async function waitForPostgreSql(config: pg.ClientConfig, maximumAttempts = 240): Promise<void> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 240; attempt += 1) {
+  for (let attempt = 0; attempt < maximumAttempts; attempt += 1) {
     try {
       await withClient(config, (client) => client.query("SELECT 1").then(() => undefined));
       return;
@@ -2186,6 +2199,17 @@ async function docker(arguments_: readonly string[], ignoreFailure = false): Pro
   } catch (error) {
     if (!ignoreFailure) throw error;
   }
+}
+
+async function dockerOutput(arguments_: readonly string[]): Promise<string> {
+  const { stdout, stderr } = await execFileAsync("docker", [...arguments_]);
+  return `${stdout}${stderr}`
+    .replaceAll(adminPassword, "[REDACTED]")
+    .replaceAll(apiPassword, "[REDACTED]")
+    .replaceAll(workerPassword, "[REDACTED]")
+    .replaceAll(ddlPassword, "[REDACTED]")
+    .replaceAll(secretAccessKey, "[REDACTED]")
+    .slice(-8_000);
 }
 
 async function withClient<T>(
