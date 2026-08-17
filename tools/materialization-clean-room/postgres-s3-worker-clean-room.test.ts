@@ -107,10 +107,7 @@ void test(
     const clean = await cleanCheckoutIdentity();
     assert.equal(clean.dirty, false, "G2-02-14 must run from a clean checkout");
     const expectedMigrations = await loadMigrationDefinitions(databaseMigrationDirectory);
-    assert.equal(
-      expectedMigrations.at(-1)?.fileName,
-      "0020_materialization_head_lookup_planner.sql",
-    );
+    assert.equal(expectedMigrations.at(-1)?.fileName, "0021_gc_generation_live_measurement.sql");
 
     const suffix = `${process.pid}-${randomUUID().slice(0, 8)}`;
     const postgresContainer = `ontos-g20214-pg-${suffix}`;
@@ -1698,7 +1695,9 @@ async function exerciseOrphanGarbageCollection(input: {
     { headers: { "idempotency-key": "g20214-gc-dry-run-0001" }, json: {} },
   );
   assert.equal(dryRun.status, 200, dryRun.text);
-  const planId = stringField(record(dryRun.json), "planId");
+  const dryRunBody = record(dryRun.json);
+  assert.equal(record(dryRunBody["analysis"])["status"], "READY", dryRun.text);
+  const planId = stringField(dryRunBody, "planId");
   const planDigest = required(dryRun.headers.get("etag"));
   let totalAffectedRows = 0;
   let state = "";
