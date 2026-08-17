@@ -1688,27 +1688,41 @@ async function exerciseOrphanGarbageCollection(input: {
   }
 
   let dryRunSequence = 0;
+  let dryRunDependencyRetries = 0;
   const createPlan = async (): Promise<{ readonly id: string; readonly digest: string }> => {
     dryRunSequence += 1;
-    const dryRun = await api(
-      input.apiRuntime,
-      input.ownerToken,
-      "POST",
-      `/api/v1/admin/projects/${input.projectId}/gc/dry-run`,
-      {
-        headers: {
-          "idempotency-key": `g20214-gc-dry-run-${String(dryRunSequence).padStart(4, "0")}`,
+    const idempotencyKey = `g20214-gc-dry-run-${String(dryRunSequence).padStart(4, "0")}`;
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const dryRun = await api(
+        input.apiRuntime,
+        input.ownerToken,
+        "POST",
+        `/api/v1/admin/projects/${input.projectId}/gc/dry-run`,
+        {
+          headers: { "idempotency-key": idempotencyKey },
+          json: {},
         },
-        json: {},
-      },
-    );
-    assert.equal(dryRun.status, 200, dryRun.text);
-    const dryRunBody = record(dryRun.json);
-    assert.equal(record(dryRunBody["analysis"])["status"], "READY", dryRun.text);
-    return Object.freeze({
-      id: stringField(dryRunBody, "planId"),
-      digest: required(dryRun.headers.get("etag")),
-    });
+      );
+      if (dryRun.status === 503 && errorCode(dryRun) === "DEPENDENCY_UNAVAILABLE" && attempt < 5) {
+        dryRunDependencyRetries += 1;
+        cleanRoomCheckpoint("gc_dry_run_retry", {
+          dryRunSequence,
+          attempt,
+          status: dryRun.status,
+          response: record(dryRun.json),
+        });
+        await delay(250 * attempt);
+        continue;
+      }
+      assert.equal(dryRun.status, 200, dryRun.text);
+      const dryRunBody = record(dryRun.json);
+      assert.equal(record(dryRunBody["analysis"])["status"], "READY", dryRun.text);
+      return Object.freeze({
+        id: stringField(dryRunBody, "planId"),
+        digest: required(dryRun.headers.get("etag")),
+      });
+    }
+    throw new Error("GC dry-run retry bound was exhausted");
   };
   let plan = await createPlan();
   let totalAffectedRows = 0;
@@ -1789,6 +1803,7 @@ async function exerciseOrphanGarbageCollection(input: {
     planId: plan.id,
     planDigest: plan.digest.replaceAll('"', ""),
     batches: commitAttempts + 1,
+    dryRunDependencyRetries,
     staleReplans,
     totalAffectedRows,
     orphanObjectVersionReclaimed: true,
