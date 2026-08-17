@@ -18,6 +18,7 @@
     "bootstrap": "npm ci",
     "check:toolchain": "node tools/toolchain/check-versions.mjs",
     "check:architecture": "node tools/architecture/check-workspace.ts",
+    "check:documentation": "node tools/ci/documentation-links.ts",
     "check:contracts": "node tools/contracts/check.ts",
     "check:testkit-provenance": "node tools/testkit/provenance.ts",
     "check:metadata-fixtures": "node tools/testkit/metadata-fixtures.ts",

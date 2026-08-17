@@ -41,7 +41,8 @@
 24. [DB-00 Migration、数据库角色与逻辑 Schema](architecture/db-00-migration-roles.md)、[专项红队](reviews/g2-00-10-db-migration-roles-red-team.md)与 [G2-00-10 Evidence](evidence/g2-00-10-db-migration-roles.md)：只向前迁移协议、权限边界、默认权限、并发与故障恢复合同。
 25. [G1 资产迁移与正式 Testkit 边界](architecture/testkit-g1-migration.md)：G2-00-11 的来源指纹、迁移转换、确定性生成协议和 Spike 依赖禁线。
 26. [G2-00-11 专项红队](reviews/g2-00-11-testkit-red-team.md)与 [Evidence](evidence/g2-00-11-testkit-fixtures.md)：正式 Testkit、确定性 100k/1m Generator、六组资产 Provenance 与 G1 依赖禁线。
-27. [强制 CI 与供应链 Gate](architecture/ci-foundation-gate.md)：G2-00-12 的唯一执行路径、报告合同、Secret/License/SBOM/Vulnerability 策略和分支保护。
+27. [强制 CI 与供应链 Gate](architecture/ci-foundation-gate.md)：单一 Required Check 内的保守变更风险路由、快速/完整 Profile、报告合同、Secret/License/SBOM/Vulnerability 策略和分支保护。
+    - [CI 变更风险路由运行手册](operations/ci-change-risk-routing.md)：快速路径白名单、强制完整 Gate、Artifact 判读、异常处理和已知边界。
 28. [G2-00-12 专项红队](reviews/g2-00-12-ci-gate-red-team.md)与 [Evidence](evidence/g2-00-12-ci-supply-chain-gate.md)：统一本地/远端执行、故意失败协议、供应链 Fail-Closed、机器报告和不可绕过合并条件。
 29. [G2 Owner 与容量矩阵](delivery/g2-owner-capacity-matrix.md)：实际 Accountable Owner、单通道并行度、第二视角和 G2-01～05 的顺序日历。
 30. [G2-00-13 专项红队](reviews/g2-00-13-foundation-red-team.md)与 [Foundation 总 Evidence](evidence/g2-00-13-foundation-integration-gate.md)：clean checkout、总 Manifest、Intended-vs-Implemented、范围与 teardown 证据。

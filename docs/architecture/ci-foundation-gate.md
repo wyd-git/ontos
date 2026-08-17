@@ -4,21 +4,24 @@
 - 本地与 CI 唯一入口：`npm run verify`
 - GitHub Required Check：`Foundation Gate`
 - 机器报告：`generated/ci-report/report.json`
+- 风险分类：`generated/ci-report/change-risk.json`
+- 运维手册：[CI 变更风险路由](../operations/ci-change-risk-routing.md)
 - G2-01 报告：`generated/ci-report/metadata-evidence-manifest.json`
 
 ## 1. 单一执行路径
 
-GitHub Actions 不重新拼装命令，只在固定 Node/npm 环境执行 `npm run verify`。本地和 CI 使用同一个 Node 编排器、同一顺序、同一失败语义：
+GitHub Actions 不重新拼装业务命令，只在固定 Node/npm 环境执行 `npm run verify`。远端 Required Check 仍只有一个 `Foundation Gate`；编排器先根据 GitHub 提供的 Base/Head Commit 读取完整 `git diff --no-renames`，再选择两个互斥 Profile 之一：
 
-1. `npm ci`：验证 Lockfile 并做确定性安装；
-2. Format、Lint、Typecheck；
-3. Foundation/Metadata Unit、Admin API/OIDC Unit、Contract Golden/Diff、Architecture Dependency；
-4. G1 Testkit Provenance、两份 metadata-only Package、兼容向量和七类 Metadata 负向 Fixture；
-5. Secret/Private Key Scan；
-6. G2-00 Foundation Scope 与 G2-01 Metadata Evidence；
-7. License Manifest、CycloneDX SBOM、Vulnerability Policy；
-8. 固定 PostgreSQL 16 镜像的 DB-00/01 Integration，以及独立真实 HTTP + OIDC + PostgreSQL Gate；
-9. PG/OIDC/S3/OTEL 本地生产边界环境 `up → smoke → down`。
+| Profile     | 唯一允许的变更                                                                                | 执行内容                                                                         | 证据语义                                             |
+| ----------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `fast-docs` | `README.md`、`docs/README.md` 和非 ADR/Evidence/Review 的 `docs/**/*.md`                      | Lockfile Install、Toolchain、Format、Documentation Links、全部 Unit、Secret Scan | 只能产生 `FAST_DOCS_PASS`，不重生历史 Clean-room     |
+| `full`      | 任何代码、Migration、依赖、Workflow、机器策略、图片，ADR/Evidence/Review 变更，或无法可信分类 | 完整 Foundation + Metadata + Materialization Gate                                | 按原合同重生 G2-00/01/02 Manifest 与 Clean-room 证据 |
+
+分类器没有“手动强制快速”参数。空 Diff、Commit 不完整、Git 比较失败、路径越界、可疑路径或超过分类输出上限均 Fail Closed 到 `full`。关闭 Rename Detection 使“把运行时代码移到文档路径”同时显示为删除高风险路径和新增文档，不能被误分为快速。
+
+本地直接运行 `npm run verify` 不提供受信 Base/Head，因此始终选择 `full`。每日定时和 GitHub 手动执行同样始终跑完整 Gate，用于发现外部镜像、Advisory、时序和长时运行回归。
+
+`full` Profile 保留原顺序：确定性安装、静态/合同/单元/负向 Fixture、Secret 与供应链、真 PostgreSQL/OIDC/S3/Worker/DDL、容量、冷热 100k Object/1m Link Clean-room、Metadata Clean-room 以及生产边界 `up → smoke → down`。
 
 编排器 Fail Fast，但任何已启动的环境必须在 `finally` 清理，并且无论成功或失败都写报告。`generated/` 不提交 Git，由 CI 作为 Artifact 上传。
 
@@ -26,6 +29,7 @@ GitHub Actions 不重新拼装命令，只在固定 Node/npm 环境执行 `npm r
 
 `report.json` 至少包含：
 
+- 执行 Profile、风险分类原因、Base/Head 与完整 Changed Files；
 - Schema Version、最终 PASS/FAIL、Commit、Dirty 状态、开始/结束时间、总耗时；
 - OS/Arch、Node、npm、Docker、Docker Compose 版本；
 - 每个 Gate 的命令、Exit Code、开始时间、耗时和安全截断后的输出尾部；
@@ -35,7 +39,7 @@ GitHub Actions 不重新拼装命令，只在固定 Node/npm 环境执行 `npm r
 - Secret、License、SBOM、Vulnerability Artifact 的路径、Hash 和计数；
 - 失败 Gate 和未执行 Gate，不能用缺失字段伪装成 PASS。
 
-同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。原始供应链机器输出保存在同一目录。
+同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。`fast-docs` 另生成 `fast-docs-evidence.json`，并以明文声明它不替代 G2-00/01/02 Clean-room；`full` 才生成三阶段 Manifest。原始供应链机器输出保存在同一目录。
 
 G2-00-13 在同一入口追加 `foundation-scope-evidence`，由 `security/g2-00-evidence-policy.json` 冻结当前允许的 Workspace、DB-00 Migration/表、ADR-007～012、G2-00-01～13 Evidence、Owner/容量和未关闭风险。出现 App、非 DB-00 Migration、额外表、非 Spike UI 文件或未提交的必需 Evidence 时 Gate 失败。
 
@@ -91,11 +95,11 @@ Foundation 当前 Allowlist：`0BSD`、`Apache-2.0`、`BSD-2-Clause`、`BSD-3-Cl
 
 ## 6. GitHub Actions 与分支保护
 
-- 事件：`pull_request` 与 `push` 到 `main`；不使用 `pull_request_target`；
-- Runner：GitHub 托管 `ubuntu-24.04`；Job Timeout 30 分钟；
+- 事件：`pull_request`、`push` 到 `main`、每日 18:00 UTC（上海时间次日 02:00）和 `workflow_dispatch`；不使用 `pull_request_target`；
+- Runner：GitHub 托管 `ubuntu-24.04`；Job Timeout 90 分钟；
 - `GITHUB_TOKEN`：仅 `contents: read`；Checkout 不持久化凭据；
 - 只使用 GitHub 官方 `checkout`、`setup-node`、`upload-artifact`，并固定完整 Commit SHA；
-- Workflow 的唯一执行命令为 `npm run verify`；Artifact Upload 使用 `always()`；
+- Workflow 的唯一执行命令为 `npm run verify`；只通过受信 GitHub Context 传入 Base/Head；Artifact Upload 使用 `always()`；
 - Main Branch Protection 要求 `Foundation Gate` 且分支必须最新，禁止 Force Push/Delete，Admin 也受保护。
 
 目标配置由 `security/main-branch-protection.json` 机器冻结；由 Repository Owner 执行 `npm run github-protection:apply`，再用 `npm run github-protection:verify` 独立读取复查。脚本要求 PR、Strict `Foundation Gate`、Admin Enforced、无常驻 Bypass、禁止 Force Push/Delete；任一字段漂移都非零退出。个人账号仓库的请求不发送组织专属 Bypass Allowance 字段，但响应验证仍拒绝任何实际 User、Team 或 App Bypass。
