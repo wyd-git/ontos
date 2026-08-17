@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-03-01",
+  "baselineCommit": "368b7c4ed13d0793d5c0ba2927a4f91e5af7779c",
+  "requiredRecords": [
+    {
+      "path": "docs/architecture/adr/020-query-policy-identity-consumer-boundary.md",
+      "marker": "- 状态：Accepted for G2-03-01"
+    },
+    {
+      "path": "docs/security/g2-03-01-identity-delegation-threat-model.md",
+      "marker": "- 状态：Frozen for G2-03-01"
+    },
+    {
+      "path": "docs/reviews/g2-03-01-query-policy-architecture-red-team.md",
+      "marker": "- 结论：**PASS**"
+    },
+    {
+      "path": "docs/reviews/g2-03-01-intended-vs-implemented.md",
+      "marker": "- 结论：**PASS**"
+    },
+    {
+      "path": "docs/evidence/g2-03-01-query-policy-architecture.md",
+      "marker": "- 结论：**PASS**"
+    }
+  ],
+  "scope": {
+    "allowedExactPaths": [
+      ".gitignore",
+      "README.md",
+      "docs/README.md",
+      "docs/architecture/adr/020-query-policy-identity-consumer-boundary.md",
+      "docs/architecture/ci-foundation-gate.md",
+      "docs/delivery/g2-03-query-policy-task-pack.md",
+      "docs/delivery/g2-owner-capacity-matrix.md",
+      "docs/evidence/g2-03-01-query-policy-architecture.md",
+      "docs/reviews/g2-03-01-intended-vs-implemented.md",
+      "docs/reviews/g2-03-01-query-policy-architecture-red-team.md",
+      "docs/security/g2-03-01-identity-delegation-threat-model.md",
+      "package-lock.json",
+      "package.json",
+      "security/g2-00-evidence-policy.json",
+      "security/g2-02-evidence-policy.json",
+      "security/g2-03-01-evidence-policy.json",
+      "security/license-policy.json",
+      "tools/ci/g2-03-01-evidence.test.ts",
+      "tools/ci/g2-03-01-evidence.ts",
+      "tools/ci/run.test.ts",
+      "tools/ci/run.ts",
+      "tools/ci/supply-chain.test.ts",
+      "tools/ci/supply-chain.ts",
+      "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts"
+    ],
+    "allowedPrefixes": ["spikes/g2-03-01/", "tools/query-policy-architecture/"],
+    "forbiddenPrefixes": [
+      "apps/web/",
+      "migrations/",
+      "packages/identity/",
+      "packages/policy/",
+      "packages/query/",
+      "packages/sdk/",
+      "tools/policy/",
+      "tools/query/"
+    ]
+  },
+  "requiredSourceMarkers": [
+    {
+      "path": "tools/query-policy-architecture/policy-query.ts",
+      "markers": [
+        "QUERY_CURRENT_GENERATION_REQUIRED",
+        "QUERY_ROW_POLICY_REQUIRED",
+        "QUERY_POLICY_AFTER_PAGINATION",
+        "QUERY_PROPERTY_FILTER_FORBIDDEN"
+      ]
+    },
+    {
+      "path": "tools/query-policy-architecture/trust-boundary.ts",
+      "markers": [
+        "IDENTITY_CLIENT_ASSERTION_FORBIDDEN",
+        "IDENTITY_DELEGATION_REPLAYED",
+        "permissionMode: \"intersection\""
+      ]
+    },
+    {
+      "path": "tools/query-policy-architecture/lease-protocol.ts",
+      "markers": [
+        "QUERY_LEASE_NOT_ACTIVE",
+        "generationRootsFromLeases",
+        "resolved-once-per-request"
+      ]
+    },
+    {
+      "path": "tools/query-policy-architecture/postgres-spike.ts",
+      "markers": [
+        "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)",
+        "release-serving-head"
+      ]
+    }
+  ],
+  "webStack": {
+    "@hey-api/openapi-ts": "0.99.0",
+    "@playwright/test": "1.62.1",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-table": "8.21.3",
+    "@vitejs/plugin-react": "6.0.5",
+    "oidc-client-ts": "3.5.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router": "8.3.0",
+    "vite": "8.2.1"
+  },
+  "requiredGates": [
+    "lockfile-install",
+    "toolchain",
+    "format",
+    "documentation-links",
+    "lint",
+    "typecheck",
+    "unit",
+    "g2-03-01-web-spike",
+    "materialization-mapping-capacity",
+    "materialization-base-capacity",
+    "admin-api-unit",
+    "contract-golden-diff",
+    "architecture-dependency",
+    "testkit-provenance",
+    "metadata-fixtures",
+    "materialization-fixtures",
+    "metadata-negative-fixtures",
+    "secret-private-key",
+    "foundation-scope-evidence",
+    "metadata-scope-evidence",
+    "license-sbom-vulnerability",
+    "materialization-ingress-integration",
+    "postgres-integration",
+    "projection-ddl-production-postgres",
+    "projection-capacity-postgres-smoke",
+    "materialization-worker-postgres",
+    "admin-api-oidc-postgres",
+    "materialization-production",
+    "materialization-clean-room",
+    "materialization-scope-evidence",
+    "g2-03-01-architecture-evidence",
+    "metadata-clean-room",
+    "production-boundary-up",
+    "production-boundary-smoke",
+    "production-boundary-down"
+  ],
+  "owner": "wyd-git",
+  "residualRisks": [
+    {
+      "id": "RISK-G2-03-01-01",
+      "risk": "The generated fetch client needs an isolated exactOptionalPropertyTypes=false compile boundary; this must be re-evaluated before formal apps/web creation.",
+      "owner": "Web / Contracts (accountable: wyd-git)",
+      "nextGate": "G2-03-02 and G2-03-13"
+    },
+    {
+      "id": "RISK-G2-03-01-02",
+      "risk": "Query Lease/GC is a state protocol in this task; durable PostgreSQL lease constraints, role grants and Kill/Resume arrive with the forward migration.",
+      "owner": "Runtime / Database (accountable: wyd-git)",
+      "nextGate": "G2-03-03"
+    },
+    {
+      "id": "RISK-G2-03-01-03",
+      "risk": "Identity trust semantics are frozen, but production JWT verification, principal-type migration and Token Exchange endpoints are not created in this architecture Spike.",
+      "owner": "Identity / Security (accountable: wyd-git)",
+      "nextGate": "G2-03-03 and G2-03-06"
+    }
+  ]
+}

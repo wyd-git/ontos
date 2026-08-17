@@ -3,7 +3,7 @@
 - 版本：v1
 - 日期：2026-08-17
 - 状态：Frozen；可行性复审与红队修订已写回权威文档
-- 执行进度：0/15；当前只放行 G2-03-01，未 PASS 前不得开始 G2-03-02/03 或正式编码
+- 执行进度：1/15；G2-03-01 已 PASS，当前只放行 G2-03-02，未 PASS 前不得开始 G2-03-03 或正式 Runtime 编码
 - 上游 Gate：G2-00、G2-01、G2-02 已 PASS
 - 目标 Gate：正式 Runtime Read Kernel + 统一 Policy Gateway + 真实只读 Web 消费者
 - 配套边界：[G2-03 UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)
@@ -210,6 +210,8 @@ flowchart LR
 ## 5. Why–What–Acceptance 工作项
 
 ### G2-03-01：冻结 Query/Policy/Identity/Consumer 架构边界
+
+- 执行状态：**PASS**；见 [ADR-020](../architecture/adr/020-query-policy-identity-consumer-boundary.md) 与 [Evidence](../evidence/g2-03-01-query-policy-architecture.md)
 
 - 规模：M
 - 建议 Owner：Tech Lead / Runtime / Security / Web

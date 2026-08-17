@@ -24,6 +24,8 @@
     "check:metadata-fixtures": "node tools/testkit/metadata-fixtures.ts",
     "check:materialization-fixtures": "node tools/testkit/materialization-fixtures.ts",
     "check:materialization-evidence": "node tools/ci/materialization-evidence.ts",
+    "check:g2-03-01-web": "node tools/query-policy-architecture/web-spike.ts",
+    "check:g2-03-01-evidence": "node tools/ci/g2-03-01-evidence.ts",
     "check:metadata-negative-fixtures": "node tools/ci/metadata-negative-fixtures.ts",
     "check:metadata-evidence": "node tools/ci/metadata-evidence.ts",
     "check:secrets": "node tools/ci/secret-scan.ts",
@@ -39,7 +41,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "npm run test:unit",
-    "test:unit": "node --test tools/toolchain/check-versions.test.mjs tools/architecture/check-workspace.test.ts tools/contracts/*.test.ts tools/ci/*.test.ts tools/database/definitions.test.ts tools/database/handler-boundary.test.ts tools/database/preflight.test.ts tools/local-env/config.test.ts tools/local-env/compose-plan.test.ts tools/runtime-activation/scenarios.test.ts tools/runtime-activation/properties.test.ts tools/projection-capacity/*.test.ts tools/value-codec/*.test.ts tools/job-outbox/*.test.ts tools/handler-host/*.test.ts tools/policy-epoch/*.test.ts tools/metadata-control-plane/*.test.ts tools/materialization-control-plane/*.test.ts tools/materialization-ingress/*.test.ts tools/materialization-mapping/compiler.test.ts tools/materialization-mapping/execution.test.ts tools/materialization-mapping/process-determinism.test.ts tools/materialization-mapping/properties.test.ts tools/materialization-runtime-plan/*.test.ts tools/materialization-base/*.test.ts tools/materialization-quality/*.test.ts tools/materialization-worker/*.test.ts tools/materialization-gc/*.test.ts packages/testkit/src/testkit.test.ts tools/testkit/provenance.test.ts tools/testkit/metadata-fixtures.test.ts tools/testkit/materialization-fixtures.test.ts",
+    "test:unit": "node --test tools/toolchain/check-versions.test.mjs tools/architecture/check-workspace.test.ts tools/contracts/*.test.ts tools/ci/*.test.ts tools/database/definitions.test.ts tools/database/handler-boundary.test.ts tools/database/preflight.test.ts tools/local-env/config.test.ts tools/local-env/compose-plan.test.ts tools/runtime-activation/scenarios.test.ts tools/runtime-activation/properties.test.ts tools/projection-capacity/*.test.ts tools/value-codec/*.test.ts tools/job-outbox/*.test.ts tools/handler-host/*.test.ts tools/policy-epoch/*.test.ts tools/metadata-control-plane/*.test.ts tools/materialization-control-plane/*.test.ts tools/materialization-ingress/*.test.ts tools/materialization-mapping/compiler.test.ts tools/materialization-mapping/execution.test.ts tools/materialization-mapping/process-determinism.test.ts tools/materialization-mapping/properties.test.ts tools/materialization-runtime-plan/*.test.ts tools/materialization-base/*.test.ts tools/materialization-quality/*.test.ts tools/materialization-worker/*.test.ts tools/materialization-gc/*.test.ts tools/query-policy-architecture/*.test.ts packages/testkit/src/testkit.test.ts tools/testkit/provenance.test.ts tools/testkit/metadata-fixtures.test.ts tools/testkit/materialization-fixtures.test.ts",
+    "test:query-policy-architecture": "node --test tools/query-policy-architecture/*.test.ts",
     "test:admin-api": "node --test tools/admin-api/*.test.ts",
     "test:activation": "node --test tools/runtime-activation/scenarios.test.ts tools/runtime-activation/properties.test.ts",
     "test:projection-capacity": "node --test tools/projection-capacity/*.test.ts",
@@ -88,14 +91,29 @@
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1109.0",
     "@eslint/js": "10.0.1",
+    "@hey-api/openapi-ts": "0.99.0",
+    "@playwright/test": "1.62.1",
+    "@tanstack/react-query": "5.101.4",
+    "@tanstack/react-table": "8.21.3",
     "@types/node": "24.13.3",
     "@types/pg": "8.21.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
     "eslint": "10.8.1",
     "fast-check": "4.9.0",
     "jose": "6.2.8",
+    "oidc-client-ts": "3.5.0",
     "pg": "8.23.0",
     "prettier": "3.9.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-router": "8.3.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.67.0"
+    "typescript-eslint": "8.67.0",
+    "vite": "8.2.1"
+  },
+  "overrides": {
+    "js-yaml": "4.3.1"
   }
 }

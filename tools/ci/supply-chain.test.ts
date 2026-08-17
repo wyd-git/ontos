@@ -35,6 +35,46 @@ void test("license gate covers external locks and blocks missing or unapproved l
   assert.equal(report.violations.length, 2);
 });
 
+void test("a package license approval is exact, auditable and cannot widen the SPDX allowlist", () => {
+  const lock = {
+    packages: {
+      "node_modules/build-only": {
+        version: "1.2.3",
+        license: "MPL-2.0",
+        dev: true,
+      },
+    },
+  };
+  const approval = {
+    name: "build-only",
+    version: "1.2.3",
+    license: "MPL-2.0",
+    scope: "dev" as const,
+    owner: "platform-security",
+    reason: "Pinned build-time dependency reviewed for this exact lock entry.",
+  };
+
+  const approved = createLicenseReport(lock, new Set(["MIT"]), [approval]);
+  assert.equal(approved.status, "PASS");
+  assert.deepEqual(approved.entries[0]?.policyApproval, {
+    owner: approval.owner,
+    reason: approval.reason,
+  });
+
+  const wrongVersion = createLicenseReport(lock, new Set(["MIT"]), [
+    { ...approval, version: "1.2.4" },
+  ]);
+  assert.equal(wrongVersion.status, "FAIL");
+  assert.equal(
+    wrongVersion.violations.some((violation) => violation.includes("unapproved license")),
+    true,
+  );
+  assert.equal(
+    wrongVersion.violations.some((violation) => violation.includes("does not exactly match")),
+    true,
+  );
+});
+
 void test("high vulnerabilities block while moderate vulnerabilities remain report-only", () => {
   const high = evaluateVulnerabilityReport(audit("high"), emptyWaiverPolicy);
   const moderate = evaluateVulnerabilityReport(audit("moderate"), emptyWaiverPolicy);
