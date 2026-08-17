@@ -569,7 +569,7 @@ void test(
         apiRuntime,
         ownerToken,
         primaryProjectId,
-        required(refreshBuild.generationIds[0]),
+        required(refreshBuild.capacityGenerationId),
       );
       cleanRoomCheckpoint("capacity", capacityEvidence);
       ownerToken = await required(oidc).token({
@@ -1267,6 +1267,7 @@ async function waitForJob(
 async function readBuildEvidence(admin: pg.Pool, projectId: string, jobId: string) {
   const result = await admin.query<{
     readonly generationIds: string[];
+    readonly capacityGenerationId: string | null;
     readonly reportIds: string[];
     readonly objectRows: number;
     readonly objectCurrentRows: number;
@@ -1286,6 +1287,22 @@ async function readBuildEvidence(admin: pg.Pool, projectId: string, jobId: strin
      )
      SELECT
        ARRAY(SELECT generation_id::text FROM selected ORDER BY generation_id) AS "generationIds",
+       (SELECT selected_generation.generation_id::text
+          FROM selected AS selected_generation
+          JOIN runtime.source_forecasts AS forecast
+            ON forecast.project_id = $1
+           AND forecast.generation_id = selected_generation.generation_id
+          JOIN runtime.generation_measurements AS measurement
+            ON measurement.project_id = forecast.project_id
+           AND measurement.generation_id = forecast.generation_id
+         WHERE EXISTS (
+           SELECT 1 FROM runtime.capacity_admissions AS admission
+           WHERE admission.project_id = forecast.project_id
+             AND admission.generation_id = forecast.generation_id
+             AND admission.phase = 'POSTBUILD'
+         )
+         ORDER BY selected_generation.generation_id
+         LIMIT 1) AS "capacityGenerationId",
        ARRAY(SELECT DISTINCT report_id::text FROM selected ORDER BY report_id) AS "reportIds",
        (SELECT count(*)::integer FROM runtime.object_base
         WHERE project_id = $1 AND generation_id IN (SELECT generation_id FROM selected)) AS "objectRows",
@@ -1510,10 +1527,14 @@ async function exerciseCapacityApproval(
      JOIN runtime.generation_measurements AS measurement
        ON measurement.project_id = forecast.project_id
       AND measurement.generation_id = forecast.generation_id
-     JOIN runtime.capacity_admissions AS admission
-       ON admission.project_id = forecast.project_id
-      AND admission.generation_id = forecast.generation_id
-      AND admission.phase = 'POSTBUILD'
+     JOIN LATERAL (
+       SELECT candidate.* FROM runtime.capacity_admissions AS candidate
+       WHERE candidate.project_id = forecast.project_id
+         AND candidate.generation_id = forecast.generation_id
+         AND candidate.phase = 'POSTBUILD'
+       ORDER BY candidate.inventory_revision DESC, candidate.admitted_at DESC
+       LIMIT 1
+     ) AS admission ON true
      WHERE forecast.project_id = $1 AND forecast.generation_id = $2`,
     [projectId, generationId],
   );
