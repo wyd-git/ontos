@@ -19,6 +19,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 |---|---|
 | [产品需求文档](docs/product/ontology-kernel-prd.md) | P0/P1/P2 范围、产品语义和 AC-01～AC-10 |
 | [生产实现蓝图](docs/product/ontology-kernel-implementation-blueprint.md) | 工程结构、模块、数据、事务、状态机和 Gate |
+| [核心数据库设计](docs/architecture/core-database-design.md) | 当前 21 个 Migration 的 Metadata、AuthZ、Shared Projection、Cutover、Job/Index/GC 总图，以及 G2-03/04 未实现边界 |
 | [蓝图红队审查](docs/reviews/g2-blueprint-red-team.md) | 承重假设、最低成本验证、停止条件和放行结论 |
 | [G2-00 任务包](docs/delivery/g2-00-foundation-task-pack.md) | Foundation 的依赖、WWA 工作项和可执行退出条件 |
 | [G2-01 Metadata 任务包](docs/delivery/g2-01-metadata-task-pack.md) | Metadata 控制面的 12 个顺序工作项、边界与验收条件 |
