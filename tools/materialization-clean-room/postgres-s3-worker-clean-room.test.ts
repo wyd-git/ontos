@@ -1687,32 +1687,45 @@ async function exerciseOrphanGarbageCollection(input: {
     client.release();
   }
 
-  const dryRun = await api(
-    input.apiRuntime,
-    input.ownerToken,
-    "POST",
-    `/api/v1/admin/projects/${input.projectId}/gc/dry-run`,
-    { headers: { "idempotency-key": "g20214-gc-dry-run-0001" }, json: {} },
-  );
-  assert.equal(dryRun.status, 200, dryRun.text);
-  const dryRunBody = record(dryRun.json);
-  assert.equal(record(dryRunBody["analysis"])["status"], "READY", dryRun.text);
-  const planId = stringField(dryRunBody, "planId");
-  const planDigest = required(dryRun.headers.get("etag"));
+  let dryRunSequence = 0;
+  const createPlan = async (): Promise<{ readonly id: string; readonly digest: string }> => {
+    dryRunSequence += 1;
+    const dryRun = await api(
+      input.apiRuntime,
+      input.ownerToken,
+      "POST",
+      `/api/v1/admin/projects/${input.projectId}/gc/dry-run`,
+      {
+        headers: {
+          "idempotency-key": `g20214-gc-dry-run-${String(dryRunSequence).padStart(4, "0")}`,
+        },
+        json: {},
+      },
+    );
+    assert.equal(dryRun.status, 200, dryRun.text);
+    const dryRunBody = record(dryRun.json);
+    assert.equal(record(dryRunBody["analysis"])["status"], "READY", dryRun.text);
+    return Object.freeze({
+      id: stringField(dryRunBody, "planId"),
+      digest: required(dryRun.headers.get("etag")),
+    });
+  };
+  let plan = await createPlan();
   let totalAffectedRows = 0;
   let state = "";
-  let batches = 0;
-  for (; batches < 100; batches += 1) {
+  let commitAttempts = 0;
+  let staleReplans = 0;
+  for (; commitAttempts < 100; commitAttempts += 1) {
     const committed = await api(
       input.apiRuntime,
       input.ownerToken,
       "POST",
-      `/api/v1/admin/projects/${input.projectId}/gc/plans/${planId}/commit`,
-      { headers: { "if-match": planDigest }, json: {} },
+      `/api/v1/admin/projects/${input.projectId}/gc/plans/${plan.id}/commit`,
+      { headers: { "if-match": plan.digest }, json: {} },
     );
     const body = record(committed.json);
     cleanRoomCheckpoint("gc_batch", {
-      batch: batches + 1,
+      batch: commitAttempts + 1,
       status: committed.status,
       response: body,
     });
@@ -1740,9 +1753,24 @@ async function exerciseOrphanGarbageCollection(input: {
            ON inventory.project_id = plan.project_id
          LEFT JOIN ops.gc_root_epochs AS epoch ON epoch.project_id = plan.project_id
          WHERE plan.project_id = $1::uuid AND plan.gc_plan_id = $2::uuid`,
-        [input.projectId, planId],
+        [input.projectId, plan.id],
       );
-      cleanRoomCheckpoint("gc_batch_failure", required(diagnostic.rows[0]));
+      const failure = required(diagnostic.rows[0]);
+      cleanRoomCheckpoint("gc_batch_failure", failure);
+      if (committed.status === 409 && errorCode(committed) === "OBJECT_VERSION_CONFLICT") {
+        assert.equal(staleReplans < 4, true, "GC root state did not stabilize after replanning");
+        staleReplans += 1;
+        const stalePlanId = plan.id;
+        plan = await createPlan();
+        assert.notEqual(plan.id, stalePlanId);
+        cleanRoomCheckpoint("gc_stale_replan", {
+          stalePlanId,
+          replacementPlanId: plan.id,
+          staleReplans,
+          failure,
+        });
+        continue;
+      }
     }
     assert.equal(committed.status, 202, committed.text);
     state = stringField(body, "state");
@@ -1758,9 +1786,10 @@ async function exerciseOrphanGarbageCollection(input: {
   );
   assert.equal(required(cleaned.rows[0]).state, "cleaned");
   return Object.freeze({
-    planId,
-    planDigest: planDigest.replaceAll('"', ""),
-    batches: batches + 1,
+    planId: plan.id,
+    planDigest: plan.digest.replaceAll('"', ""),
+    batches: commitAttempts + 1,
+    staleReplans,
     totalAffectedRows,
     orphanObjectVersionReclaimed: true,
     finalState: state,
