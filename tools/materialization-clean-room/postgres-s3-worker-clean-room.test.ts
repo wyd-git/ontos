@@ -617,8 +617,18 @@ void test(
       await docker(["start", postgresContainer]);
       await docker(["start", s3Container]);
       oidc = await startTestOidcProvider({ port: oidcPort });
+      const restartedPostgresPort = await publishedPostgreSqlPort(postgresContainer);
+      const restartedAdminConfig: pg.ClientConfig = {
+        ...adminConfig,
+        port: restartedPostgresPort,
+      };
+      cleanRoomCheckpoint("restart_ports", {
+        previousPostgresPort: adminConfig.port,
+        restartedPostgresPort,
+        changed: adminConfig.port !== restartedPostgresPort,
+      });
       try {
-        await waitForPostgreSql(adminConfig, 600);
+        await waitForPostgreSql(restartedAdminConfig, 600);
       } catch (error) {
         cleanRoomCheckpoint("restart_failure", {
           postgresState: await dockerOutput([
@@ -633,15 +643,15 @@ void test(
       }
       s3 = createS3Client(s3Endpoint);
       await waitForS3(s3, bucket);
-      const secondMigration = await withClient(adminConfig, runDatabaseMigrations);
+      const secondMigration = await withClient(restartedAdminConfig, runDatabaseMigrations);
       assert.equal(secondMigration.noOp, true);
       assert.equal(secondMigration.applied.length, 0);
-      admin = new pg.Pool(adminConfig);
+      admin = new pg.Pool(restartedAdminConfig);
       apiRuntime = await startAdminApi({
         host: "127.0.0.1",
         port: 0,
         databaseUrl: postgresUrl({
-          ...adminConfig,
+          ...restartedAdminConfig,
           user: "api_runtime",
           password: apiPassword,
         }),
@@ -660,8 +670,13 @@ void test(
         subject: "clean-room-owner",
         name: "Owner",
       });
+      const restartedWorkerConfig: pg.ClientConfig = {
+        ...restartedAdminConfig,
+        user: "worker_runtime",
+        password: workerPassword,
+      };
       worker = await startProductionMaterializationWorker({
-        databaseUrl: postgresUrl(workerConfig),
+        databaseUrl: postgresUrl(restartedWorkerConfig),
         workerInstanceId: randomUUID(),
         leaseSeconds: 300,
         heartbeatIntervalMilliseconds: 5_000,
@@ -673,7 +688,7 @@ void test(
         databaseQueryTimeoutMilliseconds: 305_000,
         objectStore,
       });
-      await executeIndexPlans(adminConfig, primaryProjectId, indexPlanIds);
+      await executeIndexPlans(restartedAdminConfig, primaryProjectId, indexPlanIds);
       const stateAfterRestart = await durableStateManifest(admin, primaryProjectId);
       assert.deepEqual(stateAfterRestart, stateBeforeRestart);
       cleanRoomCheckpoint("restart_verified", { stateManifest: stateAfterRestart.hash });
