@@ -5,6 +5,7 @@
 - 证据基线：[G1 可行性报告](../../spikes/g1/docs/g1-feasibility-report.md)、[G1 架构决策](../../spikes/g1/docs/architecture-decisions.md)
 - 方法：先强化原主张，再攻击承重假设；按“错误影响 × 错误可能性 × 验证便宜程度”排序
 - 结论：**Conditional Go — 允许执行 G2-00，G2-01 仍被 Gate 阻断**
+- 后续状态：本结论是 2026-08-13 的历史入口审查；G2-00～02 已后续 PASS，当前放行结论见本文第 7 节
 
 ## 1. 一句话结论
 
@@ -249,3 +250,11 @@ Docker 化的 PostgreSQL、S3-compatible Storage、外部于 Kernel 的 OIDC Pro
 - 法务或业务对 Audit、Artifact 和 Action 历史的保留要求。
 
 这些信息不阻止 G2-00，但分别阻止六周日期承诺、容量承诺、供应链锁定、Usable Alpha 和最终保留策略。
+
+## 7. 2026-08-17 后续顺序审查附注
+
+本附注不改写 2026-08-13 对 G2-00 入口的历史结论。G2-00、G2-01 和 G2-02 现已 PASS；原四条并行责任线/六周情景已按实际单通道撤销，现行容量以 [G2 Owner 与容量矩阵](../delivery/g2-owner-capacity-matrix.md) 为准。
+
+为避免到 G2-05 才首次发现前后端合同、受限属性、Cursor/错误恢复和 N+1 问题，实施顺序调整为：G2-03 使用 Public Runtime HTTP 和仓内 Generated Client 交付真实只读 Web 消费者；G2-04 在同一壳上扩展 Action；G2-05 仍负责完整 UI、Object View/Application Config、Function、可发布 SDK 和双 Package 完整闭环。该调整只改变风险验证顺序，不扩大 PRD 范围。
+
+该方案不由本篇历史红队单独放行，而由 [G2-03 任务包](../delivery/g2-03-query-policy-task-pack.md)、[UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)、[可行性复审](g2-03-task-pack-feasibility.md)和 [G2-03 专项红队](g2-03-task-pack-red-team.md) 共同约束。当前结论为 **Go for G2-03-01 only**；未 PASS 前不准直接建正式 Query Endpoint、G2-03 事实表或产品页。

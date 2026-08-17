@@ -3,14 +3,14 @@
 - 版本：1.0
 - 日期：2026-08-15
 - 状态：**PASS**，仍受本任务包范围边界与后续 Gate 约束
-- 执行进度：G2-02-01～14 已 PASS（14/14）；下一步只允许创建并红队审查 G2-03 任务包
+- 执行进度：G2-02-01～14 已 PASS（14/14）；G2-03 任务包现已冻结，当前只放行 G2-03-01
 - 上游：[Ontology Kernel PRD](../product/ontology-kernel-prd.md)
 - 实现蓝图：[G2 生产实现蓝图](../product/ontology-kernel-implementation-blueprint.md)
 - 入口证据：[G2-01-12 Metadata clean-room 总验收](../evidence/g2-01-12-clean-room-metadata-gate.md)
 - 交付容量：[G2 Owner 与容量矩阵](g2-owner-capacity-matrix.md)
 - 风险审查：[G2-02 任务包红队](../reviews/g2-02-task-pack-red-team.md)
 - Gate 目标：通过真实 OIDC Admin API、S3-compatible Storage、PostgreSQL 16、API 与独立 Worker，把受管 UTF-8 CSV Snapshot 可恢复地物化为不可见 Object/Link Generation，并在验证通过后原子切换 Runtime Activation
-- Gate 之后：只有 PASS 才创建 G2-03 Query + Policy 任务包
+- Gate 之后：历史放行条件已满足；现行执行入口见 [G2-03 Query + Policy 任务包](g2-03-query-policy-task-pack.md)
 
 ## 1. 这阶段到底做什么
 
@@ -679,8 +679,8 @@ G2-02 Evidence 必须使用以下标签：
 
 处理方式是收窄格式/Mapping/Index 能力、修订 ADR、重做事务/恢复模型或调整规划，不把失败包装成增加 Endpoint、页面或手工运维步骤。
 
-## 9. G2-02 完成后的唯一下一步
+## 9. G2-02 完成后的历史放行与现行承接
 
-G2-02 PASS 后唯一允许的新任务是创建 **G2-03 Query + Policy 任务包**：OIDC 业务身份、Policy Compiler/Gateway、Activation-aware Get/Search/Traversal/Count、Cursor 与真实 HTTP 协议 Harness。
+G2-02 冻结时，PASS 后唯一允许的新任务是创建 **G2-03 Query + Policy 任务包**：OIDC 业务身份、Policy Compiler/Gateway、Activation-aware Get/Search/Traversal/Count、Cursor 与真实 HTTP 协议 Harness。该历史放行已完成，不再是当前待办。
 
-在 G2-03 任务包通过红队并冻结前，不直接编码 Query Endpoint；在 G2-04 前不移除 zero-overlay 生产限制；在 G2-05 前不开始 Web/SDK/第二领域完整闭环。
+**2026-08-17 顺序附注：** [G2-03 任务包](g2-03-query-policy-task-pack.md)、[UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)、[可行性复审](../reviews/g2-03-task-pack-feasibility.md)与[红队](../reviews/g2-03-task-pack-red-team.md)已冻结，当前只放行 **G2-03-01**。G2-03 现允许一个真实只读 Web 消费者和仓内 Generated Read Client，用于提前验证 UI/API 接缝；它不是完整 UI 或对外 SDK。Action 消费者仍归 G2-04，Object View/Application Config、Function、完整 UI、可发布 SDK 和第二领域完整闭环仍归 G2-05；G2-04 前不移除 zero-overlay 生产限制。

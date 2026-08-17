@@ -1,14 +1,14 @@
 # Ontology Kernel G2 生产实现蓝图
 
-- 版本：0.2
-- 日期：2026-08-13
-- 状态：Red-team Reviewed / G2-00 PASS / G2-01 Task Pack Ready
+- 版本：0.3
+- 日期：2026-08-17
+- 状态：Red-team Reviewed / G2-00～02 PASS / G2-03 Task Pack Frozen
 - 上游产品基线：[Ontology Kernel PRD](ontology-kernel-prd.md)
 - 可行性基线：[G1 Feasibility Report](../../spikes/g1/docs/g1-feasibility-report.md)
 - 架构基线：[G1 Architecture Decisions](../../spikes/g1/docs/architecture-decisions.md)
 - G2 准入基线：[G2 Implementation Readiness](../../spikes/g1/docs/g2-implementation-readiness.md)
 - 红队结论：[G2 Blueprint Red-Team](../reviews/g2-blueprint-red-team.md)
-- 当前任务包：[G2-01 Metadata](../delivery/g2-01-metadata-task-pack.md)
+- 当前任务包：[G2-03 Query + Policy](../delivery/g2-03-query-policy-task-pack.md)
 
 ## 0. 蓝图结论
 
@@ -22,7 +22,7 @@
 4. 本蓝图中的“完整产品”特指 PRD 的 **P0 Kernel Alpha**，不是复制 Palantir 全产品，也不包含 P1/P2。
 5. G1 Spike 只复用算法、SQL 结论、Fixtures 和测试向量；不把 Spike 的进程组织、凭据和脚本直接当生产代码。
 
-蓝图红队最初只对 G2-00 Foundation 给出 **Conditional Go**。G2-00 已于 2026-08-14 通过 clean-room 与远端强制 Gate；当前只允许按 [G2-01 Metadata 任务包](../delivery/g2-01-metadata-task-pack.md)实现 DB-01 与 Project/Resource/Revision/Dependency/Release/Package Store/API，不得跳到 DB-02、Query、Action 或页面。
+蓝图红队最初只对 G2-00 Foundation 给出 **Conditional Go**。截至 2026-08-17，G2-00 Foundation、G2-01 Metadata 和 G2-02 Materialization 均已通过对应 clean-room 总 Gate。当前只允许按 [G2-03 Query + Policy 任务包](../delivery/g2-03-query-policy-task-pack.md)从 G2-03-01 开始；不得跳到正式 Query Endpoint、Action/Overlay 或完整产品 UI。
 
 ### 0.1 对“先闭环还是先做全核心”的最终回答
 
@@ -33,6 +33,18 @@
 - 每通过一个 Gate，再沿已经冻结的模块边界横向补齐。
 
 如果先分别完成所有核心引擎，最后才集成，Release、Materialization、Policy 和 Action 的接口问题会过晚出现；如果只做闭环而没有全局蓝图，又容易形成不可扩展的 Demo。当前路线同时规避这两类风险。
+
+### 0.2 2026-08-17 UI/API 对接顺序修订
+
+原蓝图把 Web/SDK 统一放在 G2-05。实施复审确认，如果到 G2-05 才让第一个真实页面消费 Query/Policy API，Metadata 发现、Property 受限状态、Cursor/错误恢复、请求形状和 N+1 问题会发现过晚。
+
+修订后：
+
+- G2-03 交付 Runtime Read OpenAPI Candidate、仓内 Generated Client 和真实只读 Web 消费者（Login/Object Type/List/Detail/懒加载一跳 Link）；
+- G2-04 在同一消费者边界上增加 Action Form、Preflight/Apply 和 Conflict；
+- G2-05 仍冻结完整可发布 OpenAPI/SDK、Object View/Application Config、Function、完整 UI 与两 Package 闭环。
+
+这是 Gate 验证顺序变更，不增加 PRD P0/P1/P2 产品范围。详细边界见 [G2-03 UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)。
 
 ## 1. 成功边界与范围冻结
 
@@ -66,7 +78,7 @@
 | Policy | Human OIDC、Service Identity、delegated 权限交集、Resource/Object/Property/Link/Action；全部入口同向量 | Claim Mapping 管理体验、策略测试管理、缓存硬化 | 外部授权引擎适配 |
 | Function | expression + 一个受信 `trusted_code` Fixture，真实 Policy Query | 完整 Manifest、超时/配额/缓存、生成 SDK 类型 | 在线代码 IDE、不可信代码沙箱 |
 | Action | standard Handler + 一个受信代码 Handler；Preflight/Apply、并发、幂等、Outbox | 全部标准 Mutation、完整 Criteria/Result Schema 和处置页面 | Composite、Bulk Action |
-| Delivery | 登录、生成 List/Detail/Link/Action/Activity、最小 TS SDK | 基础 Builder、完整 Object View/Application Config、双语和可访问性 | 自由画布、组件市场、定制 BI |
+| Delivery | G2-03 只读 List/Detail/Link 消费者，G2-04 增加 Action，G2-05 形成最小完整 UI/SDK | 基础 Builder、完整 Object View/Application Config、双语和可访问性 | 自由画布、组件市场、定制 BI |
 | Package | CLI/API 安装、升级、定义回滚；两个 Fixture Package | Artifact 保留、兼容性报告、输入映射完善 | Catalog、Marketplace、自动依赖解析 |
 | Operations | Health、Job、Trace、日志、指标、一次备份恢复演练 | 保留策略、告警、容量预算、安全专项测试 | Kubernetes 产品化、多区域 |
 | AI / Automation / Data 产品 | 只有 Policy 一致性测试 Harness | 无 | 所有产品功能 |
@@ -446,9 +458,9 @@ G2-00 必须先冻结 Foundation Contract：
 
 - G2-01：Resource/Revision/Release/Package Manifest；
 - G2-02：Snapshot、Mapping、Validation Report 和 Job State；
-- G2-03：Query AST、Cursor、Policy Decision/Predicate/Mask；
+- G2-03：Query AST、Cursor、Policy Decision/Predicate/Mask、Identity Context，以及被真实 Web 消费的 Runtime Read OpenAPI Candidate/仓内 Generated Client；
 - G2-04：Function Context、Action、ReadSet、MutationPlan、Preflight、ChangeSet、Outbox 和 Audit Event；
-- G2-05：OpenAPI、SDK 和 Web 所需的发布合同。
+- G2-05：完整 OpenAPI、可发布 SDK 和 Web 所需的对外发布合同。
 
 G2-00 可以为后续合同建立 seam fixture、Owner 和语义不变量，但不得提前宣称全部字段稳定。所有合同从首次出现起都有 `schemaVersion`、Golden Fixture、兼容性测试和禁止未知写入字段策略。数据库 JSONB 不能替代公共 Schema。
 
@@ -526,11 +538,20 @@ GET  /api/v1/ontologies/{ontology}/changesets/{id}
 
 ### 7.4 TypeScript SDK
 
-首切片先从 OpenAPI 和 Release Metadata 生成：Object Reference、Get/Search、Cursor Iterator、Link、Preflight/Apply 和 Error Union。完整 P0 再补齐所有 Function、Aggregate、Saved Set、兼容性提示和开发文档。
+生成客户端按 Gate 渐进：G2-03 从 Runtime Read OpenAPI Candidate 生成仓内 Get/Search/Cursor/Link/Error Client 并被只读 Web 消费；G2-04 扩展 Preflight/Apply；G2-05 才冻结并发布完整最小 SDK。完整 P0 再补齐所有 Function、Aggregate、Saved Set、兼容性提示和开发文档。
 
 生成 SDK 必须固定 Release Revision；破坏性变更在生成或 TypeScript 编译阶段可见，不能悄悄改变运行语义。
 
 ## 8. 产品页面
+
+### 8.0 Gate 递进边界
+
+- G2-03：真实只读消费者，只含 OIDC/Project、Object Type 导航、List/Search/Filter/Sort/Cursor、Detail 与懒加载一跳 Link；
+- G2-04：在同一壳上增加 Action Form、Preflight/Apply、冲突与执行状态；
+- G2-05：补齐首切片页面、Object View/Application Config、Function/SDK、双 Package 和产品化；
+- P0-B：完成 Builder/Delivery 的全量范围、双语和可访问性收敛。
+
+G2-03 的只读页面是防止接口返工的真实消费者，不是完整 Object Explorer 或 Internal Alpha。
 
 ### 8.1 首切片页面
 
@@ -603,22 +624,22 @@ Package Manifest
 
 ## 10. 实施里程碑与任务顺序
 
-以下日历只是 4–6 人、至少四条有效责任线并行时的情景值，不是当前项目承诺。G2-00 退出前必须记录真实 Owner、容量和第二审查人，再根据实际吞吐重算。若人力更少，保持依赖顺序并延长时间，不能通过删掉安全、事务或恢复 Gate 来压缩。
+原“4–6 人/四条责任线/6 周架构集成”情景已因当前只有一条有效工程通道而撤销。实际容量以 [Owner/Capacity 矩阵](../delivery/g2-owner-capacity-matrix.md) 和每个 Gate 入口重估为准。保持依赖顺序并延长时间，不能通过删掉安全、事务、消费者或恢复 Gate 来压缩。
 
-### 10.1 第 1–6 周：架构集成 Gate
+### 10.1 架构集成 Gate
 
 | Gate | 主要交付 | 前置 | 可验收退出条件 |
 |---|---|---|---|
 | G2-00 Foundation | 正式仓库、CI、合同包、迁移框架、DB 角色、Fixture、ADR | G1 PASS | 空环境一键建库；合同 Golden Test；禁止跨层依赖 |
 | G2-01 Metadata | Project/Resource/Revision/Dependency/Release/Package Store 与 API | G2-00 | 原子发布/失败回滚；兼容性矩阵；历史 Revision 不变 |
 | G2-02 Materialization | Upload、Mapping、Job/Lease、Base/Current、Staging/Cutover、GC | G2-01 | 坏 Snapshot 不影响旧代；W0/W1 不丢 Overlay；Kill/Resume |
-| G2-03 Query + Policy | OIDC、Roles、Policy Compiler/Gateway、Get/Search/Traversal/Count/Cursor | G2-02 | HTTP Query 与协议 Harness 同向量；保存待后续真实入口复跑的基线 |
-| G2-04 Action | Standard/Trusted Plan、Preflight、Locks、Overlay、ChangeSet、Outbox、Audit | G2-03 | AC-05/06 故障与并发用例通过 |
-| G2-05 Portability | 两包安装、最小 UI、Function、SDK、基准回归 | G2-04 | 真实 HTTP/UI/SDK/Function/Action/Adapter 向量 100%；无核心领域分支；100k/1m 性能不退化 |
+| G2-03 Query + Policy | Human/Service/Delegation、Policy Compiler/Gateway、Get/Search/Traversal/Count/Cursor、Runtime Read OpenAPI Candidate 与只读 Web 消费者 | G2-02 | HTTP/Generated Client/Web/协议 Harness 同向量；双 Fixture 无领域分支；100k/1m 读性能通过 |
+| G2-04 Action | Standard/Trusted Plan、Preflight、Locks、Overlay、ChangeSet、Outbox、Audit，并在现有 Web 壳增加 Action 消费者 | G2-03 | AC-05/06 故障与并发用例通过；不重建 Identity/Policy/API 边界 |
+| G2-05 Portability | 两包安装、完整最小 UI、Object View、Function、可发布 SDK、基准回归 | G2-04 | 真实 HTTP/UI/SDK/Function/Action/Adapter 向量 100%；无核心领域分支；100k/1m 性能不退化 |
 
-六周 Gate 的结果是“正式架构闭环已集成”，还不能直接对内部用户宣布可用。
+上述 Gate 全部通过的结果是“正式架构闭环已集成”，还不能直接对内部用户宣布可用。
 
-### 10.2 第 7–10 周：生产化 Gate
+### 10.2 生产化 Gate
 
 | Gate | 主要交付 | 退出条件 |
 |---|---|---|
@@ -627,7 +648,7 @@ Package Manifest
 | G2-08 Security | OIDC 校验、Scope 分离、上传安全、Injection/CSRF/SSRF/枚举专项 | 无已知高危旁路；Policy fail-closed 用例通过 |
 | G2-09 Internal Alpha | 可用性、浏览器、Runbook、发布演练、用户走查 | 首切片“生产最低含义”全部满足 |
 
-因此，在上述团队前提成立时，合理情景是：**6 周获得架构集成证据，8–10 周获得可供受控内部试用的生产纵向切片**。实际团队并行度未确认前，不对外承诺该日期。第 6 周的技术闭环也不能包装为成品。
+当前单通道不使用固定周数对外承诺。架构集成与生产化 Gate 仍严格顺序执行；其中任一技术闭环也不能包装为成品或 Internal Alpha。
 
 ### 10.3 首切片之后：完整 P0
 
@@ -656,15 +677,15 @@ Package Manifest
 
 | PRD AC | 首次形成证据 | P0 最终 Gate |
 |---|---|---|
-| AC-01 定义到页面/SDK | G2-05 | P0-B |
+| AC-01 定义到页面/SDK | G2-03 只读消费者基线，G2-05 完整首切片 | P0-B |
 | AC-02 Snapshot 原子性 | G2-02，G2-05 集成复跑 | P0-D |
 | AC-03 Overlay/Conflict | G2-04 | P0-D |
-| AC-04 Policy 跨入口 | G2-03 基线，G2-05 真实入口 | P0-D |
+| AC-04 Policy 跨入口 | G2-03 真实 Read/Web 基线 + 后续入口 Harness，G2-04/05 复跑真实 Action/Function/SDK | P0-D |
 | AC-05 Action 原子/幂等 | G2-04 | P0-D |
 | AC-06 并发/过期确认 | G2-04 | P0-D |
 | AC-07 Release/兼容性 | G2-01，G2-05 集成复跑 | P0-C |
 | AC-08 故障/恢复 | G2-06/G2-07 | P0-D |
-| AC-09 性能 | G2-05 | P0-D |
+| AC-09 性能 | G2-03 读基线，G2-05 全闭环回归 | P0-D |
 | AC-10 第二领域 | G2-05 | P0-C |
 
 ## 11. 测试与发布门禁
@@ -777,7 +798,7 @@ Package Manifest
 
 处理方式是缩小承诺、重做抽象或转为垂直应用，不把失败包装成更多页面。
 
-## 14. 编码前的冻结清单
+## 14. G2-01 编码前的历史冻结清单
 
 只有以下条目全部完成才开始 G2-01 业务功能编码：
 
@@ -798,9 +819,9 @@ Package Manifest
 
 这里的“冻结”是对公共合同和架构方向冻结，不是一次性写完所有实现细节。任何偏离必须新增 ADR，并说明对 Gate、迁移和兼容性的影响。
 
-## 15. 蓝图之后的第一批可执行任务
+## 15. 蓝图之后的历史第一批任务
 
-蓝图通过后，不立刻写页面或 Metadata Store。第一批工作以 [G2-00 Foundation 任务包](../delivery/g2-00-foundation-task-pack.md) 为唯一执行清单：
+本节保留蓝图初始准入的历史。当前 G2-00～02 已 PASS，现行执行清单是 [G2-03 Query + Policy 任务包](../delivery/g2-03-query-policy-task-pack.md)。蓝图最初通过后，第一批工作曾以 [G2-00 Foundation 任务包](../delivery/g2-00-foundation-task-pack.md) 为唯一执行清单：
 
 1. 在 `ontos` 建立实际使用的工具链骨架、依赖规则和本地生产边界等价环境；
 2. 编写 ADR-007 至 ADR-012，并用状态模型、容量模型或 seam proof 验证；
