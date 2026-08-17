@@ -218,7 +218,7 @@ async function checkMaterializationEvidence(repositoryRoot: string): Promise<voi
   );
   const artifact = {
     schemaVersion: 1,
-    gate: "G2-02-13",
+    gate: "G2-02-14",
     status: violations.length === 0 ? "PASS" : "FAIL",
     evidence: policy.requiredEvidence,
     reviews: policy.requiredReviews,
@@ -432,10 +432,14 @@ function validateCleanRoom(
   const cutovers = isRecord(performance.cutovers) ? performance.cutovers : {};
   if (
     cutovers.runs !== 20 ||
-    typeof cutovers.p95Milliseconds !== "number" ||
-    cutovers.p95Milliseconds >= 1_000 ||
-    typeof cutovers.maxMilliseconds !== "number" ||
-    cutovers.maxMilliseconds >= 5_000
+    typeof cutovers.p95Microseconds !== "number" ||
+    !Number.isInteger(cutovers.p95Microseconds) ||
+    cutovers.p95Microseconds < 0 ||
+    cutovers.p95Microseconds >= 1_000_000 ||
+    typeof cutovers.maxMicroseconds !== "number" ||
+    !Number.isInteger(cutovers.maxMicroseconds) ||
+    cutovers.maxMicroseconds < 0 ||
+    cutovers.maxMicroseconds >= 5_000_000
   ) {
     violations.push("Clean-room Cutover evidence must contain 20 runs within the P95/max SLO.");
   }

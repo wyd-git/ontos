@@ -138,6 +138,26 @@ void test("fails closed when any mutation guard disappears from its routed test"
   assert.ok(violations.some((violation) => violation.includes("Mutation oidc marker")));
 });
 
+void test("fails closed when canonical cutover microseconds exceed the SLO", () => {
+  const snapshot = validSnapshot();
+  const cleanRoom = snapshot.cleanRoom as Readonly<Record<string, unknown>>;
+  const performance = cleanRoom.performance as Readonly<Record<string, unknown>>;
+  const violations = evaluateMaterializationEvidenceSnapshot(
+    {
+      ...snapshot,
+      cleanRoom: {
+        ...cleanRoom,
+        performance: {
+          ...performance,
+          cutovers: { runs: 20, p95Microseconds: 1_000_000, maxMicroseconds: 2_000_000 },
+        },
+      },
+    },
+    policy,
+  );
+  assert.ok(violations.some((violation) => violation.includes("Cutover evidence")));
+});
+
 void test("the manifest requires every unified gate exactly once", () => {
   const report = {
     status: "PASS",
@@ -229,7 +249,7 @@ function cleanRoomEvidence(): Readonly<Record<string, unknown>> {
       linkRows: 1_000_000,
       coldEndToEndMilliseconds: 100_000,
       warmRefreshEndToEndMilliseconds: 90_000,
-      cutovers: { runs: 20, p95Milliseconds: 100, maxMilliseconds: 200 },
+      cutovers: { runs: 20, p95Microseconds: 100_000, maxMicroseconds: 200_000 },
     },
     recovery: {
       wholeEnvironmentRestarted: true,
