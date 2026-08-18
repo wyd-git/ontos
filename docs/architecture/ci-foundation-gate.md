@@ -12,10 +12,10 @@
 
 GitHub Actions 不重新拼装业务命令，只在固定 Node/npm 环境执行 `npm run verify`。远端 Required Check 仍只有一个 `Foundation Gate`；编排器先根据 GitHub 提供的 Base/Head Commit 读取完整 `git diff --no-renames`，再选择两个互斥 Profile 之一：
 
-| Profile     | 唯一允许的变更                                                                                | 执行内容                                                                         | 证据语义                                             |
-| ----------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `fast-docs` | `README.md`、`docs/README.md` 和非 ADR/Evidence/Review 的 `docs/**/*.md`                      | Lockfile Install、Toolchain、Format、Documentation Links、全部 Unit、Secret Scan | 只能产生 `FAST_DOCS_PASS`，不重生历史 Clean-room     |
-| `full`      | 任何代码、Migration、依赖、Workflow、机器策略、图片，ADR/Evidence/Review 变更，或无法可信分类 | 完整 Foundation + Metadata + Materialization Gate                                | 按原合同重生 G2-00/01/02 Manifest 与 Clean-room 证据 |
+| Profile     | 唯一允许的变更                                                                                | 执行内容                                                                         | 证据语义                                          |
+| ----------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `fast-docs` | `README.md`、`docs/README.md` 和非 ADR/Evidence/Review 的 `docs/**/*.md`                      | Lockfile Install、Toolchain、Format、Documentation Links、全部 Unit、Secret Scan | 只能产生 `FAST_DOCS_PASS`，不重生历史 Clean-room  |
+| `full`      | 任何代码、Migration、依赖、Workflow、机器策略、图片，ADR/Evidence/Review 变更，或无法可信分类 | 完整 Foundation + Metadata + Materialization + G2-03 Gate                        | 按原合同重生 G2-00/01/02 与 G2-03-01～03 Manifest |
 
 分类器没有“手动强制快速”参数。空 Diff、Commit 不完整、Git 比较失败、路径越界、可疑路径或超过分类输出上限均 Fail Closed 到 `full`。关闭 Rename Detection 使“把运行时代码移到文档路径”同时显示为删除高风险路径和新增文档，不能被误分为快速。
 
@@ -39,7 +39,9 @@ GitHub Actions 不重新拼装业务命令，只在固定 Node/npm 环境执行 
 - Secret、License、SBOM、Vulnerability Artifact 的路径、Hash 和计数；
 - 失败 Gate 和未执行 Gate，不能用缺失字段伪装成 PASS。
 
-同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。`fast-docs` 另生成 `fast-docs-evidence.json`，并以明文声明它不替代历史 Clean-room；`full` 才生成 G2-00、G2-01、G2-02、G2-03-01 与 G2-03-02 Manifest。原始供应链机器输出保存在同一目录。
+同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。`fast-docs` 另生成 `fast-docs-evidence.json`，并以明文声明它不替代历史 Clean-room；`full` 才生成 G2-00、G2-01、G2-02 与 G2-03-01～03 Manifest。原始供应链机器输出保存在同一目录。
+
+G2-03-03 把 `g2-03-03-persistence-evidence` 放在 `postgres-integration` 之后：前者必须读取同一运行刚生成的 Persistence 与 Query Lease Artifact，再检查三个 Migration、历史 Scope 前向接纳、Required Record 和 Source Marker。full profile 现有 38 道 Gate；最终 Manifest 还要求两个 PostgreSQL Artifact 与 Report 同 Commit、`cleanCheckout=true` 且每个 Required Gate 恰好 PASS 一次。
 
 G2-00-13 在同一入口追加 `foundation-scope-evidence`，由 `security/g2-00-evidence-policy.json` 冻结当前允许的 Workspace、DB-00 Migration/表、ADR-007～012、G2-00-01～13 Evidence、Owner/容量和未关闭风险。出现 App、非 DB-00 Migration、额外表、非 Spike UI 文件或未提交的必需 Evidence 时 Gate 失败。
 

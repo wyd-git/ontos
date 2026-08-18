@@ -1,13 +1,13 @@
 # Ontos 核心数据库设计
 
 - 文档状态：Current-state architecture reference
-- 已实现基线：连续前向 Migration `0001`～`0021`
-- 已覆盖 Gate：G2-00 Foundation、G2-01 Metadata、G2-02 Materialization
-- 尚未实现：G2-03 Query/Policy、G2-04 Action/Overlay、G2-05 完整交付面、G2-07 完整 Audit/Operations
+- 已实现基线：连续前向 Migration `0001`～`0024`
+- 已覆盖 Gate：G2-00 Foundation、G2-01 Metadata、G2-02 Materialization、G2-03-01～03
+- 尚未实现：生产 Runtime Identity/Delegation、Policy Compiler/Gateway、Query 执行/HTTP/UI、G2-04 Action/Overlay、G2-07 完整 Audit/Operations
 
 ## 1. 先说结论
 
-核心数据库已经做过，而且不是停留在概念 ER 图：当前 PostgreSQL 16 Schema 已由 21 个连续 Migration、真实 Repository、权限负测、100k Object / 1m Link 数据验收和 clean-room 重建共同验证。
+核心数据库已经做过，而且不是停留在概念 ER 图：当前 PostgreSQL 16 Schema 已由 24 个连续 Migration、真实 Repository、权限负测、100k Object / 1m Link 数据验收、Query Lease/GC 薄切片和 clean-room 重建共同验证。
 
 现在已经落库的核心是：
 
@@ -15,14 +15,15 @@
 2. **Materialization 数据面**：受管 Snapshot、Mapping 绑定、稳定 Object Identity、不可变 Generation、Object/Link Base 与 Current Projection；
 3. **原子服务指针**：Release/Activation、Snapshot Group 与不可变 Object Head Set，保证刷新时不读到半套数据；
 4. **生产运行控制**：Job/Lease、Checkpoint、质量报告、Provenance、Index Plan、容量准入、Cutover 和保守 GC；
-5. **最小数据库安全边界**：迁移、API、Worker、只读运维分权，默认拒绝，业务事实通过约束、Trigger 和受控函数保护。
+5. **Query/Policy 持久边界**：Human/Service、Claim Mapping Revision、Policy Compilation/Test、Authorization Epoch/NOTIFY 和 Query Lease/GC Root；
+6. **最小数据库安全边界**：迁移、API、Worker、只读运维分权，默认拒绝，业务事实通过约束、Trigger、RLS 和受控函数保护。
 
 但“最终产品全部数据库”还没有完成：
 
-- G2-03 才会增加完整 Runtime Identity、Claim Mapping、Policy Compilation 和 Query Lease/GC Root；
+- G2-03-03 已建立 Identity/Claim Mapping/Policy Compilation 和 Query Lease/GC Root 的持久事实，但 G2-03-04～12 才会实现真实 JWT/Delegation、Compiler/Gateway、Query SQL 与 HTTP；
 - G2-04 才会增加 Action、Overlay、Conflict、ChangeSet、Outbox/Audit；
 - `action`、`audit` Schema 目前已经预留，但尚无业务基础表；
-- 当前 `authz` 是 Metadata 管理 RBAC，不等于 Object/Property/Link 业务 Policy 已实现。
+- 当前 `authz` 已能保存业务 Policy 的编译结果，不等于 Object/Property/Link Policy 已能编译或执行。
 
 因此，当前数据库足以支撑“定义 Ontology → 导入数据 → 物化 Object/Link → 原子激活”的生产闭环；还不能声称“安全查询 → Action 写回 → 完整审计”的最终闭环已经落库。
 
@@ -33,23 +34,24 @@
 1. [`migrations/db-00/`](../../migrations/db-00/)：物理 Schema、约束、权限和受控函数的唯一落库事实；
 2. [`tools/database/`](../../tools/database/) 与 PostgreSQL Integration：迁移、权限、不可变、并发和故障行为的可执行证据；
 3. Accepted ADR：为什么选择这些键、事务和边界；
-4. G2-03/G2-04 任务包：未来意图，不可当成当前实现。
+4. G2-03/G2-04 任务包：只有对应 PASS Evidence 覆盖的部分是当前实现，其余仍是未来意图。
 
-本文中的“91 张基础表、20 个受控视图”是指 `0001`～`0021` 由 Ontos Migration 显式创建、并扣除已被迁移为 View 的旧 `runtime.object_heads` 表后的当前仓库模型；不把 PostgreSQL Catalog 或 `pg_trgm` 扩展内部对象算入业务表。
+本文中的“97 张基础表、22 个受控视图”是指 `0001`～`0024` 由 Ontos Migration 显式创建、并扣除已被迁移为 View 的旧 `runtime.object_heads` 表后的当前仓库模型；不把 PostgreSQL Catalog 或 `pg_trgm` 扩展内部对象算入业务表。
 
 ## 3. 完成度边界
 
-| 数据库能力               | 当前状态           | 当前可以依赖什么                                        | 还不能依赖什么                                       |
-| ------------------------ | ------------------ | ------------------------------------------------------- | ---------------------------------------------------- |
-| Migration 与角色         | **已实现**         | 单一账本、Hash 防漂移、事务回滚、最小权限               | 自动 Down Migration                                  |
-| Metadata/Release/Package | **已实现**         | 不可变 Revision、依赖闭包、原子发布和回滚发布           | 未激活 Resource Family 的完整运行语义                |
-| 管理 AuthZ               | **已实现**         | OIDC Principal、Project/Resource Role Binding、Epoch    | Object 行级和 Property/Link Policy                   |
-| Snapshot/Materialization | **已实现**         | 受管 CSV、不可变 Snapshot/Generation、质量与 Provenance | 任意数据连接器和通用 ETL                             |
-| Object/Link Projection   | **已实现**         | 共享 Base/Current、稳定 RID、类型化 Link、Head Set      | Action Overlay 与冲突合并                            |
-| Index/Capacity           | **已实现**         | 受限 Index Recipe、隔离 DDL、准入和实测库存             | 无上限索引、任意 SQL、无限 Project                   |
-| Job/Recovery/GC          | **已实现**         | Lease Fencing、Checkpoint、Kill/Resume、保守回收        | Query Lease、Preflight/Hold/Action Root 的已激活扫描 |
-| Runtime Query/Policy     | **已设计，未实现** | G2-03 任务边界和候选事实责任                            | 正式 Query 表、Policy Artifact、业务读权限           |
-| Action/Overlay/Audit     | **已规划，未实现** | G2-04/G2-07 Owner 边界                                  | Action、ChangeSet、Outbox、完整 Audit 表             |
+| 数据库能力               | 当前状态                   | 当前可以依赖什么                                                    | 还不能依赖什么                                   |
+| ------------------------ | -------------------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
+| Migration 与角色         | **已实现**                 | 单一账本、Hash 防漂移、事务回滚、最小权限                           | 自动 Down Migration                              |
+| Metadata/Release/Package | **已实现**                 | 不可变 Revision、依赖闭包、原子发布和回滚发布                       | 未激活 Resource Family 的完整运行语义            |
+| 管理 AuthZ               | **已实现**                 | OIDC Principal、Project/Resource Role Binding、Epoch                | Object 行级和 Property/Link Policy               |
+| Snapshot/Materialization | **已实现**                 | 受管 CSV、不可变 Snapshot/Generation、质量与 Provenance             | 任意数据连接器和通用 ETL                         |
+| Object/Link Projection   | **已实现**                 | 共享 Base/Current、稳定 RID、类型化 Link、Head Set                  | Action Overlay 与冲突合并                        |
+| Index/Capacity           | **已实现**                 | 受限 Index Recipe、隔离 DDL、准入和实测库存                         | 无上限索引、任意 SQL、无限 Project               |
+| Job/Recovery/GC          | **已实现**                 | Lease Fencing、Checkpoint、Kill/Resume、Query Lease Root 和保守回收 | Preflight/Hold/Action Root 的已激活扫描          |
+| Query/Policy 持久事实    | **已实现**                 | Identity Type、Claim Mapping、Compilation、Epoch、Lease             | JWT/Delegation、Compiler/Gateway、Query SQL/HTTP |
+| Runtime Query/Policy     | **合同已冻结，执行未实现** | 严格合同与前向持久接缝                                              | Object/Property/Link Policy 执行和用户业务读权限 |
+| Action/Overlay/Audit     | **已规划，未实现**         | G2-04/G2-07 Owner 边界                                              | Action、ChangeSet、Outbox、完整 Audit 表         |
 
 ## 4. 总体模型：控制面与数据面分离
 
@@ -78,6 +80,8 @@ flowchart LR
   GEN --> ACT
   ACT --> SERVE["Serving Read Context"]
   HS --> SERVE
+  SERVE --> QL["Bounded Query Lease"]
+  QL --> GC["GC Generation Root"]
 ```
 
 控制面回答：
@@ -99,28 +103,28 @@ flowchart LR
 
 ### 5.1 Schema
 
-| Schema            |    当前对象规模 | 责任                                                      | 当前状态                           |
-| ----------------- | --------------: | --------------------------------------------------------- | ---------------------------------- |
-| `ontos_migration` |            1 表 | Migration 账本和内部约束函数                              | 已实现；Runtime 不可见             |
-| `meta`            |           18 表 | Project、Resource、Revision、Release、Package、Activation | 已实现                             |
-| `authz`           |            3 表 | Principal、管理 Role Binding、Authorization Epoch         | 管理权限已实现；业务 Policy 未实现 |
-| `runtime`         |  44 表 + 3 View | Snapshot、Generation、Projection、Cutover、Index/Capacity | 已实现到 G2-02                     |
-| `ops`             | 25 表 + 17 View | Job、Staging、质量、DDL、GC 和脱敏运维读面                | 已实现到 G2-02                     |
-| `action`          |            0 表 | Action/Overlay/Conflict 的预留边界                        | G2-04                              |
-| `audit`           |            0 表 | 完整 Audit/Outbox 的预留边界                              | G2-04/G2-07                        |
+| Schema            |    当前对象规模 | 责任                                                          | 当前状态                          |
+| ----------------- | --------------: | ------------------------------------------------------------- | --------------------------------- |
+| `ontos_migration` |            1 表 | Migration 账本和内部约束函数                                  | 已实现；Runtime 不可见            |
+| `meta`            |           18 表 | Project、Resource、Revision、Release、Package、Activation     | 已实现                            |
+| `authz`           |            6 表 | Principal/Binding/Epoch、Claim Mapping、Policy Compilation    | 持久边界已实现；Policy 执行待后续 |
+| `runtime`         |  46 表 + 3 View | Snapshot、Generation、Projection、Cutover、Index、Query Lease | 已实现到 G2-03-03                 |
+| `ops`             | 26 表 + 19 View | Job、Staging、质量、DDL、GC、Epoch 事实和脱敏运维读面         | 已实现到 G2-03-03                 |
+| `action`          |            0 表 | Action/Overlay/Conflict 的预留边界                            | G2-04                             |
+| `audit`           |            0 表 | 完整 Audit/Outbox 的预留边界                                  | G2-04/G2-07                       |
 
 ### 5.2 正式角色
 
-| 角色              | 用途                                                                    | 明确禁止                                       |
-| ----------------- | ----------------------------------------------------------------------- | ---------------------------------------------- |
-| `migration_owner` | 拥有 Schema、表、函数和 Migration 账本                                  | 作为 API/Worker 日常运行身份                   |
-| `api_runtime`     | 调用管理 API 所需的受控表列和函数                                       | 任意 DDL、裸写 Materialization 表、切换 Owner  |
-| `worker_runtime`  | Claim/Heartbeat Job，写入自己 Lease/Fencing Token 对应的 Staging 和进度 | Serving Head 任意写、API 管理写、DDL、任意删除 |
-| `read_only_ops`   | 读取脱敏 `ops` View                                                     | 裸读业务数据、裸读 Job 输入、任何写入          |
+| 角色              | 用途                                                             | 明确禁止                                           |
+| ----------------- | ---------------------------------------------------------------- | -------------------------------------------------- |
+| `migration_owner` | 拥有 Schema、表、函数和 Migration 账本                           | 作为 API/Worker 日常运行身份                       |
+| `api_runtime`     | 调用管理 API 与 Identity/Policy/Query Lease 所需的受控函数       | 任意 DDL、敏感事实裸表、Epoch 列直写、切换 Owner   |
+| `worker_runtime`  | Claim/Heartbeat Job、写入 Fencing 对应进度并有界过期 Query Lease | 业务 Object/Policy 读取、API 管理写、DDL、任意删除 |
+| `read_only_ops`   | 读取脱敏 `ops` View，包括 Lease/Epoch 汇总                       | 裸读业务数据、Policy Artifact、Job 输入、任何写入  |
 
 所有角色均为无登录、非 Superuser、不可创建 Database/Role、不可绕过 RLS 的能力角色。API、Worker 和 Ops 的登录身份只被授予各自需要的 Runtime 角色，不能成为 `migration_owner` 成员；只有受控部署身份可以为执行 Migration 获得 `SET ROLE migration_owner` 的能力。
 
-当前实现没有把业务授权依赖在一组尚未冻结的通用 RLS Policy 上。Project 复合键和最小数据库权限提供存储边界；G2-03 的 Object/Property/Link 授权仍必须由唯一 Policy Gateway 编译进参数化 SQL。数据库 Runtime 凭据不会直接发给浏览器或外部用户。
+新 G2-03 租户事实表使用 `FORCE ROW LEVEL SECURITY`，但 RLS 的 `ontos.project_id` 只由受信 Repository 设置，用于纵深隔离，不替代最终用户授权。Project 复合键和最小数据库权限继续提供存储边界；Object/Property/Link 授权仍必须由唯一 Policy Gateway 编译进参数化 SQL。数据库 Runtime 凭据不会直接发给浏览器或外部用户。
 
 动态 Index 由隔离的 Projection DDL Executor 执行。它只消费服务器已编译、持久化且可核验的 Index Plan/DDL Request，不接受客户端 Raw SQL 或任意 Identifier，也不共享 API/Worker 凭据。
 
@@ -182,20 +186,25 @@ erDiagram
 
 发布事务不等待 S3、Worker、网络或 `CREATE INDEX`。大工作必须在事务外完成并产生不可变证据，最终事务只做有界重验和指针切换。
 
-## 7. 身份与管理权限
+## 7. 身份、授权与 Policy 持久事实
 
-| 表                           | 作用                                                       | 关键约束                                                      |
-| ---------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------- |
-| `authz.principals`           | 把 `(oidc_issuer, oidc_subject)` 映射为稳定 Principal UUID | 外部身份唯一；Disabled 状态与时间一致                         |
-| `authz.role_bindings`        | Project 或 Resource 范围的管理角色                         | Owner/Editor/Viewer/Executor/Auditor；Active Binding 局部唯一 |
-| `authz.authorization_epochs` | Project 权限事实版本                                       | 单调递增；权限/可见性变化与 Epoch 同事务                      |
+| 表                                 | 作用                                                       | 关键约束                                                        |
+| ---------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
+| `authz.principals`                 | 把 `(oidc_issuer, oidc_subject)` 映射为稳定 Principal UUID | 外部身份唯一；`human                                            | service` 创建后不可变；Disabled 状态与时间一致 |
+| `authz.role_bindings`              | Project 或 Resource 范围的管理角色                         | Owner/Editor/Viewer/Executor/Auditor；Active Binding 局部唯一   |
+| `authz.authorization_epochs`       | Project 权限事实版本                                       | 只能通过受控函数单调递增；有效变化与 Epoch 同事务               |
+| `authz.claim_mapping_revisions`    | 有界 OIDC Claim Mapping 历史                               | Project/Issuer/Identity Type/Revision/Digest 唯一；不可改写     |
+| `authz.claim_mapping_heads`        | 当前生效 Claim Mapping 指针                                | 复合 FK 不跨边界；`control_sequence` CAS 单调切换               |
+| `authz.policy_compilations`        | Release-bound Policy IR/Test 结果                          | Pin/Revision/Digest/Compiler/Artifact/Vector 强绑定；不可改写   |
+| `ops.authorization_epoch_advances` | 每事务每 Project 的 Epoch 推进证明                         | `(project, transaction)` 去重；Append-only；提交后事务型 NOTIFY |
 
 重要边界：
 
-- 这三张表目前解决的是 Metadata/Release/Materialization Admin 权限；
-- G2-03 的 Object、Property、Link Policy 仍未实现；
+- 前三张表继续承载 Metadata/Release/Materialization Admin 权限；新增表只保存 Runtime Identity/Policy 的版本和编译事实；
+- G2-03-03 尚未实现真实 JWT Claim 求值、Delegation、Policy AST Compiler 或 Object/Property/Link SQL 执行；
 - 不能把 `role_bindings` 当成业务对象行过滤；
-- G2-03 会沿用 Principal 和 Epoch 历史，只向前增加 Human/Service 类型、Claim Mapping 与 Policy Artifact，不重建第二套身份表。
+- `policy_compilations` 只能引用 Release Pin 中通过验证的 Policy Revision，Runtime Resolver 只返回 `passed` 结果；
+- Claim Mapping Head、Role Binding、Principal Disable 和 Metadata 发布都通过同一 Epoch 函数推进，事务回滚时事实、Epoch 与通知一起消失。
 
 ## 8. Snapshot、Generation 与共享投影
 
@@ -430,9 +439,10 @@ Inventory → Root Scan → Mark → Immutable Plan → Batched Commit
 - 当前/在建 Head Set；
 - Active/Retry Job 和 Attempt；
 - 历史 Activation Member；
+- committed 且未过期 Query Lease 的完整 Generation Set；
 - 每个 Member 最近两个成功非活动 Generation。
 
-未来的 Query Lease、Preflight Token、Investigation Hold、Historical Action/ChangeSet/Artifact 已在 `ops.gc_root_provider_registry` 中保留 Provider 槽位。能力尚未上线时是 `INACTIVE`，不能假装“已扫描且为空”；一旦能力激活但 Provider 缺失、失败或版本不匹配，GC 必须返回 `GC_REFERENCE_SCAN_INCOMPLETE` 且不生成候选。
+`runtime.query-lease` Provider 已由 0023 激活，并进入 Root State Digest、Provider Scan 和 `ops.gc_generation_roots`。未来的 Preflight Token、Investigation Hold、Historical Action/ChangeSet/Artifact 仍在 `ops.gc_root_provider_registry` 中保留 Provider 槽位；能力尚未上线时是 `INACTIVE`，不能假装“已扫描且为空”。一旦已激活 Provider 缺失、失败或版本不匹配，GC 必须返回 `GC_REFERENCE_SCAN_INCOMPLETE` 且不生成候选。
 
 GC 计划绑定 Project 的 Root Revision、Inventory Revision、Provider Registry Digest、Candidate 和实际字节。任一事实变化都会使旧计划失效。关系数据按固定顺序小批提交，不使用 `CASCADE`；动态 Index Drop 仍由隔离 DDL Executor 重验并执行。
 
@@ -447,6 +457,7 @@ GC 计划绑定 Project 的 Root Revision、Inventory Revision、Provider Regist
 ### 14.2 不可变事实与前向状态
 
 - Published Revision、Release Pin、Activation Member、Snapshot File、Generation、Base/Current、Certificate、Report、Provenance 等事实不原地改正文；
+- Claim Mapping Revision、Policy Compilation/Test Artifact、Epoch Advance History 和 Lease Generation 成员同样不原地改写；
 - 可变控制记录只允许有限状态迁移、单调版本或 CAS 指针更新；
 - 更新/删除由列级 Grant、CHECK/FK、Trigger 和负面 Integration 共同阻断；
 - 业务回滚创建新 Release/Activation，不改写历史。
@@ -465,42 +476,48 @@ GC 计划绑定 Project 的 Root Revision、Inventory Revision、Provider Regist
 
 ## 15. 关键事务与锁边界
 
-| 场景                   | 原子边界                                   | 并发控制                                   | 失败结果                       |
-| ---------------------- | ------------------------------------------ | ------------------------------------------ | ------------------------------ |
-| Migration              | 每个版本独立事务                           | 全 Runner Session Advisory Lock + 账本复验 | 无半套 Schema/伪账本           |
-| 创建 Project           | Project + Owner Binding + Epoch            | 唯一键和事务                               | 三者全部无或全部有             |
-| 修改 Draft             | 单 Revision                                | `etag` Compare-and-Swap                    | 一个 Writer 成功，其他稳定冲突 |
-| Publish Release        | Release/Activation/Channel/Package 指针    | Project 发布序列 + 行锁/CAS                | 旧发布状态完整保留             |
-| Finalize Upload        | Upload Session + Snapshot File 事实        | Object Version/Digest/状态重验             | 未完成上传不成为 Snapshot      |
-| Claim Job              | Job + Attempt + Lease                      | `SKIP LOCKED` + Fencing Token              | 只有一个有效 Worker            |
-| Promote Base           | Attempt Staging → immutable Base           | Attempt/Generation/Fencing 重验            | 不留下部分 Base                |
-| Finalize Quality       | Report + Current + Provenance + Generation | Digest/Count/状态绑定                      | 不合格代不进入 READY           |
-| Snapshot Group Cutover | Activation + Head Set Pointer +控制版本    | 全局锁序 + Candidate 重验 + CAS            | 完整旧代或完整新代             |
-| GC Batch               | Plan Entry + Collection Marker +物理删除   | Root/Inventory Revision 每批复验           | 已提交批次幂等，未提交批次回滚 |
+| 场景                   | 原子边界                                    | 并发控制                                   | 失败结果                        |
+| ---------------------- | ------------------------------------------- | ------------------------------------------ | ------------------------------- |
+| Migration              | 每个版本独立事务                            | 全 Runner Session Advisory Lock + 账本复验 | 无半套 Schema/伪账本            |
+| 创建 Project           | Project + Owner Binding + Epoch             | 唯一键和事务                               | 三者全部无或全部有              |
+| 修改 Draft             | 单 Revision                                 | `etag` Compare-and-Swap                    | 一个 Writer 成功，其他稳定冲突  |
+| Publish Release        | Release/Activation/Channel/Package 指针     | Project 发布序列 + 行锁/CAS                | 旧发布状态完整保留              |
+| Finalize Upload        | Upload Session + Snapshot File 事实         | Object Version/Digest/状态重验             | 未完成上传不成为 Snapshot       |
+| Claim Job              | Job + Attempt + Lease                       | `SKIP LOCKED` + Fencing Token              | 只有一个有效 Worker             |
+| Promote Base           | Attempt Staging → immutable Base            | Attempt/Generation/Fencing 重验            | 不留下部分 Base                 |
+| Finalize Quality       | Report + Current + Provenance + Generation  | Digest/Count/状态绑定                      | 不合格代不进入 READY            |
+| Snapshot Group Cutover | Activation + Head Set Pointer +控制版本     | 全局锁序 + Candidate 重验 + CAS            | 完整旧代或完整新代              |
+| 授权事实变化           | Binding/Principal/Mapping + Epoch + NOTIFY  | Project Epoch 行锁 + 事务 ID 去重          | 新事实、Epoch 和通知全部回滚    |
+| Query Lease            | Plan 固定完整 Generation Set，再 CAS Commit | GC Root 串行锁 + Epoch/Serving/成员重验    | planned 不成 Root；失败不读数据 |
+| GC Batch               | Plan Entry + Collection Marker +物理删除    | Root/Inventory Revision 每批复验           | 已提交批次幂等，未提交批次回滚  |
 
 ## 16. 迁移与演进规则
 
 ### 16.1 当前规则
 
 - 所有数据库变化继续进入 `migrations/db-00/` 的单一连续账本；
-- 文件名必须是 `NNNN_lower_snake_case.sql`，当前最后版本为 `0021`；
+- 文件名必须是 `NNNN_lower_snake_case.sql`，当前最后版本为 `0024`；
 - 已应用文件不能改名、移动或修改字节，否则 Hash 账本判定历史漂移；
 - 不提供自动 Down Migration，错误通过更高版本 Roll Forward 修复；
 - 每个 Migration 在同一事务创建对象、设置 Owner、撤销默认权限、显式 Grant 并登记账本；
 - 当前只接受已验证的 PostgreSQL 16。
 
-### 16.2 下一逻辑波次
+### 16.2 G2-03-03 已完成逻辑波次
 
-G2-03 如通过 `03-01` 架构 Spike，才允许从 `0022+` 增加：
+`0022`～`0024` 已只向前增加：
 
-- Human/Service Identity 类型的前向扩展；
-- 版本化 OIDC Claim Mapping；
-- Policy Compilation/Test Artifact 引用；
-- Query Lease/Generation Root；
-- Policy Resource 的确定性 Dependency Type；
-- 所有有效授权变化与 Authorization Epoch 的同事务推进/通知。
+- Human/Service Identity 类型和历史 Human 回填；
+- 版本化 OIDC Claim Mapping Revision/Head；
+- Release-bound Policy Compilation/Test Artifact 引用；
+- Query Lease/Generation Root 和激活的 GC Provider；
+- Policy Resource 的确定性 Dependency Type 与持久化期 fail-closed Validator；
+- 所有已接入有效授权变化与 Authorization Epoch 的同事务推进/通知。
 
-表名、列和索引必须在 G2-03-03 Migration 任务中冻结。本文不会提前虚构这些表，也不会把 G2-03 候选责任写成已落库事实。
+三个 Migration 的表名、列、索引、Trigger、RLS 和 Grant 已由 G2-03-03 冻结。后续不得修改这些历史文件；语义修复必须使用 `0025+`。
+
+### 16.3 后续逻辑波次
+
+G2-03-04～12 只有在确有新增持久事实时才使用 `0025+`，不能为了应用包组织重建第二套 Principal、Policy Artifact、Release、Activation、Generation、Epoch 或 GC Root。当前明确下一项 G2-03-04 先消费已有 Identity/Claim Mapping 接缝，是否需要 Replay/Key 等新事实以其 ADR 和故障模型为准。
 
 G2-04 才拥有：
 
@@ -511,31 +528,32 @@ G2-04 才拥有：
 
 ## 17. 当前明确缺口与风险
 
-| 缺口                                                    | 是否当前缺陷                                         | 处理 Gate   |
-| ------------------------------------------------------- | ---------------------------------------------------- | ----------- |
-| Object/Property/Link Policy 未落库                      | 不是 G2-02 缺陷，但阻止公开 Runtime Read             | G2-03       |
-| Query Lease/GC Root 未激活                              | 不是当前无 Query 时的缺陷；Query 上线前必须完成      | G2-03       |
-| `action`/`audit` 无业务表                               | 诚实的延后范围                                       | G2-04/G2-07 |
-| Current 尚无真实 Overlay                                | 由 zero-overlay Inventory fail closed 保护           | G2-04       |
-| 只有 1 个 data-bearing Project 的证据包络               | 当前容量限制，不是 Schema 单租户                     | G2-07       |
-| 无完整 PITR/HA/跨区恢复承诺                             | 不影响 clean-room 功能证明，但阻止生产运维成熟度声明 | G2-07       |
-| 共享 JSONB Projection 的 Query 性能尚未通过 Policy 负载 | G2-02 只证明物化/索引；不能外推查询 SLO              | G2-03-09/14 |
-| 完整 Query/Action Audit 保留策略未实现                  | 当前只有结构化证据和运维事实                         | G2-04/G2-07 |
+| 缺口                                                    | 是否当前缺陷                                         | 处理 Gate    |
+| ------------------------------------------------------- | ---------------------------------------------------- | ------------ |
+| Policy 编译事实已落库，但 AST Compiler/Gateway 未实现   | 持久边界不是执行能力；仍阻止公开 Runtime Read        | G2-03-05/06  |
+| Query Lease/GC Root 已激活，但 Query 请求尚未消费       | GC 接缝已闭合；真实读取入口仍须 Plan/Commit/Release  | G2-03-07～12 |
+| Claim Mapping 已版本化，但 JWT/Delegation 未实现        | 不能把数据库记录宣称为已认证身份                     | G2-03-04     |
+| `action`/`audit` 无业务表                               | 诚实的延后范围                                       | G2-04/G2-07  |
+| Current 尚无真实 Overlay                                | 由 zero-overlay Inventory fail closed 保护           | G2-04        |
+| 只有 1 个 data-bearing Project 的证据包络               | 当前容量限制，不是 Schema 单租户                     | G2-07        |
+| 无完整 PITR/HA/跨区恢复承诺                             | 不影响 clean-room 功能证明，但阻止生产运维成熟度声明 | G2-07        |
+| 共享 JSONB Projection 的 Query 性能尚未通过 Policy 负载 | G2-02 只证明物化/索引；不能外推查询 SLO              | G2-03-09/14  |
+| 完整 Query/Action Audit 保留策略未实现                  | 当前只有结构化证据和运维事实                         | G2-04/G2-07  |
 
 ## 18. 物理对象清单
 
-以下是当前 91 张基础表的责任分组。这里用于查找，不替代 Migration 列定义。
+以下是当前 97 张基础表的责任分组。这里用于查找，不替代 Migration 列定义。
 
-### 18.1 Migration、Metadata 与 AuthZ（22 表）
+### 18.1 Migration、Metadata 与 AuthZ（25 表）
 
 - Migration：`ontos_migration.schema_migrations`
 - Project/Resource：`meta.projects`, `meta.resources`, `meta.resource_revisions`, `meta.resource_dependencies`, `meta.validation_reports`
 - Release：`meta.releases`, `meta.release_pins`, `meta.release_channels`, `meta.release_serving_heads`, `meta.runtime_activations`, `meta.runtime_activation_members`
 - Runtime Plan：`meta.release_runtime_plans`, `meta.release_runtime_plan_members`
 - Package：`meta.packages`, `meta.package_revisions`, `meta.package_installations`, `meta.package_installation_changes`, `meta.artifact_references`
-- AuthZ：`authz.principals`, `authz.role_bindings`, `authz.authorization_epochs`
+- AuthZ：`authz.principals`, `authz.role_bindings`, `authz.authorization_epochs`, `authz.claim_mapping_revisions`, `authz.claim_mapping_heads`, `authz.policy_compilations`
 
-### 18.2 Runtime 数据与控制事实（44 表）
+### 18.2 Runtime 数据与控制事实（46 表）
 
 - Snapshot：`runtime.snapshot_groups`, `runtime.snapshot_group_versions`, `runtime.snapshot_group_definition_members`, `runtime.snapshot_group_members`, `runtime.dataset_snapshots`, `runtime.snapshot_files`, `runtime.snapshot_upload_sessions`
 - Generation/报告：`runtime.generations`, `runtime.compatibility_certificates`, `runtime.materialization_reports`, `runtime.materialization_report_reasons`, `runtime.materialization_confirmations`, `runtime.materialization_quality_bindings`
@@ -543,20 +561,23 @@ G2-04 才拥有：
 - Head/Cutover：`runtime.object_head_candidates`, `runtime.object_head_sets`, `runtime.object_head_versions`, `runtime.project_object_head_pointers`, `runtime.snapshot_group_cutover_preparations`, `runtime.snapshot_group_cutover_release_candidates`, `runtime.snapshot_group_cutover_member_candidates`, `runtime.snapshot_group_cutover_head_candidates`, `runtime.snapshot_group_cutover_object_type_locks`, `runtime.activation_content_bindings`
 - Index/Capacity：`runtime.index_plans`, `runtime.index_plan_entries`, `runtime.index_inventory`, `runtime.index_plan_admissions`, `runtime.capacity_admissions`, `runtime.capacity_approvals`, `runtime.source_forecasts`, `runtime.project_physical_measurements`, `runtime.project_runtime_inventories`, `runtime.generation_measurements`
 - Collection/部署边界：`runtime.generation_collections`, `runtime.head_set_collections`, `runtime.materialization_report_collections`, `runtime.data_bearing_project_guard`
+- Query Lease：`runtime.query_leases`, `runtime.query_lease_generations`
 
-### 18.3 Operations（25 表）
+### 18.3 Operations（26 表）
 
 - Job：`ops.materialization_jobs`, `ops.materialization_attempts`, `ops.materialization_checkpoints`, `ops.materialization_staged_batches`, `ops.materialization_error_samples`, `ops.materialization_job_error_samples`
 - Staging：`ops.materialization_generation_stages`, `ops.materialization_generation_stage_batches`, `ops.object_base_staging`, `ops.link_base_staging`
 - Quality：`ops.materialization_quality_observations`, `ops.materialization_quality_preparations`, `ops.materialization_provenance_templates`
 - DDL：`ops.projection_ddl_requests`
 - GC：`ops.gc_runs`, `ops.gc_plans`, `ops.gc_plan_candidates`, `ops.gc_plan_entries`, `ops.gc_root_provider_registry`, `ops.gc_root_epochs`, `ops.gc_root_provider_scans`, `ops.gc_orphan_deletions`, `ops.gc_batch_events`, `ops.gc_execution_contexts`, `ops.materialization_attempt_collections`
+- Authorization：`ops.authorization_epoch_advances`
 
-### 18.4 当前 20 个受控 View
+### 18.4 当前 22 个受控 View
 
 - Runtime：`runtime.object_heads`, `runtime.current_compatibility_certificates`, `runtime.materialization_admin_capacity_approvals`
 - Job/Ingress/Inventory：`ops.materialization_job_status`, `ops.snapshot_ingress_status`, `ops.runtime_inventory_status`, `ops.materialization_admin_report_samples`, `ops.projection_ddl_request_status`
 - GC：`ops.gc_status`, `ops.gc_provider_registry_status`, `ops.gc_provider_scan_status`, `ops.gc_live_provider_scans`, `ops.gc_generation_roots`, `ops.gc_generation_inventory`, `ops.gc_head_set_inventory`, `ops.gc_index_inventory`, `ops.gc_attempt_inventory`, `ops.gc_orphan_upload_inventory`, `ops.gc_plan_status`, `ops.gc_plan_entry_status`
+- Query/AuthZ：`ops.query_lease_status`, `ops.authorization_epoch_advance_status`
 
 这些 View 主要用于最小权限、脱敏和稳定读合同。`read_only_ops` 不因为能读 View 就能读其底层业务表。
 
@@ -574,10 +595,10 @@ G2-04 才拥有：
 | Worker 过期后不能写           | [`0013_materialization_job_worker.sql`](../../migrations/db-00/0013_materialization_job_worker.sql) + 两 Worker Integration                    | 一致                       |
 | Runtime 最小权限              | [`materialization-postgres.integration.test.ts`](../../tools/database/materialization-postgres.integration.test.ts) 裸表、DDL、`SET ROLE` 负测 | 一致                       |
 | GC 缺 Root 时 fail closed     | [`0017_generation_index_gc.sql`](../../migrations/db-00/0017_generation_index_gc.sql) Provider Registry、Root Epoch、计划陈旧性检查            | 一致                       |
-| Query/Policy 已完成           | 当前无相应生产 Package/Migration/Endpoint                                                                                                      | **未实现，本文明确不声明** |
+| Query/Policy 持久边界已完成   | [`0022`～`0024`](../../migrations/db-00/) + Query Policy Persistence/真实 Lease GC Integration                                                 | 一致；执行层仍明确未实现   |
 | Action/Overlay/Audit 已完成   | `action`/`audit` 当前无业务表                                                                                                                  | **未实现，本文明确不声明** |
 
-当前没有发现需要回滚 G2-01/G2-02 的阻断性设计—实现偏差。后续最大数据库风险不是现有表无法使用，而是 G2-03 Query/Policy 或 G2-04 Overlay 若绕过现有 Activation、Generation、Head Set、Epoch 和 GC Root 接缝，会制造第二套真相；对应任务包已把这种情况列为停止条件。
+当前没有发现需要回滚 G2-01/G2-02 或 G2-03-03 的阻断性设计—实现偏差。后续最大数据库风险不是现有表无法使用，而是 Identity/Policy/Query 或 G2-04 Overlay 若绕过现有 Principal、Release、Activation、Generation、Head Set、Epoch、Query Lease 和 GC Root 接缝，会制造第二套真相；对应任务包已把这种情况列为停止条件。
 
 ## 20. 相关文档
 
@@ -594,4 +615,6 @@ G2-04 才拥有：
 - [ADR-019 Generation/Index GC](adr/019-generation-index-mark-plan-commit-gc.md)
 - [G2-02 Materialization 任务包](../delivery/g2-02-materialization-task-pack.md)
 - [G2-03 Query + Policy 任务包](../delivery/g2-03-query-policy-task-pack.md)
+- [ADR-021 Query/Policy 持久事实与 Query Lease](adr/021-query-policy-persistence-boundary.md)
+- [G2-03-03 Query/Policy Persistence Evidence](../evidence/g2-03-03-query-policy-persistence.md)
 - [G2-03 UI/API 消费者合同](g2-03-ui-api-consumer-contract.md)

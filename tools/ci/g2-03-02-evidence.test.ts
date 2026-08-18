@@ -107,20 +107,24 @@ void test("accepts the complete G2-03-02 contract evidence snapshot", () => {
   assert.deepEqual(evaluateG20302EvidenceSnapshot(validSnapshot(), policy), []);
 });
 
-void test("rejects Migration, Web, and formal Query implementation before G2-03-03", () => {
+void test("rejects an unplanned future Migration, Web, and formal Query implementation", () => {
   const snapshot = validSnapshot();
   const violations = evaluateG20302EvidenceSnapshot(
     {
       ...snapshot,
       changedFiles: [
-        "migrations/db-00/0022_query_policy.sql",
+        "migrations/db-00/0025_unplanned.sql",
         "apps/web/src/main.tsx",
         "packages/query/src/compiler.ts",
       ],
     },
     policy,
   );
-  assert.equal(violations.filter((value) => value.includes("forbids changed path")).length, 3);
+  assert.equal(violations.filter((value) => value.includes("forbids changed path")).length, 2);
+  assert.equal(
+    violations.some((value) => value.includes("does not allow changed path migrations/")),
+    true,
+  );
 });
 
 void test("rejects a Generated Client that is no longer deterministic or private", () => {

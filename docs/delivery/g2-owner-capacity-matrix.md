@@ -182,9 +182,17 @@
 - HeyAPI 0.99 Transport 源码的 TS6 exact optional 不兼容被限制在生成阶段；包根只暴露确定性 JavaScript 与声明，并由严格 Web 形状消费者通过包名创建 Client、调用 Search。根工程未放宽，浏览器真 HTTP 接缝仍在 G2-03-12/13 验证。
 - 当前只放行 **G2-03-03**：从 0022 起建立 Query/Policy/Identity/Lease 前向事实与最小权限；未 PASS 前不建 Runtime Endpoint 或产品页。
 
+### G2-03-03 后检查点（2026-08-18）
+
+- G2-03-03 已 PASS，当前进度为 **3/15**；连续 Migration 到 0024，Principal Human/Service、版本化 Claim Mapping、Release-bound Policy Compilation/Test、事务型 Authorization Epoch/NOTIFY 和 Query Lease/GC Root 已进入正式持久层。
+- 历史 21 个 Migration 的名称/Hash 保持不变；空库/历史库、并发 Runner、逐版本回滚、真实 `api_runtime`/`worker_runtime`/`read_only_ops` 与 G2-02 Serving Generation/GC 闭环均通过。
+- 结构性停止条件未触发，且没有要求改写 Release、Activation、Generation、GC 或 Runtime Read 合同。完成的 2 个 M + 1 个 L 从原 55–90 理想工程日中扣除后，剩余 4 个 L + 8 个 M 重估为 **9–15 工程周**（44–72 理想工程日）单通道容量情景。
+- 最大未知已转为真实 JWT/Claim Mapping/Delegation、Policy Compiler/Gateway 与 Policy 下的 Query 性能；自动化 Migration 的短墙钟不用于压缩这些工作。下一次强制重估仍在 G2-03-09 的 10k Object/100k Link Query 薄切片后。
+- 当前只放行 **G2-03-04** Runtime Identity、Claim Mapping 求值与 Delegation 交集；未 PASS 前不开始 Policy Compiler、Query Endpoint 或产品页。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01、G2-02 与 G2-03-01～02 已 PASS；当前只允许执行 G2-03-03，未 PASS 前不得直接建 Query Endpoint、产品页或 Action。
+1. G2-00、G2-01、G2-02 与 G2-03-01～03 已 PASS；当前只允许执行 G2-03-04，未 PASS 前不得直接建 Policy Compiler、Query Endpoint、产品页或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

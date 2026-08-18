@@ -103,17 +103,17 @@ void test("accepts the complete G2-03-01 architecture evidence snapshot", () => 
   assert.deepEqual(evaluateG20301EvidenceSnapshot(validSnapshot(), policy), []);
 });
 
-void test("rejects a Migration or formal Web application before G2-03-01 passes", () => {
+void test("rejects an unplanned future Migration or formal Web application", () => {
   const snapshot = validSnapshot();
   const violations = evaluateG20301EvidenceSnapshot(
     {
       ...snapshot,
-      changedFiles: ["migrations/db-00/0022_query_policy.sql", "apps/web/src/main.tsx"],
+      changedFiles: ["migrations/db-00/0025_unplanned.sql", "apps/web/src/main.tsx"],
     },
     policy,
   );
   assert.equal(
-    violations.some((value) => value.includes("forbids changed path migrations/")),
+    violations.some((value) => value.includes("does not allow changed path migrations/")),
     true,
   );
   assert.equal(

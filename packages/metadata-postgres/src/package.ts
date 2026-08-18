@@ -569,12 +569,12 @@ async function lockProjectAndAssertOwner(
               WHERE principal.principal_id = $2 AND principal.state = 'active'
             ) AS allowed
      FROM meta.projects AS project
-     JOIN authz.authorization_epochs AS epoch ON epoch.project_id = project.project_id
      WHERE project.project_id = $1
-     FOR UPDATE OF project, epoch`,
+     FOR UPDATE OF project`,
     [projectId, principalId],
   );
   const row = requireRow(result.rows[0], "Project control state does not exist.", "NOT_FOUND");
+  await client.query(`SELECT authz.lock_authorization_epoch($1)`, [projectId]);
   if (row.state !== "active") {
     throw new MetadataApplicationError("INVALID_STATE", "Archived Project cannot change Packages.");
   }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 import { arch, cpus, freemem, platform, tmpdir, totalmem } from "node:os";
@@ -252,6 +252,15 @@ const ids = {
   qualityObjectReportV3: "30000000-0000-4000-8000-000000000029",
   qualityConfirmationV3: "30000000-0000-4000-8000-00000000002a",
   qualityConfirmationV2Race: "30000000-0000-4000-8000-00000000002b",
+  policyResource: "60000000-0000-4000-8000-000000000001",
+  policyRevision: "60000000-0000-4000-8000-000000000002",
+  policyValidation: "60000000-0000-4000-8000-000000000003",
+  policyCompilation: "60000000-0000-4000-8000-000000000004",
+  policyArtifact: "60000000-0000-4000-8000-000000000005",
+  policyTestReport: "60000000-0000-4000-8000-000000000006",
+  queryLease: "60000000-0000-4000-8000-000000000007",
+  expiredQueryLease: "60000000-0000-4000-8000-000000000008",
+  staleQueryLease: "60000000-0000-4000-8000-000000000009",
 } as const;
 
 let activatedRelease2Id: string = ids.activation1;
@@ -348,7 +357,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -429,6 +438,7 @@ void test(
       await withClient(apiConfig, async (api) => {
         await publishA1(api);
       });
+      await exerciseQueryPolicyLeaseBoundary(adminConfig, apiConfig, worker1Config);
       await withClient(adminConfig, async (admin) => {
         assert.deepEqual(await activationSnapshot(admin, ids.activation0), beforeUpgrade);
         await assertA1AndCrossProjectGuards(admin);
@@ -551,7 +561,7 @@ async function createPublishedResource(
     readonly resourceId: string;
     readonly revisionId: string;
     readonly reportId: string;
-    readonly family: "object_type" | "snapshot_schema" | "mapping";
+    readonly family: "object_type" | "snapshot_schema" | "mapping" | "policy";
     readonly apiName: string;
     readonly contentDigest: string;
     readonly content?: unknown;
@@ -582,8 +592,13 @@ async function createPublishedResource(
        (report_id, subject_type, subject_id, resource_revision_id,
         subject_digest, validation_context_digest, validator_version, valid, issues)
      VALUES ($1, 'resource_revision', $2, $2, $3, $3,
-             'metadata-g2-01-v1', TRUE, '[]'::jsonb)`,
-    [input.reportId, input.revisionId, input.contentDigest],
+             $4, TRUE, '[]'::jsonb)`,
+    [
+      input.reportId,
+      input.revisionId,
+      input.contentDigest,
+      input.family === "policy" ? "policy-g2-03-v1" : "metadata-g2-01-v1",
+    ],
   );
   await client.query(
     `UPDATE meta.resource_revisions
@@ -601,6 +616,10 @@ async function prepareRuntimeFacts(
   client: pg.Client,
   prepareIndexPlan?: () => Promise<ProjectionBenchmarkPlan>,
 ): Promise<ProjectionBenchmarkPlan | undefined> {
+  await client.query(
+    "INSERT INTO authz.authorization_epochs (project_id) VALUES ($1) ON CONFLICT DO NOTHING",
+    [ids.project],
+  );
   await createPublishedResource(client, {
     resourceId: ids.schemaResource,
     revisionId: ids.schemaRevision,
@@ -618,6 +637,15 @@ async function prepareRuntimeFacts(
     apiName: "OrderCsvMapping",
     contentDigest: digests.mapping,
     content: capacityObjectMappingDefinition(),
+  });
+  await createPublishedResource(client, {
+    resourceId: ids.policyResource,
+    revisionId: ids.policyRevision,
+    reportId: ids.policyValidation,
+    family: "policy",
+    apiName: "DefaultReadPolicy",
+    contentDigest: sha256Digest("g2-03-default-read-policy"),
+    content: { schemaVersion: 1, effect: "allow", target: "object:Order" },
   });
   if (projectionCapacityMode) {
     await prepareLinkTypeFacts(client);
@@ -659,6 +687,13 @@ async function prepareRuntimeFacts(
     [0, ids.objectResource, ids.objectRevision, "object_type", digests.object],
     [1, ids.schemaResource, ids.schemaRevision, "snapshot_schema", digests.schema],
     [2, ids.mappingResource, ids.mappingRevision, "mapping", digests.mapping],
+    [
+      3,
+      ids.policyResource,
+      ids.policyRevision,
+      "policy",
+      sha256Digest("g2-03-default-read-policy"),
+    ],
   ] as const) {
     await client.query(
       `INSERT INTO meta.release_pins
@@ -669,9 +704,9 @@ async function prepareRuntimeFacts(
   }
   if (projectionCapacityMode) {
     for (const [order, resourceId, revisionId, family] of [
-      [3, ids.linkResource, ids.linkRevision, "link_type"],
-      [4, ids.linkSchemaResource, ids.linkSchemaRevision, "snapshot_schema"],
-      [5, ids.linkMappingResource, ids.linkMappingRevision, "mapping"],
+      [4, ids.linkResource, ids.linkRevision, "link_type"],
+      [5, ids.linkSchemaResource, ids.linkSchemaRevision, "snapshot_schema"],
+      [6, ids.linkMappingResource, ids.linkMappingRevision, "mapping"],
     ] as const) {
       await client.query(
         `INSERT INTO meta.release_pins
@@ -6402,6 +6437,316 @@ async function cutoverAtomicState(pool: pg.Pool): Promise<unknown> {
   return result.rows[0];
 }
 
+async function exerciseQueryPolicyLeaseBoundary(
+  adminConfig: pg.ClientConfig,
+  apiConfig: pg.ClientConfig,
+  workerConfig: pg.ClientConfig,
+): Promise<void> {
+  const policyContentDigest = sha256Digest("g2-03-default-read-policy");
+  const policyArtifactDigest = sha256Digest("g2-03-compiled-policy-artifact");
+  const policyTestReportDigest = sha256Digest("g2-03-policy-test-report");
+  const identityContextHash = sha256Digest("g2-03-verified-identity-context");
+  const policyContextHash = sha256Digest("g2-03-policy-context");
+
+  await withClient(apiConfig, async (api) => {
+    const compilation = await api.query<{
+      readonly policy_compilation_id: string;
+      readonly status: string;
+    }>(
+      `SELECT policy_compilation_id::text, status
+       FROM authz.record_policy_compilation(
+         $1, $2, $3, $4, $5, $6, 'policy-sql-v1',
+         $7, $8, $9, $10, 4, 4, 0, 'passed'
+       )`,
+      [
+        ids.project,
+        ids.policyCompilation,
+        ids.release2,
+        ids.policyResource,
+        ids.policyRevision,
+        policyContentDigest,
+        ids.policyArtifact,
+        policyArtifactDigest,
+        ids.policyTestReport,
+        policyTestReportDigest,
+      ],
+    );
+    assert.deepEqual(compilation.rows[0], {
+      policy_compilation_id: ids.policyCompilation,
+      status: "passed",
+    });
+
+    const epochResult = await api.query<{ readonly epoch: string }>(
+      "SELECT epoch::text FROM authz.authorization_epochs WHERE project_id = $1",
+      [ids.project],
+    );
+    const authorizationEpoch = BigInt(required(epochResult.rows[0]).epoch);
+    await assertPgCode(
+      api.query(
+        `SELECT * FROM runtime.plan_query_lease(
+           $1, $2, $3, $4, $5, $6, $7, $8, 'g20303-stale-epoch', 30
+         )`,
+        [
+          ids.project,
+          ids.staleQueryLease,
+          ids.release2,
+          ids.policyCompilation,
+          identityContextHash,
+          (authorizationEpoch + 1n).toString(),
+          policyContextHash,
+          sha256Digest("g2-03-stale-query"),
+        ],
+      ),
+      "40001",
+    );
+
+    const planned = await api.query<{
+      readonly activation_id: string;
+      readonly generation_count: number;
+      readonly state: string;
+      readonly control_sequence: string;
+    }>(
+      `SELECT activation_id::text, generation_count, state, control_sequence::text
+       FROM runtime.plan_query_lease(
+         $1, $2, $3, $4, $5, $6, $7, $8, 'g20303-real-serving-query', 30
+       )`,
+      [
+        ids.project,
+        ids.queryLease,
+        ids.release2,
+        ids.policyCompilation,
+        identityContextHash,
+        authorizationEpoch.toString(),
+        policyContextHash,
+        sha256Digest("g2-03-real-serving-query"),
+      ],
+    );
+    assert.equal(planned.rows[0]?.activation_id, activatedRelease2Id);
+    assert.equal(planned.rows[0]?.generation_count, projectionCapacityMode ? 2 : 1);
+    assert.equal(planned.rows[0]?.state, "planned");
+    assert.equal(planned.rows[0]?.control_sequence, "0");
+    await withClient(adminConfig, async (admin) => {
+      assert.equal(await queryLeaseRootCount(admin, ids.queryLease), 0);
+    });
+
+    const committed = await api.query<{
+      readonly state: string;
+      readonly control_sequence: string;
+      readonly expires_at: Date;
+    }>(
+      `SELECT state, control_sequence::text, expires_at
+       FROM runtime.commit_query_lease($1, $2, 0)`,
+      [ids.project, ids.queryLease],
+    );
+    assert.equal(committed.rows[0]?.state, "committed");
+    assert.equal(committed.rows[0]?.control_sequence, "1");
+
+    await withClient(adminConfig, async (admin) => {
+      const expected = await admin.query<{ readonly generation_id: string }>(
+        `SELECT generation_id::text
+         FROM meta.runtime_activation_members
+         WHERE project_id = $1 AND release_id = $2 AND activation_id = $3
+         ORDER BY generation_id`,
+        [ids.project, ids.release2, activatedRelease2Id],
+      );
+      const roots = await admin.query<{ readonly generation_id: string }>(
+        `SELECT generation_id::text
+         FROM ops.gc_generation_roots
+         WHERE project_id = $1 AND root_kind = 'QUERY_LEASE' AND root_id = $2
+         ORDER BY generation_id`,
+        [ids.project, ids.queryLease],
+      );
+      const rootDiagnostic = await admin.query<{ readonly state: unknown }>(
+        `SELECT jsonb_build_object(
+           'databaseNow', clock_timestamp(),
+           'lease', (SELECT to_jsonb(lease) FROM runtime.query_leases AS lease
+                     WHERE lease.project_id = $1 AND lease.query_lease_id = $2),
+           'members', (SELECT jsonb_agg(to_jsonb(member))
+                       FROM runtime.query_lease_generations AS member
+                       WHERE member.project_id = $1 AND member.query_lease_id = $2),
+           'queryRoots', (SELECT jsonb_agg(to_jsonb(root))
+                          FROM ops.gc_generation_roots AS root
+                          WHERE root.project_id = $1 AND root.root_kind = 'QUERY_LEASE')
+         ) AS state`,
+        [ids.project, ids.queryLease],
+      );
+      assert.deepEqual(
+        roots.rows,
+        expected.rows,
+        JSON.stringify(required(rootDiagnostic.rows[0]).state),
+      );
+      const scan = await admin.query<{
+        readonly status: string;
+        readonly provider_version: string;
+        readonly root_count: string;
+        readonly root_digest: string;
+      }>(
+        `SELECT status, provider_version, root_count::text, root_digest
+         FROM ops.gc_live_provider_scans
+         WHERE project_id = $1 AND capability_key = 'runtime.query-lease'`,
+        [ids.project],
+      );
+      assert.equal(scan.rows[0]?.status, "COMPLETE");
+      assert.equal(scan.rows[0]?.provider_version, "v1");
+      assert.equal(scan.rows[0]?.root_count, String(expected.rows.length));
+      assert.match(scan.rows[0]?.root_digest ?? "", /^sha256:[0-9a-f]{64}$/u);
+    });
+
+    const heartbeat = await api.query<{
+      readonly state: string;
+      readonly control_sequence: string;
+      readonly expires_at: Date;
+      readonly max_expires_at: Date;
+      readonly acquired_at: Date;
+    }>(
+      `SELECT state, control_sequence::text, expires_at, max_expires_at, acquired_at
+       FROM runtime.heartbeat_query_lease($1, $2, 1, 60)`,
+      [ids.project, ids.queryLease],
+    );
+    assert.equal(heartbeat.rows[0]?.state, "committed");
+    assert.equal(heartbeat.rows[0]?.control_sequence, "2");
+    assert.equal(
+      required(heartbeat.rows[0]).expires_at.getTime() >=
+        required(committed.rows[0]).expires_at.getTime(),
+      true,
+    );
+    assert.equal(
+      required(heartbeat.rows[0]).max_expires_at.getTime() -
+        required(heartbeat.rows[0]).acquired_at.getTime() <=
+        120_000,
+      true,
+    );
+
+    const released = await api.query<{ readonly state: string; readonly control_sequence: string }>(
+      `SELECT state, control_sequence::text
+       FROM runtime.release_query_lease($1, $2, 2)`,
+      [ids.project, ids.queryLease],
+    );
+    assert.deepEqual(released.rows[0], { state: "released", control_sequence: "3" });
+    await withClient(adminConfig, async (admin) => {
+      assert.equal(await queryLeaseRootCount(admin, ids.queryLease), 0);
+    });
+    await assertPgCode(
+      api.query("SELECT * FROM runtime.heartbeat_query_lease($1, $2, 3, 30)", [
+        ids.project,
+        ids.queryLease,
+      ]),
+      "40001",
+    );
+
+    const expiring = await api.query<{ readonly state: string }>(
+      `SELECT state FROM runtime.plan_query_lease(
+         $1, $2, $3, $4, $5, $6, $7, $8, 'g20303-expiring-query', 1
+       )`,
+      [
+        ids.project,
+        ids.expiredQueryLease,
+        ids.release2,
+        ids.policyCompilation,
+        identityContextHash,
+        authorizationEpoch.toString(),
+        policyContextHash,
+        sha256Digest("g2-03-expiring-query"),
+      ],
+    );
+    assert.equal(expiring.rows[0]?.state, "planned");
+    await api.query("SELECT * FROM runtime.commit_query_lease($1, $2, 0)", [
+      ids.project,
+      ids.expiredQueryLease,
+    ]);
+  });
+
+  await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 1_100));
+  await withClient(workerConfig, async (worker) => {
+    const expired = await worker.query<{ readonly count: number }>(
+      "SELECT runtime.expire_query_leases($1, 100) AS count",
+      [ids.project],
+    );
+    assert.equal(expired.rows[0]?.count, 1);
+  });
+  await withClient(adminConfig, async (admin) => {
+    const terminal = await admin.query<{ readonly state: string }>(
+      "SELECT state FROM runtime.query_leases WHERE project_id = $1 AND query_lease_id = $2",
+      [ids.project, ids.expiredQueryLease],
+    );
+    assert.equal(terminal.rows[0]?.state, "expired");
+    assert.equal(await queryLeaseRootCount(admin, ids.expiredQueryLease), 0);
+  });
+  await writeG20303QueryLeaseArtifact(adminConfig);
+}
+
+async function queryLeaseRootCount(client: pg.Client, queryLeaseId: string): Promise<number> {
+  const result = await client.query<{ readonly count: number }>(
+    `SELECT count(*)::integer AS count
+     FROM ops.gc_generation_roots
+     WHERE root_kind = 'QUERY_LEASE' AND root_id = $1`,
+    [queryLeaseId],
+  );
+  return required(result.rows[0]).count;
+}
+
+async function writeG20303QueryLeaseArtifact(adminConfig: pg.ClientConfig): Promise<void> {
+  const facts = await withClient(adminConfig, async (admin) => {
+    const result = await admin.query<{
+      readonly server_version_num: string;
+      readonly activation_id: string;
+      readonly generation_count: number;
+      readonly released_state: string;
+      readonly expired_state: string;
+      readonly terminal_root_count: number;
+    }>(
+      `SELECT current_setting('server_version_num') AS server_version_num,
+              $2::uuid::text AS activation_id,
+              (SELECT count(*)::integer FROM meta.runtime_activation_members
+               WHERE project_id = $1 AND release_id = $3 AND activation_id = $2) AS generation_count,
+              (SELECT state FROM runtime.query_leases
+               WHERE project_id = $1 AND query_lease_id = $4) AS released_state,
+              (SELECT state FROM runtime.query_leases
+               WHERE project_id = $1 AND query_lease_id = $5) AS expired_state,
+              (SELECT count(*)::integer FROM ops.gc_generation_roots
+               WHERE project_id = $1 AND root_kind = 'QUERY_LEASE') AS terminal_root_count`,
+      [ids.project, activatedRelease2Id, ids.release2, ids.queryLease, ids.expiredQueryLease],
+    );
+    return required(result.rows[0]);
+  });
+  const [{ stdout: commit }, { stdout: status }] = await Promise.all([
+    execFileAsync("git", ["rev-parse", "HEAD"]),
+    execFileAsync("git", ["status", "--porcelain"]),
+  ]);
+  const artifact = {
+    schemaVersion: 1,
+    gate: "G2-03-03",
+    status: "PASS",
+    qualification: "REAL_SERVING_GENERATION_QUERY_LEASE_GC_ROOT",
+    commit: commit.trim(),
+    cleanCheckout: status.trim().length === 0,
+    postgres: { serverVersionNum: facts.server_version_num },
+    releaseId: ids.release2,
+    activationId: facts.activation_id,
+    generationCount: facts.generation_count,
+    assertions: {
+      releasePublished: true,
+      servingActivationResolved: true,
+      activeLeaseRootedEveryGeneration: true,
+      plannedLeaseDidNotRoot: true,
+      staleAuthorizationEpochRejected: true,
+      boundedHeartbeat: true,
+      releaseTerminal: facts.released_state === "released",
+      expiryTerminal: facts.expired_state === "expired",
+      terminalRootsRemoved: facts.terminal_root_count === 0,
+      apiRuntimeNonOwner: true,
+      workerRuntimeNonOwner: true,
+    },
+  };
+  const outputDirectory = resolve("generated/ci-report");
+  await mkdir(outputDirectory, { recursive: true });
+  await writeFile(
+    resolve(outputDirectory, "g2-03-03-query-lease.json"),
+    `${JSON.stringify(artifact, null, 2)}\n`,
+  );
+  process.stdout.write(`CI_G2_03_03_QUERY_LEASE ${JSON.stringify(artifact)}\n`);
+}
+
 async function publishA1(client: pg.Client): Promise<void> {
   await client.query("BEGIN");
   await client.query(
@@ -7174,11 +7519,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 21);
+  assert.equal(left.applied.length + right.applied.length, 24);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 21)).length, 21);
+    assert.equal((await migrationLedger(client, 24)).length, 24);
   });
 }
 
