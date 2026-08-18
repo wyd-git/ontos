@@ -44,6 +44,7 @@
 7. **历史 Gate 不会自动接纳新正式包。** Foundation、G2-02、G2-03-01 Scope 只向前加入 contracts/runtime-read-client/tools-contracts，仍禁止 Migration、Web 和正式 Query/Policy/Identity 包。
 8. **可编译的 OpenAPI 仍可能接错 DTO。** Compatibility 现在除 Path/Method 外还锁定 Operation ID、Parameter、Request/Response Schema 和 OIDC Scope，Search 误接 Count 的 Mutation 会失败。
 9. **Policy 时间和 Cursor null 必须是显式数据。** Policy Vector 必须携带 Canonical `requestTime`；Cursor Last Value 允许 null，且最大合法 Envelope 能在有界 opaque Token 内完成 AEAD 往返。
+10. **历史 Scope 漏项不应在 30 分钟 clean-room 后才暴露。** G2-03-02 Evidence 现同时检查 G2-03-01 的 Prefix 与三个精确下游路径，并被前移到重型容量、数据库和 clean-room Gate 之前执行。
 
 ## 4. 可落地性审计
 

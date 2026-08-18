@@ -95,6 +95,7 @@ Foundation 仅新增 `packages/runtime-read-client` Workspace；G2-02 与 G2-03-
 7. Cursor 原先不能表达 nullable Sort Value，且 8 KiB 上限容纳不了最大合法 Envelope；增加显式 null 并用最大输入实测固定 64 KiB 防御上限。
 8. Policy 时间操作数原先没有测试时间输入，并列一跳 Link 也被误判为嵌套；每个向量现必须固定 `requestTime`，并且只禁止真正的二跳嵌套。
 9. OpenAPI 原检查可阻止 Path 删除，但无法阻止 Search Path 误接 Count DTO；增加了 Operation 级请求/响应/Parameter/Security 绑定及 Mutation。
+10. 首次 clean-room 在 32 道功能 Gate 通过后，被历史 G2-03-01 Scope 的 3 个漏接路径按设计阻断；补齐精确路径，并让 G2-03-02 合同 Evidence 在重型容量与 clean-room 前先验证所有前向 Scope。
 
 ## 7. 剩余风险
 

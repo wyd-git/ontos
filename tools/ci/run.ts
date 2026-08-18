@@ -66,6 +66,11 @@ const fullGates: readonly GateDefinition[] = [
     arguments: ["run", "check:runtime-read-generation"],
   },
   {
+    name: "g2-03-02-contract-evidence",
+    command: "npm",
+    arguments: ["run", "check:g2-03-02-evidence"],
+  },
+  {
     name: "materialization-mapping-capacity",
     command: "npm",
     arguments: ["run", "test:materialization-mapping:capacity"],
@@ -147,11 +152,6 @@ const fullGates: readonly GateDefinition[] = [
     name: "g2-03-01-architecture-evidence",
     command: "npm",
     arguments: ["run", "check:g2-03-01-evidence"],
-  },
-  {
-    name: "g2-03-02-contract-evidence",
-    command: "npm",
-    arguments: ["run", "check:g2-03-02-evidence"],
   },
   {
     name: "metadata-clean-room",

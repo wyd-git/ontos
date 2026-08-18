@@ -61,6 +61,11 @@ function validSnapshot(): G20302EvidenceSnapshot {
     },
     priorGatePolicy: {
       scope: {
+        allowedExactPaths: [
+          "docs/architecture/g2-03-ui-api-consumer-contract.md",
+          "tools/ci/g2-03-02-evidence.test.ts",
+          "tools/ci/g2-03-02-evidence.ts",
+        ],
         allowedPrefixes: [
           "packages/contracts/",
           "packages/runtime-read-client/",
@@ -166,6 +171,31 @@ void test("rejects historical scope that does not forward-admit the contract pac
   const snapshot = validSnapshot();
   const violations = evaluateG20302EvidenceSnapshot(
     { ...snapshot, priorGatePolicy: { scope: { allowedPrefixes: [] } } },
+    policy,
+  );
+  assert.equal(
+    violations.some((value) => value.includes("G2-03-01 forward scope")),
+    true,
+  );
+});
+
+void test("rejects historical scope that omits exact downstream evidence paths", () => {
+  const snapshot = validSnapshot();
+  const prior = snapshot.priorGatePolicy as {
+    scope: { allowedExactPaths: readonly string[]; allowedPrefixes: readonly string[] };
+  };
+  const violations = evaluateG20302EvidenceSnapshot(
+    {
+      ...snapshot,
+      priorGatePolicy: {
+        scope: {
+          ...prior.scope,
+          allowedExactPaths: prior.scope.allowedExactPaths.filter(
+            (path) => path !== "tools/ci/g2-03-02-evidence.ts",
+          ),
+        },
+      },
+    },
     policy,
   );
   assert.equal(

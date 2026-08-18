@@ -333,6 +333,11 @@ function validateForwardScopePolicies(
       "packages/contracts/",
       "packages/runtime-read-client/",
       "tools/contracts/",
+    ]) ||
+    !hasAllowedExactPaths(priorGateValue, [
+      "docs/architecture/g2-03-ui-api-consumer-contract.md",
+      "tools/ci/g2-03-02-evidence.test.ts",
+      "tools/ci/g2-03-02-evidence.ts",
     ])
   ) {
     violations.push("G2-03-01 forward scope does not admit G2-03-02 contract artifacts.");
@@ -382,6 +387,12 @@ function hasAllowedPrefixes(value: unknown, required: readonly string[]): boolea
   if (!isRecord(value) || !isRecord(value.scope)) return false;
   const prefixes = value.scope.allowedPrefixes;
   return isStringArray(prefixes) && required.every((prefix) => prefixes.includes(prefix));
+}
+
+function hasAllowedExactPaths(value: unknown, required: readonly string[]): boolean {
+  if (!isRecord(value) || !isRecord(value.scope)) return false;
+  const paths = value.scope.allowedExactPaths;
+  return isStringArray(paths) && required.every((path) => paths.includes(path));
 }
 
 function assertPolicy(value: unknown): asserts value is G20302EvidencePolicy {
