@@ -84,6 +84,7 @@
       "tools/database/materialization-postgres.integration.test.ts",
       "tools/database/postgres.integration.test.ts",
       "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts",
+      "tools/projection-ddl/integration/postgres.test.ts",
       "tsconfig.json"
     ],
     "allowedPrefixes": ["packages/runtime-read-client/", "tools/query-policy-persistence/"],

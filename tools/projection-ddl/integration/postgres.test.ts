@@ -283,7 +283,7 @@ async function exerciseGcAuthorizedDrops(
         `SET ROLE migration_owner;
          UPDATE ops.gc_root_provider_registry
          SET capability_state = 'ACTIVE', changed_at = clock_timestamp()
-         WHERE capability_key = 'runtime.query-lease';
+         WHERE capability_key = 'runtime.preflight-token';
          RESET ROLE`,
       ),
     );
@@ -294,7 +294,7 @@ async function exerciseGcAuthorizedDrops(
     assert.equal(incomplete.analysis.status, "BLOCKED");
     assert.deepEqual(incomplete.analysis.candidates, []);
     assert.equal(
-      incomplete.analysis.blockedReasons.includes("PROVIDER_MISSING:runtime.query-lease"),
+      incomplete.analysis.blockedReasons.includes("PROVIDER_MISSING:runtime.preflight-token"),
       true,
     );
     await withClient(adminConfig, (admin) =>
@@ -302,7 +302,7 @@ async function exerciseGcAuthorizedDrops(
         `SET ROLE migration_owner;
          UPDATE ops.gc_root_provider_registry
          SET capability_state = 'INACTIVE', changed_at = clock_timestamp()
-         WHERE capability_key = 'runtime.query-lease';
+         WHERE capability_key = 'runtime.preflight-token';
          RESET ROLE`,
       ),
     );

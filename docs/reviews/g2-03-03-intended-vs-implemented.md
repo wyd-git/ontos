@@ -43,6 +43,7 @@
 6. **只在内存协议测试 Query Lease 不能证明 G2-02 GC 集成。** 正式 Materialization PostgreSQL 集成现在创建真实 Published Release、Serving Activation 和 Generation，验证 Root 的加入与退出。
 7. **新增 Migration 会让旧 Scope Gate 按设计拒绝。** 没有删除范围控制；旧 Gate 仅精确前向接纳 0022～0024、相关适配器/测试/文档及一个新工具 Prefix，未知 0025 仍被拒绝。
 8. **撤销 Epoch UPDATE 也会撤销 PostgreSQL `SELECT FOR UPDATE` 所需的锁权限。** 全数据库回归发现三个旧 Metadata 流程被拒绝；现以 SECURITY DEFINER 的 `lock_authorization_epoch` 只返回并锁住当前行，Repository 保持旧锁顺序，而 API 继续没有 Epoch 列写权限。
+9. **历史 GC 故障测试把 Query Lease 当作“尚未实现”的 Provider。** 0023 激活真实 Provider 后，该测试理应不再得到 Missing；故障注入改用仍保留但未实现的 `runtime.preflight-token`，继续证明 Active+Missing 必须阻断，而不把正确的新能力误判为回归。
 
 ## 4. 可落地性审计
 
