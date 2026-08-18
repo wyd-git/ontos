@@ -145,9 +145,11 @@ function validateMetadataCatalog(
   for (const family of families) {
     const name = requireString(family.family, "$catalog.deferredModuleContracts[].family");
     const expectedFrozen =
-      name === "ResourceRevisionReleasePackage" || name === "SnapshotMappingValidationJob";
+      name === "ResourceRevisionReleasePackage" ||
+      name === "SnapshotMappingValidationJob" ||
+      name === "QueryPolicyCursor";
     if (family.fieldsFrozen !== expectedFrozen) {
-      throw new Error(`${name} fieldsFrozen does not match the G2-02 activation boundary.`);
+      throw new Error(`${name} fieldsFrozen does not match the active Gate boundary.`);
     }
   }
 }

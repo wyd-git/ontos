@@ -1,0 +1,533 @@
+{
+  "schemaVersion": 1,
+  "qualification": "G2-03-02_RUNTIME_READ_CONTRACT_GOLDEN",
+  "coverage": {
+    "domains": ["WorkItem", "Order"],
+    "actorIds": [
+      "018f47a2-755b-7cc3-98c8-4d2fb871c201",
+      "018f47a2-755b-7cc3-98c8-4d2fb871c202",
+      "018f47a2-755b-7cc3-98c8-4d2fb871c203",
+      "018f47a2-755b-7cc3-98c8-4d2fb871c204",
+      "018f47a2-755b-7cc3-98c8-4d2fb871c205"
+    ],
+    "requiredOutcomes": [
+      "empty-result",
+      "null",
+      "missing",
+      "masked",
+      "denied",
+      "cursor-context-change",
+      "cursor-tamper",
+      "cursor-expiry",
+      "unknown-field",
+      "over-limit",
+      "injection-as-data"
+    ]
+  },
+  "fixtures": {
+    "identity": {
+      "schemaVersion": 1,
+      "actor": {
+        "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c201",
+        "identityType": "human"
+      },
+      "delegationChain": [],
+      "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "authenticatedAt": "2026-08-18T10:00:00.000000Z",
+      "authorizationMode": "intersection"
+    },
+    "policyArtifact": {
+      "schemaVersion": 1,
+      "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+      "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+      "policyRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c110",
+      "compilerVersion": "policy-ir-v1",
+      "artifactDigest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "rules": [
+        {
+          "ruleId": "ALLOW_OBJECT",
+          "target": {
+            "kind": "object",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105"
+          },
+          "effect": "allow",
+          "predicate": {
+            "kind": "compare",
+            "left": { "source": "object_property", "apiName": "region" },
+            "op": "eq",
+            "right": { "source": "actor_attribute", "apiName": "region" }
+          }
+        },
+        {
+          "ruleId": "DENY_LINK",
+          "target": {
+            "kind": "link",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c106",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c107"
+          },
+          "effect": "deny",
+          "predicate": { "kind": "constant", "value": false }
+        },
+        {
+          "ruleId": "DENY_PROPERTY",
+          "target": {
+            "kind": "property",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105",
+            "propertyApiName": "salary"
+          },
+          "effect": "deny",
+          "predicate": { "kind": "constant", "value": true }
+        },
+        {
+          "ruleId": "MASK_PROPERTY",
+          "target": {
+            "kind": "property",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105",
+            "propertyApiName": "email"
+          },
+          "effect": "mask",
+          "predicate": { "kind": "constant", "value": true },
+          "mask": { "kind": "redact", "displayValue": "Restricted" }
+        }
+      ],
+      "testVectors": [
+        {
+          "vectorId": "ALLOW_HUMAN",
+          "identity": {
+            "schemaVersion": 1,
+            "actor": {
+              "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c201",
+              "identityType": "human"
+            },
+            "delegationChain": [],
+            "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "authenticatedAt": "2026-08-18T10:00:00.000000Z",
+            "authorizationMode": "intersection"
+          },
+          "requestTime": "2026-08-18T10:00:00.000000Z",
+          "target": {
+            "kind": "object",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105"
+          },
+          "facts": [
+            { "source": "object_property", "apiName": "region", "state": "value", "value": "EU" },
+            { "source": "actor_attribute", "apiName": "region", "state": "value", "value": "EU" }
+          ],
+          "expectedDecision": "allow"
+        },
+        {
+          "vectorId": "DENY_HUMAN",
+          "identity": {
+            "schemaVersion": 1,
+            "actor": {
+              "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c202",
+              "identityType": "human"
+            },
+            "delegationChain": [],
+            "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "authenticatedAt": "2026-08-18T10:00:00.000000Z",
+            "authorizationMode": "intersection"
+          },
+          "requestTime": "2026-08-18T10:00:00.000000Z",
+          "target": {
+            "kind": "object",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105"
+          },
+          "facts": [{ "source": "object_property", "apiName": "region", "state": "null" }],
+          "expectedDecision": "deny"
+        },
+        {
+          "vectorId": "DENY_LINK",
+          "identity": {
+            "schemaVersion": 1,
+            "actor": {
+              "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c203",
+              "identityType": "service"
+            },
+            "delegationChain": [],
+            "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "authenticatedAt": "2026-08-18T10:00:00.000000Z",
+            "authorizationMode": "intersection"
+          },
+          "requestTime": "2026-08-18T10:00:00.000000Z",
+          "target": {
+            "kind": "link",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c106",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c107"
+          },
+          "facts": [{ "source": "link", "apiName": "Assignments", "state": "missing" }],
+          "expectedDecision": "deny"
+        },
+        {
+          "vectorId": "DENY_PROPERTY",
+          "identity": {
+            "schemaVersion": 1,
+            "actor": {
+              "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c204",
+              "identityType": "human"
+            },
+            "delegationChain": [],
+            "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "authenticatedAt": "2026-08-18T10:00:00.000000Z",
+            "authorizationMode": "intersection"
+          },
+          "requestTime": "2026-08-18T10:00:00.000000Z",
+          "target": {
+            "kind": "property",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105",
+            "propertyApiName": "salary"
+          },
+          "facts": [],
+          "expectedDecision": "deny",
+          "expectedPropertyDisposition": "deny"
+        },
+        {
+          "vectorId": "MASK_PROPERTY",
+          "identity": {
+            "schemaVersion": 1,
+            "actor": {
+              "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c205",
+              "identityType": "human"
+            },
+            "delegationChain": [],
+            "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "authenticatedAt": "2026-08-18T10:00:00.000000Z",
+            "authorizationMode": "intersection"
+          },
+          "requestTime": "2026-08-18T10:00:00.000000Z",
+          "target": {
+            "kind": "property",
+            "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+            "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105",
+            "propertyApiName": "email"
+          },
+          "facts": [],
+          "expectedDecision": "allow",
+          "expectedPropertyDisposition": "mask"
+        }
+      ]
+    },
+    "cursorEnvelope": {
+      "schemaVersion": 1,
+      "keyVersion": "cursor-k1",
+      "issuedAt": "2026-08-18T10:00:00.000000Z",
+      "expiresAt": "2026-08-18T10:10:00.000000Z",
+      "projectId": "018f47a2-755b-7cc3-98c8-4d2fb871c100",
+      "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+      "releaseRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+      "activationId": "018f47a2-755b-7cc3-98c8-4d2fb871c103",
+      "objectTypeResourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+      "objectTypeRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105",
+      "generations": [
+        {
+          "memberKey": "link:Assignments",
+          "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c107",
+          "generationId": "018f47a2-755b-7cc3-98c8-4d2fb871c109"
+        },
+        {
+          "memberKey": "object:WorkItem",
+          "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105",
+          "generationId": "018f47a2-755b-7cc3-98c8-4d2fb871c108"
+        }
+      ],
+      "queryHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "policyContextHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "identityContextHash": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+      "sort": [
+        { "property": "updatedAt", "direction": "desc", "nulls": "last", "collation": "C" },
+        {
+          "property": "canonicalPrimaryKey",
+          "direction": "asc",
+          "nulls": "last",
+          "collation": "C"
+        }
+      ],
+      "lastValues": ["2026-08-18T09:59:00Z", "WI-100"]
+    },
+    "metadataResponse": {
+      "schemaVersion": 1,
+      "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+      "releaseRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+      "readTimestamp": "2026-08-18T10:00:00.000000Z",
+      "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000",
+      "warnings": [],
+      "data": [
+        {
+          "apiName": "Order",
+          "displayName": "Order",
+          "properties": [
+            {
+              "apiName": "number",
+              "displayName": "Number",
+              "valueType": "string",
+              "disposition": "allow",
+              "nullable": false,
+              "filterOperators": ["eq"],
+              "sortable": true,
+              "searchable": true
+            }
+          ],
+          "links": [],
+          "titlePropertyApiName": "number",
+          "defaultSearchProperties": ["number"],
+          "defaultSort": { "property": "number", "direction": "asc" }
+        },
+        {
+          "apiName": "WorkItem",
+          "displayName": "Work Item",
+          "properties": [
+            {
+              "apiName": "name",
+              "displayName": "Name",
+              "valueType": "string",
+              "disposition": "allow",
+              "nullable": true,
+              "filterOperators": ["eq", "isNull"],
+              "sortable": true,
+              "searchable": true
+            },
+            {
+              "apiName": "secret",
+              "displayName": "Secret",
+              "valueType": "string",
+              "disposition": "mask",
+              "nullable": false,
+              "filterOperators": [],
+              "sortable": false,
+              "searchable": false
+            }
+          ],
+          "links": [
+            {
+              "apiName": "Assignments",
+              "displayName": "Assignments",
+              "targetObjectTypeApiName": "Person",
+              "direction": "outgoing"
+            }
+          ],
+          "titlePropertyApiName": "name",
+          "defaultSearchProperties": ["name"],
+          "defaultSort": { "property": "name", "direction": "asc" }
+        }
+      ]
+    },
+    "objectResponse": {
+      "schemaVersion": 1,
+      "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+      "releaseRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+      "readTimestamp": "2026-08-18T10:00:00.000000Z",
+      "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000",
+      "warnings": [],
+      "data": {
+        "reference": { "objectTypeApiName": "WorkItem", "primaryKey": "WI-100" },
+        "objectVersion": "7",
+        "properties": [
+          { "apiName": "name", "state": "value", "value": "Fix incident" },
+          { "apiName": "owner", "state": "null", "value": null },
+          { "apiName": "notes", "state": "missing" },
+          { "apiName": "secret", "state": "masked", "displayValue": "Restricted" },
+          { "apiName": "salary", "state": "restricted" }
+        ]
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "search-injection-is-data",
+      "contract": "RuntimeSearchRequest",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "select": ["id", "status"],
+        "searchText": "'; DROP TABLE runtime.object_current; --",
+        "where": { "property": "status", "op": "in", "value": ["OPEN", "BLOCKED"] },
+        "orderBy": [{ "property": "updatedAt", "direction": "desc" }]
+      }
+    },
+    {
+      "name": "count-only",
+      "contract": "RuntimeCountRequest",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": { "schemaVersion": 1, "operation": "count" }
+    },
+    {
+      "name": "two-hop-link-query",
+      "contract": "RuntimeLinkSearchRequest",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "direction": "outgoing",
+        "secondHop": { "linkTypeApiName": "Manager", "direction": "outgoing" },
+        "select": ["name"],
+        "page": { "size": 200 }
+      }
+    },
+    {
+      "name": "trusted-identity-summary",
+      "contract": "RuntimeIdentityContext",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "fixture": "identity"
+    },
+    {
+      "name": "bounded-policy-ir-five-actors",
+      "contract": "PolicyArtifact",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "fixture": "policyArtifact"
+    },
+    {
+      "name": "policy-decision-without-rule-trace",
+      "contract": "PolicyDecision",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "target": {
+          "kind": "object",
+          "resourceId": "018f47a2-755b-7cc3-98c8-4d2fb871c104",
+          "resourceRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c105"
+        },
+        "decision": "allow",
+        "policyContextHash": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "authorizationEpoch": "7",
+        "evaluatedAt": "2026-08-18T10:00:00.000000Z"
+      }
+    },
+    {
+      "name": "cursor-binds-release-policy-identity-query-sort-and-generations",
+      "contract": "CursorEnvelope",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "fixture": "cursorEnvelope"
+    },
+    {
+      "name": "two-domain-runtime-metadata",
+      "contract": "RuntimeMetadataResponse",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "fixture": "metadataResponse"
+    },
+    {
+      "name": "property-state-separation",
+      "contract": "RuntimeObjectGetResponse",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "fixture": "objectResponse"
+    },
+    {
+      "name": "empty-result-page",
+      "contract": "RuntimeSearchResponse",
+      "classification": "boundary",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "releaseRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+        "readTimestamp": "2026-08-18T10:00:00.000000Z",
+        "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000",
+        "warnings": [],
+        "data": [],
+        "nextCursor": null
+      }
+    },
+    {
+      "name": "count-as-bounded-decimal-string",
+      "contract": "RuntimeCountResponse",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "releaseRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+        "readTimestamp": "2026-08-18T10:00:00.000000Z",
+        "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000",
+        "warnings": [],
+        "count": "0"
+      }
+    },
+    {
+      "name": "link-result-exposes-resolved-path",
+      "contract": "RuntimeLinkSearchResponse",
+      "classification": "valid",
+      "schemaDisposition": "accept",
+      "value": {
+        "schemaVersion": 1,
+        "releaseId": "018f47a2-755b-7cc3-98c8-4d2fb871c101",
+        "releaseRevisionId": "018f47a2-755b-7cc3-98c8-4d2fb871c102",
+        "readTimestamp": "2026-08-18T10:00:00.000000Z",
+        "correlationId": "corr_550e8400-e29b-41d4-a716-446655440000",
+        "warnings": [],
+        "resolvedPath": [{ "linkTypeApiName": "Assignments", "direction": "outgoing" }],
+        "data": [],
+        "nextCursor": null
+      }
+    },
+    {
+      "name": "query-rejects-unknown-write-field",
+      "contract": "RuntimeSearchRequest",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD",
+      "value": { "schemaVersion": 1, "select": ["id"], "rawSql": "select 1" }
+    },
+    {
+      "name": "query-rejects-over-limit-page",
+      "contract": "RuntimeSearchRequest",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_VALUE_OUT_OF_RANGE",
+      "value": { "schemaVersion": 1, "select": ["id"], "page": { "size": 501 } }
+    },
+    {
+      "name": "identity-rejects-raw-claims",
+      "contract": "RuntimeIdentityContext",
+      "classification": "rejected",
+      "schemaDisposition": "reject",
+      "expectedErrorCode": "CONTRACT_UNKNOWN_FIELD",
+      "value": {
+        "schemaVersion": 1,
+        "actor": {
+          "principalId": "018f47a2-755b-7cc3-98c8-4d2fb871c201",
+          "identityType": "human"
+        },
+        "delegationChain": [],
+        "claimsFingerprint": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "authenticatedAt": "2026-08-18T10:00:00.000000Z",
+        "authorizationMode": "intersection",
+        "rawClaims": { "groups": ["admin"] }
+      }
+    }
+  ],
+  "behaviorEvidence": [
+    {
+      "outcome": "cursor-context-change",
+      "test": "Cursor AEAD rejects tampering, expiry, and cross-context reuse"
+    },
+    {
+      "outcome": "cursor-tamper",
+      "test": "Cursor AEAD rejects tampering, expiry, and cross-context reuse"
+    },
+    {
+      "outcome": "cursor-expiry",
+      "test": "Cursor AEAD rejects tampering, expiry, and cross-context reuse"
+    },
+    {
+      "outcome": "masked",
+      "test": "Runtime Object keeps value, null, missing, mask, and restricted states distinct"
+    },
+    {
+      "outcome": "denied",
+      "test": "Policy Artifact is bounded, deterministic, and requires release-test coverage"
+    }
+  ]
+}

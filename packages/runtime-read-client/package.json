@@ -1,0 +1,15 @@
+{
+  "name": "@ontos/runtime-read-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "contracts"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/package.d.ts",
+      "import": "./dist/package.js"
+    }
+  }
+}

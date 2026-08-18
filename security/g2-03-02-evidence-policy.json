@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-03-02",
+  "baselineCommit": "c898c34c6598406e7b7eb9c3e260ac4b5660342d",
+  "requiredRecords": [
+    {
+      "path": "docs/architecture/g2-03-runtime-read-contract.md",
+      "marker": "- 状态：Frozen for G2-03-02"
+    },
+    {
+      "path": "docs/reviews/g2-03-02-intended-vs-implemented.md",
+      "marker": "- 结论：**PASS**"
+    },
+    {
+      "path": "docs/evidence/g2-03-02-runtime-read-contracts.md",
+      "marker": "- 结论：**PASS**"
+    }
+  ],
+  "scope": {
+    "allowedExactPaths": [
+      ".gitignore",
+      "eslint.config.mjs",
+      "README.md",
+      "docs/README.md",
+      "docs/architecture/ci-foundation-gate.md",
+      "docs/architecture/g2-03-runtime-read-contract.md",
+      "docs/architecture/g2-03-ui-api-consumer-contract.md",
+      "docs/delivery/g2-03-query-policy-task-pack.md",
+      "docs/delivery/g2-owner-capacity-matrix.md",
+      "docs/evidence/g2-03-02-runtime-read-contracts.md",
+      "docs/reviews/g2-03-02-intended-vs-implemented.md",
+      "package-lock.json",
+      "package.json",
+      "packages/contracts/catalog.json",
+      "packages/contracts/error-codes.json",
+      "packages/contracts/fixtures/runtime-read-golden.json",
+      "packages/contracts/openapi/runtime-read.candidate.json",
+      "packages/contracts/schemas/runtime-read.schema.json",
+      "packages/contracts/src/core-error-codes.ts",
+      "packages/contracts/src/index.ts",
+      "packages/contracts/src/internal.ts",
+      "packages/contracts/src/policy.ts",
+      "packages/contracts/src/query.ts",
+      "packages/contracts/src/runtime-read.ts",
+      "security/g2-00-evidence-policy.json",
+      "security/g2-02-evidence-policy.json",
+      "security/g2-03-01-evidence-policy.json",
+      "security/g2-03-02-evidence-policy.json",
+      "tools/ci/g2-03-02-evidence.test.ts",
+      "tools/ci/g2-03-02-evidence.ts",
+      "tools/ci/run.test.ts",
+      "tools/ci/run.ts",
+      "tools/contracts/baseline/runtime-read.openapi.candidate.v1.json",
+      "tools/contracts/baseline/runtime-read.v1.schema.json",
+      "tools/contracts/check-foundation.ts",
+      "tools/contracts/check-metadata.ts",
+      "tools/contracts/check-runtime-read.ts",
+      "tools/contracts/check.ts",
+      "tools/contracts/compatibility.ts",
+      "tools/contracts/cursor-reference.ts",
+      "tools/contracts/error-code-compatibility.test.ts",
+      "tools/contracts/foundation.test.ts",
+      "tools/contracts/runtime-read-generation.ts",
+      "tools/contracts/runtime-read-schema-agreement.ts",
+      "tools/contracts/runtime-read-schema-source.ts",
+      "tools/contracts/runtime-read.test.ts",
+      "tools/contracts/schema.ts",
+      "tsconfig.json"
+    ],
+    "allowedPrefixes": ["packages/runtime-read-client/"],
+    "forbiddenPrefixes": [
+      "apps/web/",
+      "migrations/",
+      "packages/action/",
+      "packages/identity/",
+      "packages/policy/",
+      "packages/query/",
+      "packages/sdk/",
+      "tools/action/",
+      "tools/identity/",
+      "tools/policy/",
+      "tools/query/",
+      "tools/sdk/"
+    ]
+  },
+  "requiredSourceMarkers": [
+    {
+      "path": "packages/contracts/src/query.ts",
+      "markers": [
+        "QUERY_LOGICAL_MAXIMUM_DEPTH = 5",
+        "QUERY_PREDICATE_MAXIMUM_COUNT = 50",
+        "CURSOR_MAXIMUM_TTL_MILLISECONDS",
+        "assertCursorEnvelopeContext"
+      ]
+    },
+    {
+      "path": "packages/contracts/src/policy.ts",
+      "markers": [
+        "POLICY_LOGICAL_MAXIMUM_DEPTH = 5",
+        "POLICY_PREDICATE_MAXIMUM_COUNT = 50",
+        "parsePolicyArtifact",
+        "parsePolicyDecision"
+      ]
+    },
+    {
+      "path": "packages/contracts/src/runtime-read.ts",
+      "markers": [
+        "RUNTIME_PROPERTY_STATE_VALUES",
+        "parseRuntimeMetadataResponse",
+        "parseRuntimeObjectGetResponse"
+      ]
+    },
+    {
+      "path": "tools/contracts/cursor-reference.ts",
+      "markers": ["aes-256-gcm", "CURSOR_INVALID", "CURSOR_EXPIRED"]
+    },
+    {
+      "path": "tools/contracts/runtime-read-generation.ts",
+      "markers": [
+        "RUNTIME_READ_SCHEMA_DRIFT",
+        "RUNTIME_READ_OPENAPI_DRIFT",
+        "RUNTIME_READ_CLIENT_DRIFT",
+        "strictPublicTypesCompiled",
+        "strictWebConsumerCompiled",
+        "distributionRuntimeImported"
+      ]
+    }
+  ],
+  "requiredGates": [
+    "lockfile-install",
+    "toolchain",
+    "format",
+    "documentation-links",
+    "lint",
+    "typecheck",
+    "unit",
+    "g2-03-01-web-spike",
+    "runtime-read-contract-generation",
+    "materialization-mapping-capacity",
+    "materialization-base-capacity",
+    "admin-api-unit",
+    "contract-golden-diff",
+    "architecture-dependency",
+    "testkit-provenance",
+    "metadata-fixtures",
+    "materialization-fixtures",
+    "metadata-negative-fixtures",
+    "secret-private-key",
+    "foundation-scope-evidence",
+    "metadata-scope-evidence",
+    "license-sbom-vulnerability",
+    "materialization-ingress-integration",
+    "postgres-integration",
+    "projection-ddl-production-postgres",
+    "projection-capacity-postgres-smoke",
+    "materialization-worker-postgres",
+    "admin-api-oidc-postgres",
+    "materialization-production",
+    "materialization-clean-room",
+    "materialization-scope-evidence",
+    "g2-03-01-architecture-evidence",
+    "g2-03-02-contract-evidence",
+    "metadata-clean-room",
+    "production-boundary-up",
+    "production-boundary-smoke",
+    "production-boundary-down"
+  ],
+  "owner": "wyd-git",
+  "residualRisks": [
+    {
+      "id": "RISK-G2-03-02-01",
+      "risk": "These are formal contracts and a reference Cursor verifier; no production Migration, Runtime Endpoint, Policy Compiler, or Query Executor exists yet.",
+      "owner": "Runtime / Policy / Database (accountable: wyd-git)",
+      "nextGate": "G2-03-03 through G2-03-12"
+    },
+    {
+      "id": "RISK-G2-03-02-02",
+      "risk": "HeyAPI 0.99 source internals still require exactOptionalPropertyTypes=false, but the package root exposes only deterministic compiled JavaScript and declarations; a strict Web-shaped consumer compiles and calls the generated Search API. A future generator upgrade must preserve this package-boundary proof.",
+      "owner": "Web / Contracts (accountable: wyd-git)",
+      "nextGate": "G2-03-12 and G2-03-13"
+    },
+    {
+      "id": "RISK-G2-03-02-03",
+      "risk": "Cursor key storage, rotation, revocation, request binding, and production telemetry are not implemented by the conformance reference.",
+      "owner": "Query / Security (accountable: wyd-git)",
+      "nextGate": "G2-03-03 and G2-03-09"
+    }
+  ]
+}

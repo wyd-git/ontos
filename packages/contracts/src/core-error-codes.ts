@@ -13,6 +13,16 @@ export const CORE_ERROR_CLASSIFICATIONS = Object.freeze({
     category: "validation",
     retryable: false,
   }),
+  QUERY_COMPLEXITY_EXCEEDED: Object.freeze({
+    httpStatus: 400,
+    category: "validation",
+    retryable: false,
+  }),
+  CURSOR_INVALID: Object.freeze({
+    httpStatus: 400,
+    category: "validation",
+    retryable: false,
+  }),
   PROPERTY_NOT_QUERYABLE: Object.freeze({
     httpStatus: 400,
     category: "validation",
@@ -58,6 +68,11 @@ export const CORE_ERROR_CLASSIFICATIONS = Object.freeze({
     category: "conflict",
     retryable: false,
   }),
+  CURSOR_EXPIRED: Object.freeze({
+    httpStatus: 409,
+    category: "conflict",
+    retryable: false,
+  }),
   ONTOLOGY_COMPATIBILITY_ERROR: Object.freeze({
     httpStatus: 409,
     category: "conflict",
@@ -73,6 +88,16 @@ export const CORE_ERROR_CLASSIFICATIONS = Object.freeze({
     category: "validation",
     retryable: false,
   }),
+  POLICY_CONTRACT_INVALID: Object.freeze({
+    httpStatus: 422,
+    category: "validation",
+    retryable: false,
+  }),
+  RELEASE_RETIRED: Object.freeze({
+    httpStatus: 410,
+    category: "conflict",
+    retryable: false,
+  }),
   RATE_LIMITED: Object.freeze({
     httpStatus: 429,
     category: "rate_limit",
@@ -84,6 +109,11 @@ export const CORE_ERROR_CLASSIFICATIONS = Object.freeze({
     retryable: true,
   }),
   DEPENDENCY_UNAVAILABLE: Object.freeze({
+    httpStatus: 503,
+    category: "dependency",
+    retryable: true,
+  }),
+  POLICY_EVALUATION_UNAVAILABLE: Object.freeze({
     httpStatus: 503,
     category: "dependency",
     retryable: true,

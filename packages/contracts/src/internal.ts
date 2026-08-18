@@ -140,16 +140,26 @@ export function cloneRestrictedJsonObject(
   maximumDepth: number,
   maximumNodes: number,
 ): Readonly<Record<string, ContractJsonValue>> {
-  const encoded = safeStringify(value, path);
-  if (new TextEncoder().encode(encoded).byteLength > maximumBytes) {
-    failContract("CONTRACT_VALUE_OUT_OF_RANGE", "JSON object exceeds its byte limit.", path);
-  }
-  const budget = { remaining: maximumNodes };
-  const cloned = cloneJsonValue(value, path, 0, maximumDepth, budget);
+  const cloned = cloneRestrictedJsonValue(value, path, maximumBytes, maximumDepth, maximumNodes);
   if (typeof cloned !== "object" || cloned === null || Array.isArray(cloned)) {
     failContract("CONTRACT_TYPE_INVALID", "Expected a JSON object.", path);
   }
   return cloned as ContractJsonObject;
+}
+
+export function cloneRestrictedJsonValue(
+  value: unknown,
+  path: string,
+  maximumBytes: number,
+  maximumDepth: number,
+  maximumNodes: number,
+): ContractJsonValue {
+  const encoded = safeStringify(value, path);
+  if (new TextEncoder().encode(encoded).byteLength > maximumBytes) {
+    failContract("CONTRACT_VALUE_OUT_OF_RANGE", "JSON value exceeds its byte limit.", path);
+  }
+  const budget = { remaining: maximumNodes };
+  return cloneJsonValue(value, path, 0, maximumDepth, budget);
 }
 
 export function childPath(parent: string, key: string): string {

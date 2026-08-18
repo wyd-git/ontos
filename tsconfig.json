@@ -28,5 +28,12 @@
     "packages/**/*.tsx",
     "tools/**/*.ts"
   ],
-  "exclude": ["node_modules", "spikes", "dist", "coverage"]
+  "exclude": [
+    "node_modules",
+    "spikes",
+    "dist",
+    "coverage",
+    "packages/runtime-read-client/generated",
+    "packages/runtime-read-client/dist"
+  ]
 }

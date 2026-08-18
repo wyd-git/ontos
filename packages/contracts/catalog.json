@@ -317,6 +317,121 @@
       "fieldsFrozen": true
     }
   ],
+  "runtimeReadContracts": [
+    {
+      "name": "RuntimeSearchRequest",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeSearchRequest",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeCountRequest",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeCountRequest",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeLinkSearchRequest",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeLinkSearchRequest",
+      "direction": "write",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeIdentityContext",
+      "owner": "Identity / Policy",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeIdentityContext",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "PolicyArtifact",
+      "owner": "Identity / Policy",
+      "status": "frozen",
+      "schemaDefinition": "PolicyArtifact",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "PolicyDecision",
+      "owner": "Identity / Policy",
+      "status": "frozen",
+      "schemaDefinition": "PolicyDecision",
+      "direction": "internal",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "CursorEnvelope",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "CursorEnvelope",
+      "direction": "server-issued",
+      "unknownFields": "reject",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeMetadataResponse",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeMetadataResponse",
+      "direction": "read",
+      "producerUnknownFields": "reject",
+      "consumerUnknownFields": "ignore",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeObjectGetResponse",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeObjectGetResponse",
+      "direction": "read",
+      "producerUnknownFields": "reject",
+      "consumerUnknownFields": "ignore",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeSearchResponse",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeSearchResponse",
+      "direction": "read",
+      "producerUnknownFields": "reject",
+      "consumerUnknownFields": "ignore",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeCountResponse",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeCountResponse",
+      "direction": "read",
+      "producerUnknownFields": "reject",
+      "consumerUnknownFields": "ignore",
+      "fieldsFrozen": true
+    },
+    {
+      "name": "RuntimeLinkSearchResponse",
+      "owner": "Query / Runtime",
+      "status": "frozen",
+      "schemaDefinition": "RuntimeLinkSearchResponse",
+      "direction": "read",
+      "producerUnknownFields": "reject",
+      "consumerUnknownFields": "ignore",
+      "fieldsFrozen": true
+    }
+  ],
   "deferredModuleContracts": [
     {
       "family": "ResourceRevisionReleasePackage",
@@ -370,9 +485,34 @@
     },
     {
       "family": "QueryPolicyCursor",
-      "owner": "Query / Identity Policy",
+      "owner": "Query / Identity / Policy",
       "latestFreezeGate": "G2-03",
-      "fieldsFrozen": false,
+      "fieldsFrozen": true,
+      "activatedDefinitions": [
+        "RuntimeSearchRequest",
+        "RuntimeCountRequest",
+        "RuntimeLinkSearchRequest",
+        "RuntimeIdentityContext",
+        "PolicyArtifact",
+        "PolicyDecision",
+        "CursorEnvelope",
+        "RuntimeMetadataResponse",
+        "RuntimeObjectGetResponse",
+        "RuntimeSearchResponse",
+        "RuntimeCountResponse",
+        "RuntimeLinkSearchResponse"
+      ],
+      "stableErrorCodes": [
+        "INVALID_QUERY_AST",
+        "QUERY_COMPLEXITY_EXCEEDED",
+        "PROPERTY_NOT_QUERYABLE",
+        "CURSOR_INVALID",
+        "CURSOR_EXPIRED",
+        "CURSOR_CONTEXT_CHANGED",
+        "RELEASE_RETIRED",
+        "POLICY_CONTRACT_INVALID",
+        "POLICY_EVALUATION_UNAVAILABLE"
+      ],
       "semanticInvariants": [
         "Every query is bound to one resolved Release and Activation",
         "Policy is enforced in the query plan and response projection",

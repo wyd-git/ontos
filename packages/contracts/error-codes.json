@@ -11,6 +11,22 @@
       "clientAction": "Correct the query."
     },
     {
+      "code": "QUERY_COMPLEXITY_EXCEEDED",
+      "httpStatus": 400,
+      "category": "validation",
+      "retryable": false,
+      "meaning": "The Query exceeds a published depth, predicate, collection, or page limit.",
+      "clientAction": "Reduce the Query complexity and retry."
+    },
+    {
+      "code": "CURSOR_INVALID",
+      "httpStatus": 400,
+      "category": "validation",
+      "retryable": false,
+      "meaning": "The opaque Cursor is malformed, cannot be authenticated, or uses an unknown key version.",
+      "clientAction": "Discard the Cursor and restart from the first page."
+    },
+    {
       "code": "PROPERTY_NOT_QUERYABLE",
       "httpStatus": 400,
       "category": "validation",
@@ -83,6 +99,14 @@
       "clientAction": "Restart from the first page."
     },
     {
+      "code": "CURSOR_EXPIRED",
+      "httpStatus": 409,
+      "category": "conflict",
+      "retryable": false,
+      "meaning": "The opaque Cursor is authentic but is outside its bounded validity window.",
+      "clientAction": "Restart from the first page."
+    },
+    {
       "code": "ONTOLOGY_COMPATIBILITY_ERROR",
       "httpStatus": 409,
       "category": "conflict",
@@ -107,6 +131,22 @@
       "clientAction": "Correct the input data."
     },
     {
+      "code": "POLICY_CONTRACT_INVALID",
+      "httpStatus": 422,
+      "category": "validation",
+      "retryable": false,
+      "meaning": "The bounded Policy Artifact or its required release vectors are invalid.",
+      "clientAction": "Correct and republish the Policy Artifact."
+    },
+    {
+      "code": "RELEASE_RETIRED",
+      "httpStatus": 410,
+      "category": "conflict",
+      "retryable": false,
+      "meaning": "The Release bound to the request is retired and can no longer serve Runtime reads.",
+      "clientAction": "Resolve and use the currently active Release."
+    },
+    {
       "code": "RATE_LIMITED",
       "httpStatus": 429,
       "category": "rate_limit",
@@ -129,6 +169,14 @@
       "retryable": true,
       "meaning": "A required dependency is unavailable.",
       "clientAction": "Retry with bounded backoff when the operation permits it."
+    },
+    {
+      "code": "POLICY_EVALUATION_UNAVAILABLE",
+      "httpStatus": 503,
+      "category": "dependency",
+      "retryable": true,
+      "meaning": "Policy evaluation could not complete and the Runtime failed closed.",
+      "clientAction": "Retry with bounded backoff; do not bypass Policy evaluation."
     }
   ]
 }

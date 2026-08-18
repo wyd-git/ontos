@@ -40,6 +40,9 @@ export {
 export { RELEASE_BINDING_FIELDS, parseReleaseBinding, type ReleaseBinding } from "./release.ts";
 export { canonicalizeContractForDigest, canonicalizeManifestForDigest } from "./canonical-json.ts";
 export * from "./materialization.ts";
+export * from "./policy.ts";
+export * from "./query.ts";
+export * from "./runtime-read.ts";
 export {
   API_NAME_PATTERN,
   NAMESPACE_PATTERN,

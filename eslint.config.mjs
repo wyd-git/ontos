@@ -3,7 +3,15 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["coverage/**", "dist/**", "generated/**", "node_modules/**", "spikes/**"],
+    ignores: [
+      "coverage/**",
+      "dist/**",
+      "generated/**",
+      "node_modules/**",
+      "packages/runtime-read-client/dist/**",
+      "packages/runtime-read-client/generated/**",
+      "spikes/**",
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

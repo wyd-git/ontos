@@ -1,0 +1,1576 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ontos.dev/contracts/runtime-read.v1.schema.json",
+  "title": "Ontos Query, Policy, Identity and Runtime Read Contracts",
+  "description": "G2-03 kernel semantic contracts and Runtime Read Candidate. The HTTP candidate is not a published SDK support commitment.",
+  "$defs": {
+    "SchemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "OntosId": {
+      "type": "string",
+      "minLength": 36,
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "CorrelationId": {
+      "type": "string",
+      "minLength": 21,
+      "maxLength": 128,
+      "pattern": "^corr_[A-Za-z0-9][A-Za-z0-9._~-]{15,122}$"
+    },
+    "ArtifactDigest": {
+      "type": "string",
+      "minLength": 71,
+      "maxLength": 71,
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "CanonicalInstant": {
+      "type": "string",
+      "minLength": 27,
+      "maxLength": 27,
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{6}Z$",
+      "format": "ontos-canonical-instant"
+    },
+    "ApiName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[A-Za-z][A-Za-z0-9_]{0,62}$"
+    },
+    "DisplayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "QueryScalar": {
+      "type": ["string", "number", "boolean"],
+      "maxLength": 4096
+    },
+    "CursorScalar": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/QueryScalar"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "QueryScalarCollection": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/QueryScalar"
+      },
+      "minItems": 1,
+      "maxItems": 500,
+      "uniqueItems": true
+    },
+    "PolicyScalarCollection": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/QueryScalar"
+      },
+      "minItems": 1,
+      "maxItems": 500,
+      "uniqueItems": true
+    },
+    "OpaqueCursor": {
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 65536,
+      "pattern": "^[A-Za-z0-9_-]+$"
+    },
+    "QueryComparisonPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "op": {
+          "type": "string",
+          "enum": ["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains", "prefix", "containsAny"]
+        },
+        "value": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/QueryScalar"
+            },
+            {
+              "$ref": "#/$defs/QueryScalarCollection"
+            }
+          ]
+        }
+      },
+      "required": ["property", "op", "value"]
+    },
+    "QueryNullPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "op": {
+          "type": "string",
+          "const": "isNull"
+        }
+      },
+      "required": ["property", "op"]
+    },
+    "QueryAndPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "and": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QueryPredicate"
+          },
+          "minItems": 1,
+          "maxItems": 50
+        }
+      },
+      "required": ["and"]
+    },
+    "QueryOrPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "or": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QueryPredicate"
+          },
+          "minItems": 1,
+          "maxItems": 50
+        }
+      },
+      "required": ["or"]
+    },
+    "QueryNotPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "not": {
+          "$ref": "#/$defs/QueryPredicate"
+        }
+      },
+      "required": ["not"]
+    },
+    "QueryPredicate": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/QueryComparisonPredicate"
+        },
+        {
+          "$ref": "#/$defs/QueryNullPredicate"
+        },
+        {
+          "$ref": "#/$defs/QueryAndPredicate"
+        },
+        {
+          "$ref": "#/$defs/QueryOrPredicate"
+        },
+        {
+          "$ref": "#/$defs/QueryNotPredicate"
+        }
+      ]
+    },
+    "QuerySort": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["asc", "desc"]
+        }
+      },
+      "required": ["property", "direction"]
+    },
+    "QueryPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 50
+        },
+        "cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/OpaqueCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": []
+    },
+    "LinkQueryPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        "cursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/OpaqueCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": []
+    },
+    "RuntimeSearchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "select": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApiName"
+          },
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true
+        },
+        "searchText": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 256
+        },
+        "where": {
+          "$ref": "#/$defs/QueryPredicate"
+        },
+        "orderBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QuerySort"
+          },
+          "maxItems": 1
+        },
+        "page": {
+          "$ref": "#/$defs/QueryPage"
+        }
+      },
+      "required": ["schemaVersion", "select"]
+    },
+    "RuntimeCountRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "operation": {
+          "type": "string",
+          "const": "count"
+        },
+        "searchText": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 256
+        },
+        "where": {
+          "$ref": "#/$defs/QueryPredicate"
+        }
+      },
+      "required": ["schemaVersion", "operation"]
+    },
+    "RuntimeLinkHop": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "linkTypeApiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["outgoing", "incoming"]
+        }
+      },
+      "required": ["linkTypeApiName", "direction"]
+    },
+    "RuntimeLinkSearchRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["outgoing", "incoming"]
+        },
+        "secondHop": {
+          "$ref": "#/$defs/RuntimeLinkHop"
+        },
+        "select": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApiName"
+          },
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true
+        },
+        "searchText": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 256
+        },
+        "where": {
+          "$ref": "#/$defs/QueryPredicate"
+        },
+        "orderBy": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QuerySort"
+          },
+          "maxItems": 1
+        },
+        "page": {
+          "$ref": "#/$defs/LinkQueryPage"
+        }
+      },
+      "required": ["schemaVersion", "direction", "select"]
+    },
+    "PrincipalSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "principalId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "identityType": {
+          "type": "string",
+          "enum": ["human", "service"]
+        }
+      },
+      "required": ["principalId", "identityType"]
+    },
+    "RuntimeIdentityContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "actor": {
+          "$ref": "#/$defs/PrincipalSummary"
+        },
+        "delegationChain": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PrincipalSummary"
+          },
+          "maxItems": 16,
+          "uniqueItems": true
+        },
+        "claimsFingerprint": {
+          "$ref": "#/$defs/ArtifactDigest"
+        },
+        "authenticatedAt": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "authorizationMode": {
+          "type": "string",
+          "const": "intersection"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "actor",
+        "delegationChain",
+        "claimsFingerprint",
+        "authenticatedAt",
+        "authorizationMode"
+      ]
+    },
+    "PolicyTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["resource", "object", "property", "link", "action_target"]
+        },
+        "resourceId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "resourceRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "propertyApiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "targetObjectTypeResourceId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "targetObjectTypeRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        }
+      },
+      "required": ["kind", "resourceId", "resourceRevisionId"]
+    },
+    "PolicyPropertyOperand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "object_property"
+        },
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        }
+      },
+      "required": ["source", "apiName"]
+    },
+    "PolicyActorAttributeOperand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "actor_attribute"
+        },
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        }
+      },
+      "required": ["source", "apiName"]
+    },
+    "PolicyConstantOperand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "constant"
+        },
+        "value": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/QueryScalar"
+            },
+            {
+              "$ref": "#/$defs/PolicyScalarCollection"
+            }
+          ]
+        }
+      },
+      "required": ["source", "value"]
+    },
+    "PolicyRequestTimeOperand": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "request_time"
+        }
+      },
+      "required": ["source"]
+    },
+    "PolicyOperand": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PolicyPropertyOperand"
+        },
+        {
+          "$ref": "#/$defs/PolicyActorAttributeOperand"
+        },
+        {
+          "$ref": "#/$defs/PolicyConstantOperand"
+        },
+        {
+          "$ref": "#/$defs/PolicyRequestTimeOperand"
+        }
+      ]
+    },
+    "PolicyConstantPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "constant"
+        },
+        "value": {
+          "type": "boolean"
+        }
+      },
+      "required": ["kind", "value"]
+    },
+    "PolicyComparisonPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "compare"
+        },
+        "left": {
+          "$ref": "#/$defs/PolicyOperand"
+        },
+        "op": {
+          "type": "string",
+          "enum": ["eq", "ne", "lt", "lte", "gt", "gte", "in", "contains", "prefix", "containsAny"]
+        },
+        "right": {
+          "$ref": "#/$defs/PolicyOperand"
+        }
+      },
+      "required": ["kind", "left", "op", "right"]
+    },
+    "PolicyNullPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "is_null"
+        },
+        "operand": {
+          "$ref": "#/$defs/PolicyOperand"
+        }
+      },
+      "required": ["kind", "operand"]
+    },
+    "PolicyLogicalPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["all", "any"]
+        },
+        "predicates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyPredicate"
+          },
+          "minItems": 1,
+          "maxItems": 50
+        }
+      },
+      "required": ["kind", "predicates"]
+    },
+    "PolicyNotPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "not"
+        },
+        "predicate": {
+          "$ref": "#/$defs/PolicyPredicate"
+        }
+      },
+      "required": ["kind", "predicate"]
+    },
+    "PolicyLinkExistsPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "link_exists"
+        },
+        "linkTypeApiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "targetObjectTypeApiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "predicate": {
+          "$ref": "#/$defs/PolicyPredicate"
+        }
+      },
+      "required": ["kind", "linkTypeApiName", "targetObjectTypeApiName", "predicate"]
+    },
+    "PolicyPredicate": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/PolicyConstantPredicate"
+        },
+        {
+          "$ref": "#/$defs/PolicyComparisonPredicate"
+        },
+        {
+          "$ref": "#/$defs/PolicyNullPredicate"
+        },
+        {
+          "$ref": "#/$defs/PolicyLogicalPredicate"
+        },
+        {
+          "$ref": "#/$defs/PolicyNotPredicate"
+        },
+        {
+          "$ref": "#/$defs/PolicyLinkExistsPredicate"
+        }
+      ]
+    },
+    "PolicyMask": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "redact"
+        },
+        "displayValue": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "required": ["kind", "displayValue"]
+    },
+    "PolicyRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+        },
+        "target": {
+          "$ref": "#/$defs/PolicyTarget"
+        },
+        "effect": {
+          "type": "string",
+          "enum": ["allow", "deny", "mask"]
+        },
+        "predicate": {
+          "$ref": "#/$defs/PolicyPredicate"
+        },
+        "mask": {
+          "$ref": "#/$defs/PolicyMask"
+        }
+      },
+      "required": ["ruleId", "target", "effect", "predicate"]
+    },
+    "PolicyFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["object_property", "actor_attribute", "link"]
+        },
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "state": {
+          "type": "string",
+          "enum": ["value", "null", "missing"]
+        },
+        "value": {
+          "$ref": "#/$defs/QueryScalar"
+        }
+      },
+      "required": ["source", "apiName", "state"]
+    },
+    "PolicyTestVector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vectorId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Z][A-Z0-9_]{0,63}$"
+        },
+        "identity": {
+          "$ref": "#/$defs/RuntimeIdentityContext"
+        },
+        "requestTime": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "target": {
+          "$ref": "#/$defs/PolicyTarget"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyFact"
+          },
+          "maxItems": 512
+        },
+        "expectedDecision": {
+          "type": "string",
+          "enum": ["allow", "deny"]
+        },
+        "expectedPropertyDisposition": {
+          "type": "string",
+          "enum": ["allow", "mask", "deny"]
+        }
+      },
+      "required": ["vectorId", "identity", "requestTime", "target", "facts", "expectedDecision"]
+    },
+    "PolicyArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "projectId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "policyRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "compilerVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "artifactDigest": {
+          "$ref": "#/$defs/ArtifactDigest"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyRule"
+          },
+          "minItems": 1,
+          "maxItems": 512
+        },
+        "testVectors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyTestVector"
+          },
+          "minItems": 1,
+          "maxItems": 1000
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "projectId",
+        "releaseId",
+        "policyRevisionId",
+        "compilerVersion",
+        "artifactDigest",
+        "rules",
+        "testVectors"
+      ]
+    },
+    "PolicyDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "target": {
+          "$ref": "#/$defs/PolicyTarget"
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["allow", "deny"]
+        },
+        "propertyDisposition": {
+          "type": "string",
+          "enum": ["allow", "mask", "deny"]
+        },
+        "mask": {
+          "$ref": "#/$defs/PolicyMask"
+        },
+        "policyContextHash": {
+          "$ref": "#/$defs/ArtifactDigest"
+        },
+        "authorizationEpoch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 19,
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "evaluatedAt": {
+          "$ref": "#/$defs/CanonicalInstant"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "target",
+        "decision",
+        "policyContextHash",
+        "authorizationEpoch",
+        "evaluatedAt"
+      ]
+    },
+    "CursorGenerationBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "memberKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^(?:object|link):[A-Za-z][A-Za-z0-9_]{0,62}$"
+        },
+        "resourceRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "generationId": {
+          "$ref": "#/$defs/OntosId"
+        }
+      },
+      "required": ["memberKey", "resourceRevisionId", "generationId"]
+    },
+    "CursorSortBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "property": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["asc", "desc"]
+        },
+        "nulls": {
+          "type": "string",
+          "enum": ["first", "last"]
+        },
+        "collation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        }
+      },
+      "required": ["property", "direction", "nulls", "collation"]
+    },
+    "CursorEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "keyVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "issuedAt": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "projectId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "activationId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "objectTypeResourceId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "objectTypeRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "generations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CursorGenerationBinding"
+          },
+          "minItems": 1,
+          "maxItems": 5
+        },
+        "queryHash": {
+          "$ref": "#/$defs/ArtifactDigest"
+        },
+        "policyContextHash": {
+          "$ref": "#/$defs/ArtifactDigest"
+        },
+        "identityContextHash": {
+          "$ref": "#/$defs/ArtifactDigest"
+        },
+        "sort": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CursorSortBinding"
+          },
+          "minItems": 1,
+          "maxItems": 2
+        },
+        "lastValues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CursorScalar"
+          },
+          "minItems": 1,
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "keyVersion",
+        "issuedAt",
+        "expiresAt",
+        "projectId",
+        "releaseId",
+        "releaseRevisionId",
+        "activationId",
+        "objectTypeResourceId",
+        "objectTypeRevisionId",
+        "generations",
+        "queryHash",
+        "policyContextHash",
+        "identityContextHash",
+        "sort",
+        "lastValues"
+      ]
+    },
+    "RuntimePropertyMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "displayName": {
+          "$ref": "#/$defs/DisplayName"
+        },
+        "valueType": {
+          "type": "string",
+          "enum": [
+            "string",
+            "boolean",
+            "integer",
+            "decimal",
+            "date",
+            "timestamp",
+            "enum",
+            "string[]",
+            "json"
+          ]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": ["allow", "mask", "restricted"]
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "filterOperators": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "eq",
+              "ne",
+              "lt",
+              "lte",
+              "gt",
+              "gte",
+              "in",
+              "contains",
+              "prefix",
+              "containsAny",
+              "isNull"
+            ]
+          },
+          "maxItems": 11,
+          "uniqueItems": true
+        },
+        "sortable": {
+          "type": "boolean"
+        },
+        "searchable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "apiName",
+        "displayName",
+        "valueType",
+        "disposition",
+        "nullable",
+        "filterOperators",
+        "sortable",
+        "searchable"
+      ]
+    },
+    "RuntimeLinkMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "displayName": {
+          "$ref": "#/$defs/DisplayName"
+        },
+        "targetObjectTypeApiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["outgoing", "incoming"]
+        }
+      },
+      "required": ["apiName", "displayName", "targetObjectTypeApiName", "direction"]
+    },
+    "RuntimeObjectTypeMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "displayName": {
+          "$ref": "#/$defs/DisplayName"
+        },
+        "titlePropertyApiName": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ApiName"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "defaultSearchProperties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApiName"
+          },
+          "maxItems": 256,
+          "uniqueItems": true
+        },
+        "defaultSort": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/QuerySort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimePropertyMetadata"
+          },
+          "minItems": 1,
+          "maxItems": 256
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeLinkMetadata"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "apiName",
+        "displayName",
+        "titlePropertyApiName",
+        "defaultSearchProperties",
+        "defaultSort",
+        "properties",
+        "links"
+      ]
+    },
+    "RuntimeWarning": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": ["code", "message"]
+    },
+    "RuntimeObjectReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "objectTypeApiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "primaryKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      },
+      "required": ["objectTypeApiName", "primaryKey"]
+    },
+    "RuntimeNonNullJsonValue": {
+      "type": ["object", "array", "string", "number", "boolean"]
+    },
+    "RuntimeValueProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "state": {
+          "type": "string",
+          "const": "value"
+        },
+        "value": {
+          "$ref": "#/$defs/RuntimeNonNullJsonValue"
+        }
+      },
+      "required": ["apiName", "state", "value"]
+    },
+    "RuntimeNullProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "state": {
+          "type": "string",
+          "const": "null"
+        },
+        "value": {
+          "type": "null"
+        }
+      },
+      "required": ["apiName", "state", "value"]
+    },
+    "RuntimeMissingProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "state": {
+          "type": "string",
+          "const": "missing"
+        }
+      },
+      "required": ["apiName", "state"]
+    },
+    "RuntimeMaskedProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "state": {
+          "type": "string",
+          "const": "masked"
+        },
+        "displayValue": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "required": ["apiName", "state", "displayValue"]
+    },
+    "RuntimeRestrictedProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "state": {
+          "type": "string",
+          "const": "restricted"
+        }
+      },
+      "required": ["apiName", "state"]
+    },
+    "RuntimePropertyResult": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RuntimeValueProperty"
+        },
+        {
+          "$ref": "#/$defs/RuntimeNullProperty"
+        },
+        {
+          "$ref": "#/$defs/RuntimeMissingProperty"
+        },
+        {
+          "$ref": "#/$defs/RuntimeMaskedProperty"
+        },
+        {
+          "$ref": "#/$defs/RuntimeRestrictedProperty"
+        }
+      ]
+    },
+    "RuntimeObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reference": {
+          "$ref": "#/$defs/RuntimeObjectReference"
+        },
+        "objectVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 19,
+          "pattern": "^[1-9][0-9]{0,18}$"
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimePropertyResult"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": ["reference", "objectVersion", "properties"]
+    },
+    "RuntimeResponseMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "releaseId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "readTimestamp": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/CorrelationId"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeWarning"
+          },
+          "maxItems": 32
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "releaseId",
+        "releaseRevisionId",
+        "readTimestamp",
+        "correlationId",
+        "warnings"
+      ]
+    },
+    "RuntimeMetadataResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "releaseId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "readTimestamp": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/CorrelationId"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeWarning"
+          },
+          "maxItems": 32
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeObjectTypeMetadata"
+          },
+          "maxItems": 256
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "releaseId",
+        "releaseRevisionId",
+        "readTimestamp",
+        "correlationId",
+        "warnings",
+        "data"
+      ]
+    },
+    "RuntimeObjectGetResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "releaseId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "readTimestamp": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/CorrelationId"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeWarning"
+          },
+          "maxItems": 32
+        },
+        "data": {
+          "$ref": "#/$defs/RuntimeObject"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "releaseId",
+        "releaseRevisionId",
+        "readTimestamp",
+        "correlationId",
+        "warnings",
+        "data"
+      ]
+    },
+    "RuntimeSearchResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "releaseId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "readTimestamp": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/CorrelationId"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeWarning"
+          },
+          "maxItems": 32
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeObject"
+          },
+          "maxItems": 500
+        },
+        "nextCursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/OpaqueCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "releaseId",
+        "releaseRevisionId",
+        "readTimestamp",
+        "correlationId",
+        "warnings",
+        "data",
+        "nextCursor"
+      ]
+    },
+    "RuntimeCountResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "releaseId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "readTimestamp": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/CorrelationId"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeWarning"
+          },
+          "maxItems": 32
+        },
+        "count": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 19,
+          "pattern": "^(?:0|[1-9][0-9]{0,18})$"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "releaseId",
+        "releaseRevisionId",
+        "readTimestamp",
+        "correlationId",
+        "warnings",
+        "count"
+      ]
+    },
+    "RuntimeResolvedLinkHop": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "linkTypeApiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["outgoing", "incoming"]
+        }
+      },
+      "required": ["linkTypeApiName", "direction"]
+    },
+    "RuntimeLinkSearchResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/SchemaVersion"
+        },
+        "releaseId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "releaseRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "readTimestamp": {
+          "$ref": "#/$defs/CanonicalInstant"
+        },
+        "correlationId": {
+          "$ref": "#/$defs/CorrelationId"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeWarning"
+          },
+          "maxItems": 32
+        },
+        "resolvedPath": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeResolvedLinkHop"
+          },
+          "minItems": 1,
+          "maxItems": 2
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeObject"
+          },
+          "maxItems": 200
+        },
+        "nextCursor": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/OpaqueCursor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "releaseId",
+        "releaseRevisionId",
+        "readTimestamp",
+        "correlationId",
+        "warnings",
+        "resolvedPath",
+        "data",
+        "nextCursor"
+      ]
+    }
+  }
+}

@@ -101,7 +101,8 @@ Function、Saved Object Set、非 `count` Aggregate、Action、Activity 和 Admi
 | `401 AUTHENTICATION_REQUIRED`                      | 清理内存会话并进入重新认证                               | 继续显示旧受限数据             |
 | `403 RESOURCE_FORBIDDEN`                           | 显示 Project/Resource 无权页                             | 猜测隐藏资源列表               |
 | `404 OBJECT_NOT_ACCESSIBLE`                        | 使用同一“不可用”页                                       | 区分不存在和无权               |
-| `409 CURSOR_CONTEXT_CHANGED`                       | 保留搜索/筛选，清空 Cursor，从第一页重查并显示非阻断提示 | 循环重放失效 Cursor            |
+| `400 CURSOR_INVALID`                               | 保留搜索/筛选，丢弃 Cursor 并从第一页重查                | 循环重放无法验证的 Cursor      |
+| `409 CURSOR_EXPIRED` / `CURSOR_CONTEXT_CHANGED`    | 保留搜索/筛选，清空 Cursor，从第一页重查并显示非阻断提示 | 循环重放失效 Cursor            |
 | `410 RELEASE_RETIRED`                              | 阻断当前视图，引导返回可服务 Channel/Release             | 静默切到另一 Revision          |
 | `400 INVALID_QUERY_AST` / `PROPERTY_NOT_QUERYABLE` | 保留页面状态并标记可修正条件                             | 将它当 5xx 自动重试            |
 | `429 RATE_LIMITED`                                 | 遵守 `Retry-After`，禁用重复提交并显示倒计时             | 无界立即重试                   |
