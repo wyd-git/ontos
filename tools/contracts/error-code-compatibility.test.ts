@@ -4,13 +4,13 @@ import test from "node:test";
 
 import { diffErrorCodeCatalogs } from "./error-code-compatibility.ts";
 
-void test("the stable core error catalog matches its v1 baseline", async () => {
+void test("the stable core error catalog remains compatible with its v1 baseline", async () => {
   const baseline = await readJson("tools/contracts/baseline/error-codes.v1.json");
   const current = await readJson("packages/contracts/error-codes.json");
-  assert.deepEqual(diffErrorCodeCatalogs(baseline, current), {
-    compatible: true,
-    findings: [],
-  });
+  const report = diffErrorCodeCatalogs(baseline, current);
+  assert.equal(report.compatible, true);
+  assert.equal(report.findings.length, 6);
+  assert.ok(report.findings.every(({ code }) => code === "ERROR_CODE_ADDED"));
 });
 
 void test("adding an error code is compatible", async () => {

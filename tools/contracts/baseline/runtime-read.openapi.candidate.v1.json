@@ -1,0 +1,1299 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ontos Runtime Read Candidate",
+    "version": "0.2.0-candidate",
+    "description": "G2-03 Runtime Read Candidate generated from the formal kernel contract. It is consumed in-repo but is not a published SDK support commitment."
+  },
+  "servers": [
+    {
+      "url": "https://runtime.example.invalid"
+    }
+  ],
+  "security": [
+    {
+      "oidc": ["runtime.read"]
+    }
+  ],
+  "paths": {
+    "/api/v1/ontologies/{ontology}/metadata": {
+      "get": {
+        "operationId": "getRuntimeMetadata",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Ontology"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful policy-filtered Runtime read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeMetadataResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "403": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "410": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RuntimeError"
+          }
+        }
+      }
+    },
+    "/api/v1/ontologies/{ontology}/objects/{objectType}/{primaryKey}": {
+      "get": {
+        "operationId": "getRuntimeObject",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Ontology"
+          },
+          {
+            "$ref": "#/components/parameters/ObjectType"
+          },
+          {
+            "$ref": "#/components/parameters/PrimaryKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful policy-filtered Runtime read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeObjectGetResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "403": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "404": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "410": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RuntimeError"
+          }
+        }
+      }
+    },
+    "/api/v1/ontologies/{ontology}/objects/{objectType}/search": {
+      "post": {
+        "operationId": "searchRuntimeObjects",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Ontology"
+          },
+          {
+            "$ref": "#/components/parameters/ObjectType"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful policy-filtered Runtime read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "401": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "403": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "409": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "410": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RuntimeError"
+          }
+        }
+      }
+    },
+    "/api/v1/ontologies/{ontology}/objects/{objectType}/aggregate": {
+      "post": {
+        "operationId": "countRuntimeObjects",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Ontology"
+          },
+          {
+            "$ref": "#/components/parameters/ObjectType"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeCountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful policy-filtered Runtime read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeCountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "401": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "403": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "410": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RuntimeError"
+          }
+        }
+      }
+    },
+    "/api/v1/ontologies/{ontology}/objects/{objectType}/{primaryKey}/links/{linkType}/search": {
+      "post": {
+        "operationId": "searchRuntimeLinks",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Ontology"
+          },
+          {
+            "$ref": "#/components/parameters/ObjectType"
+          },
+          {
+            "$ref": "#/components/parameters/PrimaryKey"
+          },
+          {
+            "$ref": "#/components/parameters/LinkType"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLinkSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful policy-filtered Runtime read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLinkSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "401": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "403": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "404": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "409": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "410": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RuntimeError"
+          },
+          "503": {
+            "$ref": "#/components/responses/RuntimeError"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "oidc": {
+        "type": "openIdConnect",
+        "openIdConnectUrl": "https://identity.example.invalid/.well-known/openid-configuration"
+      }
+    },
+    "parameters": {
+      "Ontology": {
+        "name": "ontology",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/ApiName"
+        }
+      },
+      "ObjectType": {
+        "name": "objectType",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/ApiName"
+        }
+      },
+      "LinkType": {
+        "name": "linkType",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/ApiName"
+        }
+      },
+      "PrimaryKey": {
+        "name": "primaryKey",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
+    },
+    "responses": {
+      "RuntimeError": {
+        "description": "Stable fail-closed Runtime error.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "RuntimeLinkSearchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "releaseId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "releaseRevisionId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "readTimestamp": {
+            "$ref": "#/components/schemas/CanonicalInstant"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/CorrelationId"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeWarning"
+            },
+            "maxItems": 32
+          },
+          "resolvedPath": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeResolvedLinkHop"
+            },
+            "minItems": 1,
+            "maxItems": 2
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeObject"
+            },
+            "maxItems": 200
+          },
+          "nextCursor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OpaqueCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "releaseId",
+          "releaseRevisionId",
+          "readTimestamp",
+          "correlationId",
+          "warnings",
+          "resolvedPath",
+          "data",
+          "nextCursor"
+        ]
+      },
+      "OpaqueCursor": {
+        "type": "string",
+        "minLength": 16,
+        "maxLength": 65536,
+        "pattern": "^[A-Za-z0-9_-]+$"
+      },
+      "RuntimeObject": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reference": {
+            "$ref": "#/components/schemas/RuntimeObjectReference"
+          },
+          "objectVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 19,
+            "pattern": "^[1-9][0-9]{0,18}$"
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimePropertyResult"
+            },
+            "maxItems": 256
+          }
+        },
+        "required": ["reference", "objectVersion", "properties"]
+      },
+      "RuntimePropertyResult": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/RuntimeValueProperty"
+          },
+          {
+            "$ref": "#/components/schemas/RuntimeNullProperty"
+          },
+          {
+            "$ref": "#/components/schemas/RuntimeMissingProperty"
+          },
+          {
+            "$ref": "#/components/schemas/RuntimeMaskedProperty"
+          },
+          {
+            "$ref": "#/components/schemas/RuntimeRestrictedProperty"
+          }
+        ]
+      },
+      "RuntimeRestrictedProperty": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "state": {
+            "type": "string",
+            "const": "restricted"
+          }
+        },
+        "required": ["apiName", "state"]
+      },
+      "ApiName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 63,
+        "pattern": "^[A-Za-z][A-Za-z0-9_]{0,62}$"
+      },
+      "RuntimeMaskedProperty": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "state": {
+            "type": "string",
+            "const": "masked"
+          },
+          "displayValue": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": ["apiName", "state", "displayValue"]
+      },
+      "RuntimeMissingProperty": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "state": {
+            "type": "string",
+            "const": "missing"
+          }
+        },
+        "required": ["apiName", "state"]
+      },
+      "RuntimeNullProperty": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "state": {
+            "type": "string",
+            "const": "null"
+          },
+          "value": {
+            "type": "null"
+          }
+        },
+        "required": ["apiName", "state", "value"]
+      },
+      "RuntimeValueProperty": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "state": {
+            "type": "string",
+            "const": "value"
+          },
+          "value": {
+            "$ref": "#/components/schemas/RuntimeNonNullJsonValue"
+          }
+        },
+        "required": ["apiName", "state", "value"]
+      },
+      "RuntimeNonNullJsonValue": {
+        "type": ["object", "array", "string", "number", "boolean"]
+      },
+      "RuntimeObjectReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "objectTypeApiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "primaryKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "required": ["objectTypeApiName", "primaryKey"]
+      },
+      "RuntimeResolvedLinkHop": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "linkTypeApiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["outgoing", "incoming"]
+          }
+        },
+        "required": ["linkTypeApiName", "direction"]
+      },
+      "RuntimeWarning": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 64,
+            "pattern": "^[A-Z][A-Z0-9_]{2,63}$"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": ["code", "message"]
+      },
+      "CorrelationId": {
+        "type": "string",
+        "minLength": 21,
+        "maxLength": 128,
+        "pattern": "^corr_[A-Za-z0-9][A-Za-z0-9._~-]{15,122}$"
+      },
+      "CanonicalInstant": {
+        "type": "string",
+        "minLength": 27,
+        "maxLength": 27,
+        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{6}Z$",
+        "format": "ontos-canonical-instant"
+      },
+      "OntosId": {
+        "type": "string",
+        "minLength": 36,
+        "maxLength": 36,
+        "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+      },
+      "SchemaVersion": {
+        "type": "integer",
+        "const": 1
+      },
+      "RuntimeCountResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "releaseId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "releaseRevisionId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "readTimestamp": {
+            "$ref": "#/components/schemas/CanonicalInstant"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/CorrelationId"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeWarning"
+            },
+            "maxItems": 32
+          },
+          "count": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 19,
+            "pattern": "^(?:0|[1-9][0-9]{0,18})$"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "releaseId",
+          "releaseRevisionId",
+          "readTimestamp",
+          "correlationId",
+          "warnings",
+          "count"
+        ]
+      },
+      "RuntimeSearchResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "releaseId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "releaseRevisionId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "readTimestamp": {
+            "$ref": "#/components/schemas/CanonicalInstant"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/CorrelationId"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeWarning"
+            },
+            "maxItems": 32
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeObject"
+            },
+            "maxItems": 500
+          },
+          "nextCursor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OpaqueCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "releaseId",
+          "releaseRevisionId",
+          "readTimestamp",
+          "correlationId",
+          "warnings",
+          "data",
+          "nextCursor"
+        ]
+      },
+      "RuntimeObjectGetResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "releaseId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "releaseRevisionId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "readTimestamp": {
+            "$ref": "#/components/schemas/CanonicalInstant"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/CorrelationId"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeWarning"
+            },
+            "maxItems": 32
+          },
+          "data": {
+            "$ref": "#/components/schemas/RuntimeObject"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "releaseId",
+          "releaseRevisionId",
+          "readTimestamp",
+          "correlationId",
+          "warnings",
+          "data"
+        ]
+      },
+      "RuntimeMetadataResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "releaseId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "releaseRevisionId": {
+            "$ref": "#/components/schemas/OntosId"
+          },
+          "readTimestamp": {
+            "$ref": "#/components/schemas/CanonicalInstant"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/CorrelationId"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeWarning"
+            },
+            "maxItems": 32
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeObjectTypeMetadata"
+            },
+            "maxItems": 256
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "releaseId",
+          "releaseRevisionId",
+          "readTimestamp",
+          "correlationId",
+          "warnings",
+          "data"
+        ]
+      },
+      "RuntimeObjectTypeMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "displayName": {
+            "$ref": "#/components/schemas/DisplayName"
+          },
+          "titlePropertyApiName": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ApiName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "defaultSearchProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiName"
+            },
+            "maxItems": 256,
+            "uniqueItems": true
+          },
+          "defaultSort": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QuerySort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimePropertyMetadata"
+            },
+            "minItems": 1,
+            "maxItems": 256
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeLinkMetadata"
+            },
+            "maxItems": 256
+          }
+        },
+        "required": [
+          "apiName",
+          "displayName",
+          "titlePropertyApiName",
+          "defaultSearchProperties",
+          "defaultSort",
+          "properties",
+          "links"
+        ]
+      },
+      "RuntimeLinkMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "displayName": {
+            "$ref": "#/components/schemas/DisplayName"
+          },
+          "targetObjectTypeApiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["outgoing", "incoming"]
+          }
+        },
+        "required": ["apiName", "displayName", "targetObjectTypeApiName", "direction"]
+      },
+      "DisplayName": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128
+      },
+      "RuntimePropertyMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "apiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "displayName": {
+            "$ref": "#/components/schemas/DisplayName"
+          },
+          "valueType": {
+            "type": "string",
+            "enum": [
+              "string",
+              "boolean",
+              "integer",
+              "decimal",
+              "date",
+              "timestamp",
+              "enum",
+              "string[]",
+              "json"
+            ]
+          },
+          "disposition": {
+            "type": "string",
+            "enum": ["allow", "mask", "restricted"]
+          },
+          "nullable": {
+            "type": "boolean"
+          },
+          "filterOperators": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "eq",
+                "ne",
+                "lt",
+                "lte",
+                "gt",
+                "gte",
+                "in",
+                "contains",
+                "prefix",
+                "containsAny",
+                "isNull"
+              ]
+            },
+            "maxItems": 11,
+            "uniqueItems": true
+          },
+          "sortable": {
+            "type": "boolean"
+          },
+          "searchable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "apiName",
+          "displayName",
+          "valueType",
+          "disposition",
+          "nullable",
+          "filterOperators",
+          "sortable",
+          "searchable"
+        ]
+      },
+      "QuerySort": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "property": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["asc", "desc"]
+          }
+        },
+        "required": ["property", "direction"]
+      },
+      "RuntimeLinkSearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["outgoing", "incoming"]
+          },
+          "secondHop": {
+            "$ref": "#/components/schemas/RuntimeLinkHop"
+          },
+          "select": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiName"
+            },
+            "minItems": 1,
+            "maxItems": 256,
+            "uniqueItems": true
+          },
+          "searchText": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 256
+          },
+          "where": {
+            "$ref": "#/components/schemas/QueryPredicate"
+          },
+          "orderBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuerySort"
+            },
+            "maxItems": 1
+          },
+          "page": {
+            "$ref": "#/components/schemas/LinkQueryPage"
+          }
+        },
+        "required": ["schemaVersion", "direction", "select"]
+      },
+      "LinkQueryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          },
+          "cursor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OpaqueCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": []
+      },
+      "QueryPredicate": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/QueryComparisonPredicate"
+          },
+          {
+            "$ref": "#/components/schemas/QueryNullPredicate"
+          },
+          {
+            "$ref": "#/components/schemas/QueryAndPredicate"
+          },
+          {
+            "$ref": "#/components/schemas/QueryOrPredicate"
+          },
+          {
+            "$ref": "#/components/schemas/QueryNotPredicate"
+          }
+        ]
+      },
+      "QueryNotPredicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "not": {
+            "$ref": "#/components/schemas/QueryPredicate"
+          }
+        },
+        "required": ["not"]
+      },
+      "QueryOrPredicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "or": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryPredicate"
+            },
+            "minItems": 1,
+            "maxItems": 50
+          }
+        },
+        "required": ["or"]
+      },
+      "QueryAndPredicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "and": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QueryPredicate"
+            },
+            "minItems": 1,
+            "maxItems": 50
+          }
+        },
+        "required": ["and"]
+      },
+      "QueryNullPredicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "property": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "op": {
+            "type": "string",
+            "const": "isNull"
+          }
+        },
+        "required": ["property", "op"]
+      },
+      "QueryComparisonPredicate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "property": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "eq",
+              "ne",
+              "lt",
+              "lte",
+              "gt",
+              "gte",
+              "in",
+              "contains",
+              "prefix",
+              "containsAny"
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/QueryScalar"
+              },
+              {
+                "$ref": "#/components/schemas/QueryScalarCollection"
+              }
+            ]
+          }
+        },
+        "required": ["property", "op", "value"]
+      },
+      "QueryScalarCollection": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/QueryScalar"
+        },
+        "minItems": 1,
+        "maxItems": 500,
+        "uniqueItems": true
+      },
+      "QueryScalar": {
+        "type": ["string", "number", "boolean"],
+        "maxLength": 4096
+      },
+      "RuntimeLinkHop": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "linkTypeApiName": {
+            "$ref": "#/components/schemas/ApiName"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["outgoing", "incoming"]
+          }
+        },
+        "required": ["linkTypeApiName", "direction"]
+      },
+      "RuntimeCountRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "operation": {
+            "type": "string",
+            "const": "count"
+          },
+          "searchText": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 256
+          },
+          "where": {
+            "$ref": "#/components/schemas/QueryPredicate"
+          }
+        },
+        "required": ["schemaVersion", "operation"]
+      },
+      "RuntimeSearchRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "select": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiName"
+            },
+            "minItems": 1,
+            "maxItems": 256,
+            "uniqueItems": true
+          },
+          "searchText": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 256
+          },
+          "where": {
+            "$ref": "#/components/schemas/QueryPredicate"
+          },
+          "orderBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuerySort"
+            },
+            "maxItems": 1
+          },
+          "page": {
+            "$ref": "#/components/schemas/QueryPage"
+          }
+        },
+        "required": ["schemaVersion", "select"]
+      },
+      "QueryPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 50
+          },
+          "cursor": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OpaqueCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": []
+      },
+      "ErrorEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schemaVersion", "error"],
+        "properties": {
+          "schemaVersion": {
+            "$ref": "#/components/schemas/SchemaVersion"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorRecord"
+          }
+        }
+      },
+      "ErrorRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "category", "retryable", "details", "correlationId"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Z][A-Z0-9_]{2,127}$"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "pattern": "^[^\\u0000-\\u001F\\u007F]+$"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "authentication",
+              "authorization",
+              "conflict",
+              "dependency",
+              "internal",
+              "not_found",
+              "rate_limit",
+              "unavailable",
+              "validation"
+            ]
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "details": {
+            "$ref": "#/components/schemas/ErrorDetails"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/CorrelationId"
+          }
+        }
+      },
+      "ErrorDetails": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    }
+  }
+}

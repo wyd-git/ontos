@@ -16,6 +16,7 @@ const supportedSchemaKeywords = new Set([
   "$schema",
   "additionalProperties",
   "const",
+  "default",
   "description",
   "enum",
   "format",
@@ -26,6 +27,7 @@ const supportedSchemaKeywords = new Set([
   "minimum",
   "minItems",
   "minLength",
+  "oneOf",
   "pattern",
   "properties",
   "required",
@@ -70,6 +72,12 @@ function inspectSchemaNode(value: unknown, path: string): void {
     }
   }
   if (schema.items !== undefined) inspectSchemaNode(schema.items, `${path}.items`);
+  if (schema.oneOf !== undefined) {
+    if (!Array.isArray(schema.oneOf) || schema.oneOf.length < 1) {
+      throw new Error(`JSON Schema oneOf must be a non-empty array at ${path}.oneOf.`);
+    }
+    schema.oneOf.forEach((item, index) => inspectSchemaNode(item, `${path}.oneOf[${index}]`));
+  }
   if (typeof schema.additionalProperties === "object" && schema.additionalProperties !== null) {
     inspectSchemaNode(schema.additionalProperties, `${path}.additionalProperties`);
   }
@@ -88,6 +96,18 @@ function validateValue(
     validateValue(root, target, value, path, issues);
     return;
   }
+  if (Array.isArray(schema.oneOf)) {
+    const branchIssues = schema.oneOf.map((branch) => {
+      const candidate: SchemaValidationIssue[] = [];
+      validateValue(root, branch, value, path, candidate);
+      return candidate;
+    });
+    const matchCount = branchIssues.filter((candidate) => candidate.length === 0).length;
+    if (matchCount !== 1) {
+      addIssue(issues, "ONE_OF", path, "Value must match exactly one schema branch.");
+    }
+    return;
+  }
   if (Object.hasOwn(schema, "const") && !deepEqual(value, schema.const)) {
     addIssue(issues, "CONST_MISMATCH", path, "Value does not match const.");
     return;
@@ -96,9 +116,20 @@ function validateValue(
     addIssue(issues, "ENUM_MISMATCH", path, "Value is not in enum.");
     return;
   }
-  if (typeof schema.type === "string" && !matchesType(value, schema.type)) {
-    addIssue(issues, "TYPE_MISMATCH", path, `Expected ${schema.type}.`);
-    return;
+  if (typeof schema.type === "string") {
+    if (!matchesType(value, schema.type)) {
+      addIssue(issues, "TYPE_MISMATCH", path, `Expected ${schema.type}.`);
+      return;
+    }
+  } else if (Array.isArray(schema.type)) {
+    const types = schema.type;
+    if (
+      types.some((item) => typeof item !== "string") ||
+      !types.some((item) => matchesType(value, item as string))
+    ) {
+      addIssue(issues, "TYPE_MISMATCH", path, "Value does not match any allowed type.");
+      return;
+    }
   }
 
   if (typeof value === "string") validateString(schema, value, path, issues);

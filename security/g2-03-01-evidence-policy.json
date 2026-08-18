@@ -27,21 +27,26 @@
   "scope": {
     "allowedExactPaths": [
       ".gitignore",
+      "eslint.config.mjs",
       "README.md",
       "docs/README.md",
       "docs/architecture/adr/020-query-policy-identity-consumer-boundary.md",
       "docs/architecture/ci-foundation-gate.md",
+      "docs/architecture/g2-03-runtime-read-contract.md",
       "docs/delivery/g2-03-query-policy-task-pack.md",
       "docs/delivery/g2-owner-capacity-matrix.md",
       "docs/evidence/g2-03-01-query-policy-architecture.md",
+      "docs/evidence/g2-03-02-runtime-read-contracts.md",
       "docs/reviews/g2-03-01-intended-vs-implemented.md",
       "docs/reviews/g2-03-01-query-policy-architecture-red-team.md",
+      "docs/reviews/g2-03-02-intended-vs-implemented.md",
       "docs/security/g2-03-01-identity-delegation-threat-model.md",
       "package-lock.json",
       "package.json",
       "security/g2-00-evidence-policy.json",
       "security/g2-02-evidence-policy.json",
       "security/g2-03-01-evidence-policy.json",
+      "security/g2-03-02-evidence-policy.json",
       "security/license-policy.json",
       "tools/ci/g2-03-01-evidence.test.ts",
       "tools/ci/g2-03-01-evidence.ts",
@@ -49,9 +54,16 @@
       "tools/ci/run.ts",
       "tools/ci/supply-chain.test.ts",
       "tools/ci/supply-chain.ts",
-      "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts"
+      "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts",
+      "tsconfig.json"
     ],
-    "allowedPrefixes": ["spikes/g2-03-01/", "tools/query-policy-architecture/"],
+    "allowedPrefixes": [
+      "packages/contracts/",
+      "packages/runtime-read-client/",
+      "spikes/g2-03-01/",
+      "tools/contracts/",
+      "tools/query-policy-architecture/"
+    ],
     "forbiddenPrefixes": [
       "apps/web/",
       "migrations/",

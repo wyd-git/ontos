@@ -21,8 +21,8 @@ void test("Foundation catalog, JSON Schema, runtime parsers, and Golden Fixtures
     goldenCaseCount: 30,
     foundationContractCount: 11,
     deferredFamilyCount: 5,
-    errorCodeCount: 16,
-    compatibilityFindingCount: 0,
+    errorCodeCount: 22,
+    compatibilityFindingCount: 6,
   });
 });
 

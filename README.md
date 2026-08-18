@@ -8,10 +8,10 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
 - G2-00 Foundation：**PASS，13/13 已合并**；
 - G2-01 Metadata：**PASS，G2-01-01～12 已实现并通过 clean-room 总验收**；
-- 正式产品实现：**Metadata/Package 控制面与 Materialization 数据运行面已具备真实 OIDC、受限 HTTP、最小 RBAC、PostgreSQL、版本化 S3、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；完整 Gate 共 35 道**；Query/Policy 架构边界已验证，正式 Runtime Read 与真实 Web 消费者尚未实现；
+- 正式产品实现：**Metadata/Package 控制面与 Materialization 数据运行面已具备真实 OIDC、受限 HTTP、最小 RBAC、PostgreSQL、版本化 S3、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；完整 Gate 共 37 道**；Query/Policy 架构与 Runtime Read 公共合同已验证，正式 Runtime Read 与真实 Web 消费者尚未实现；
 - G2-02 Materialization：**PASS，G2-02-01～14 全部完成；独立 Ubuntu 24 / 8C16G clean-room 已跑通冷/热 100k Object + 1m Link、20 次 Cutover、容量、安全、GC 与整体重启恢复**；
-- G2-03 Query + Policy：**G2-03-01 PASS，当前进度 1/15；ADR-020、Identity/Delegation Threat Model、Policy SQL/PG16 Explain、Query Lease 协议、OpenAPI Generated Client 和 Web 栈已冻结**；
-- 下一唯一允许的工作项：**G2-03-02，把 Spike Candidate 变成严格 Query / Policy / Identity / Runtime Read 公共合同、Golden Fixture、兼容基线和可重现 Read Client；仍不建 Migration、Endpoint 或产品页**。
+- G2-03 Query + Policy：**G2-03-01～02 PASS，当前进度 2/15；Query/Policy/Identity/Cursor/Runtime Read 合同、Golden、OpenAPI Candidate 和私有 Generated Read Client 已冻结**；
+- 下一唯一允许的工作项：**G2-03-03，从 0022 起实现 Query/Policy 前向 Migration、最小权限、Policy Artifact 与 Query Lease 持久事实；仍不建 Runtime Endpoint 或产品页**。
 
 ## 权威文档
 
@@ -38,6 +38,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [G2-02-14 Clean-room 总验收](docs/evidence/g2-02-14-clean-room-materialization.md) | 空环境 100k/1m 冷/热全链路、20 次 Cutover、容量/安全/GC、整体重启和总 Manifest |
 | [G2-03 Query + Policy 任务包](docs/delivery/g2-03-query-policy-task-pack.md) | 15 个顺序工作项、依赖、WWA 验收、停止条件和总 Gate |
 | [ADR-020 与 G2-03-01 Evidence](docs/architecture/adr/020-query-policy-identity-consumer-boundary.md) | Identity/Delegation、Policy-in-SQL、Execution Context/Lease、OpenAPI/Generated Client 和 Web 边界 |
+| [G2-03-02 Runtime Read 合同与 Evidence](docs/architecture/g2-03-runtime-read-contract.md) | Query/Policy/Identity/Cursor/Response、Golden、OpenAPI Candidate、Generated Read Client 与兼容基线 |
 | [G2-03 UI/API 早期消费者合同](docs/architecture/g2-03-ui-api-consumer-contract.md) | G2-03 只读 Web、G2-04 Action 和 G2-05 完整 UI/SDK 的责任分界与防返工 Gate |
 | [G2-03 可行性复审](docs/reviews/g2-03-task-pack-feasibility.md) | 代码现状核验、端到端落地走查、55–90 理想工程日对账和 Conditional Go |
 | [G2-03 任务包红队](docs/reviews/g2-03-task-pack-red-team.md) | Identity、Policy SQL、Query Lease/GC、OpenAPI/Web 和工期的 Kill Assumption 与修订结论 |

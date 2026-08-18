@@ -3,7 +3,7 @@
 - 版本：v1
 - 日期：2026-08-17
 - 状态：Frozen；可行性复审与红队修订已写回权威文档
-- 执行进度：1/15；G2-03-01 已 PASS，当前只放行 G2-03-02，未 PASS 前不得开始 G2-03-03 或正式 Runtime 编码
+- 执行进度：2/15；G2-03-01～02 已 PASS，当前只放行 G2-03-03，未 PASS 前不得开始 G2-03-04 或正式 Runtime Endpoint
 - 上游 Gate：G2-00、G2-01、G2-02 已 PASS
 - 目标 Gate：正式 Runtime Read Kernel + 统一 Policy Gateway + 真实只读 Web 消费者
 - 配套边界：[G2-03 UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)
@@ -238,6 +238,7 @@ flowchart LR
 
 ### G2-03-02：冻结 Query、Policy、Identity 与 Runtime Read 合同
 
+- 状态：PASS（以同一 commit 的 `g2-03-02-evidence-manifest.json=CLEAN_ROOM_PASS` 为准）
 - 规模：M
 - 建议 Owner：Contracts / Runtime / Policy / Web
 - 依赖：G2-03-01
@@ -262,6 +263,8 @@ Query AST、Cursor、Property 受限状态和 Policy Decision 将同时被 SQL�
 - Generated Client 由可重现命令生成，重新生成无 Diff；Web 编译必须消费它，不存在手写平行 DTO；
 - Golden 至少覆盖两领域、5 Actor、空/null/missing、mask/deny、Cursor Context 变化、未知字段、过限和 Injection Payload；
 - Breaking Diff 能拒绝删除/改名/类型/必填变化；Candidate 状态不能被文档误报为已发布 SDK。
+
+交付记录：[Runtime Read 合同](../architecture/g2-03-runtime-read-contract.md)、[Evidence](../evidence/g2-03-02-runtime-read-contracts.md)与[Intended-vs-Implemented](../reviews/g2-03-02-intended-vs-implemented.md)。
 
 ### G2-03-03：实现 Query/Policy 前向 Migration 与最小权限
 

@@ -39,7 +39,7 @@ GitHub Actions 不重新拼装业务命令，只在固定 Node/npm 环境执行 
 - Secret、License、SBOM、Vulnerability Artifact 的路径、Hash 和计数；
 - 失败 Gate 和未执行 Gate，不能用缺失字段伪装成 PASS。
 
-同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。`fast-docs` 另生成 `fast-docs-evidence.json`，并以明文声明它不替代 G2-00/01/02 Clean-room；`full` 才生成三阶段 Manifest。原始供应链机器输出保存在同一目录。
+同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。`fast-docs` 另生成 `fast-docs-evidence.json`，并以明文声明它不替代历史 Clean-room；`full` 才生成 G2-00、G2-01、G2-02、G2-03-01 与 G2-03-02 Manifest。原始供应链机器输出保存在同一目录。
 
 G2-00-13 在同一入口追加 `foundation-scope-evidence`，由 `security/g2-00-evidence-policy.json` 冻结当前允许的 Workspace、DB-00 Migration/表、ADR-007～012、G2-00-01～13 Evidence、Owner/容量和未关闭风险。出现 App、非 DB-00 Migration、额外表、非 Spike UI 文件或未提交的必需 Evidence 时 Gate 失败。
 

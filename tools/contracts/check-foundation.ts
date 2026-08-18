@@ -241,7 +241,13 @@ function validateCatalog(
     if (!/^G2-0[1-4]$/u.test(gate)) throw new Error(`${name} has an invalid latest freeze Gate.`);
     const isActivatedMetadataFamily = name === "ResourceRevisionReleasePackage";
     const isActivatedMaterializationFamily = name === "SnapshotMappingValidationJob";
-    if (family.fieldsFrozen !== (isActivatedMetadataFamily || isActivatedMaterializationFamily)) {
+    const isActivatedRuntimeReadFamily = name === "QueryPolicyCursor";
+    if (
+      family.fieldsFrozen !==
+      (isActivatedMetadataFamily ||
+        isActivatedMaterializationFamily ||
+        isActivatedRuntimeReadFamily)
+    ) {
       throw new Error(
         `${name} fieldsFrozen must reflect whether its owning Gate has activated it.`,
       );
@@ -286,6 +292,33 @@ function validateCatalog(
         JSON.stringify([...activated].sort()) !== JSON.stringify(expected)
       ) {
         throw new Error(`${name} activated Materialization definitions are incomplete.`);
+      }
+    }
+    if (isActivatedRuntimeReadFamily) {
+      const activated = Array.isArray(family.activatedDefinitions)
+        ? family.activatedDefinitions.map((definition, index) =>
+            requireString(definition, `${name}.activatedDefinitions[${index}]`),
+          )
+        : undefined;
+      const expected = [
+        "CursorEnvelope",
+        "PolicyArtifact",
+        "PolicyDecision",
+        "RuntimeCountRequest",
+        "RuntimeCountResponse",
+        "RuntimeIdentityContext",
+        "RuntimeLinkSearchRequest",
+        "RuntimeLinkSearchResponse",
+        "RuntimeMetadataResponse",
+        "RuntimeObjectGetResponse",
+        "RuntimeSearchRequest",
+        "RuntimeSearchResponse",
+      ];
+      if (
+        activated === undefined ||
+        JSON.stringify([...activated].sort()) !== JSON.stringify(expected)
+      ) {
+        throw new Error(`${name} activated Runtime Read definitions are incomplete.`);
       }
     }
     if (!Array.isArray(family.semanticInvariants) || family.semanticInvariants.length < 2) {

@@ -175,9 +175,16 @@
 - 架构停止条件未触发，但持久 Query Lease、生产 Runtime Identity、Policy Artifact/Gateway、Cursor 与真 Web 仍是后续 Gate；不把 Spike 墙钟速度外推为产品交付日期。
 - 当前只放行 **G2-03-02** 公共合同与 Generated Read Client；未 PASS 前不建 Migration、Runtime Endpoint 或产品页。
 
+### G2-03-02 后检查点（2026-08-18）
+
+- G2-03-02 已 PASS，当前进度为 **2/15**；12 类 Query/Policy/Identity/Cursor/Runtime Read 合同、22 个核心错误、两领域/5 Actor Golden、5 路径 OpenAPI Candidate 与私有 Generated Read Client 已冻结。
+- Schema、Runtime Parser、OpenAPI 和 Client 由同一字段源驱动；Required/Enum/Limit/Nullability、删除/改名/类型/必填与 Path Mutation 会在 SQL、HTTP、UI 开始前失败。
+- HeyAPI 0.99 Transport 源码的 TS6 exact optional 不兼容被限制在生成阶段；包根只暴露确定性 JavaScript 与声明，并由严格 Web 形状消费者通过包名创建 Client、调用 Search。根工程未放宽，浏览器真 HTTP 接缝仍在 G2-03-12/13 验证。
+- 当前只放行 **G2-03-03**：从 0022 起建立 Query/Policy/Identity/Lease 前向事实与最小权限；未 PASS 前不建 Runtime Endpoint 或产品页。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01、G2-02 与 G2-03-01 已 PASS；当前只允许执行 G2-03-02，未 PASS 前不得直接建 Migration、Query Endpoint、事实表、产品页或 Action。
+1. G2-00、G2-01、G2-02 与 G2-03-01～02 已 PASS；当前只允许执行 G2-03-03，未 PASS 前不得直接建 Query Endpoint、产品页或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

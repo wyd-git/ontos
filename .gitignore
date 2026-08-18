@@ -35,6 +35,10 @@ __pycache__/
 generated/
 !spikes/g2-03-01/web/src/generated/
 !spikes/g2-03-01/web/src/generated/**
+!packages/runtime-read-client/generated/
+!packages/runtime-read-client/generated/**
+!packages/runtime-read-client/dist/
+!packages/runtime-read-client/dist/**
 tmp/
 *.log
 *.pid

@@ -77,7 +77,15 @@ function compareSchema(
 ): void {
   const baseline = requireRecord(baselineValue, `$baseline.${path}`);
   const candidate = requireRecord(candidateValue, `$candidate.${path}`);
-  for (const keyword of ["type", "$ref", "const", "pattern", "format"] as const) {
+  for (const keyword of [
+    "type",
+    "$ref",
+    "const",
+    "pattern",
+    "format",
+    "default",
+    "oneOf",
+  ] as const) {
     compareExactKeyword(baseline, candidate, keyword, path, findings);
   }
   compareEnum(baseline.enum, candidate.enum, path, findings);
