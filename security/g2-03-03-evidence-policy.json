@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "gate": "G2-03-03",
+  "baselineCommit": "39a423f90d94908f6788e1b9228e517e43754da2",
+  "requiredRecords": [
+    {
+      "path": "docs/architecture/adr/021-query-policy-persistence-boundary.md",
+      "marker": "- 状态：Accepted for G2-03-03"
+    },
+    {
+      "path": "docs/reviews/g2-03-03-intended-vs-implemented.md",
+      "marker": "- 结论：**PASS**"
+    },
+    {
+      "path": "docs/evidence/g2-03-03-query-policy-persistence.md",
+      "marker": "- 结论：**PASS**"
+    }
+  ],
+  "scope": {
+    "allowedExactPaths": [
+      "README.md",
+      "docs/README.md",
+      "docs/architecture/adr/021-query-policy-persistence-boundary.md",
+      "docs/architecture/ci-foundation-gate.md",
+      "docs/architecture/core-database-design.md",
+      "docs/delivery/g2-03-query-policy-task-pack.md",
+      "docs/delivery/g2-owner-capacity-matrix.md",
+      "docs/evidence/g2-03-03-query-policy-persistence.md",
+      "docs/product/ontology-kernel-implementation-blueprint.md",
+      "docs/reviews/g2-03-03-intended-vs-implemented.md",
+      "migrations/db-00/0022_query_policy_identity_facts.sql",
+      "migrations/db-00/0023_query_lease_gc_boundary.sql",
+      "migrations/db-00/0024_query_policy_authorization_boundary.sql",
+      "package.json",
+      "packages/metadata-postgres/src/index.ts",
+      "packages/metadata-postgres/src/package.ts",
+      "packages/metadata-postgres/src/release.ts",
+      "security/g2-00-evidence-policy.json",
+      "security/g2-02-evidence-policy.json",
+      "security/g2-03-01-evidence-policy.json",
+      "security/g2-03-02-evidence-policy.json",
+      "security/g2-03-03-evidence-policy.json",
+      "tools/ci/g2-03-03-evidence.test.ts",
+      "tools/ci/g2-03-03-evidence.ts",
+      "tools/ci/g2-03-01-evidence.test.ts",
+      "tools/ci/g2-03-02-evidence.test.ts",
+      "tools/ci/run.test.ts",
+      "tools/ci/run.ts",
+      "tools/database/materialization-postgres.integration.test.ts",
+      "tools/database/postgres.integration.test.ts",
+      "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts"
+    ],
+    "allowedPrefixes": ["tools/query-policy-persistence/"],
+    "forbiddenPrefixes": [
+      "apps/web/",
+      "packages/action/",
+      "packages/identity/",
+      "packages/policy/",
+      "packages/query/",
+      "packages/sdk/",
+      "tools/action/",
+      "tools/identity/",
+      "tools/policy/",
+      "tools/query/",
+      "tools/sdk/"
+    ]
+  },
+  "requiredSourceMarkers": [
+    {
+      "path": "migrations/db-00/0022_query_policy_identity_facts.sql",
+      "markers": [
+        "ADD COLUMN identity_type text NOT NULL DEFAULT 'human'",
+        "policy-g2-03-v1",
+        "CREATE TABLE authz.claim_mapping_revisions",
+        "CREATE TABLE authz.policy_compilations",
+        "FORCE ROW LEVEL SECURITY"
+      ]
+    },
+    {
+      "path": "migrations/db-00/0023_query_lease_gc_boundary.sql",
+      "markers": [
+        "CREATE FUNCTION runtime.plan_query_lease",
+        "selected_activation_member_count",
+        "runtime.query-lease",
+        "'QUERY_LEASE'",
+        "CREATE FUNCTION runtime.expire_query_leases"
+      ]
+    },
+    {
+      "path": "migrations/db-00/0024_query_policy_authorization_boundary.sql",
+      "markers": [
+        "authorization_epoch_advances_immutable",
+        "CREATE FUNCTION authz.lock_authorization_epoch",
+        "CREATE FUNCTION authz.advance_authorization_epoch",
+        "pg_notify",
+        "CREATE FUNCTION authz.activate_claim_mapping",
+        "CREATE FUNCTION authz.record_policy_compilation"
+      ]
+    },
+    {
+      "path": "packages/metadata-postgres/src/index.ts",
+      "markers": [
+        "SELECT authz.lock_authorization_epoch($1)::text AS epoch",
+        "SELECT authz.advance_authorization_epoch($1, NULL)"
+      ]
+    },
+    {
+      "path": "packages/metadata-postgres/src/release.ts",
+      "markers": [
+        "SELECT authz.lock_authorization_epoch($1)::text AS authorization_epoch",
+        "SELECT authz.advance_authorization_epoch($1, NULL)"
+      ]
+    },
+    {
+      "path": "packages/metadata-postgres/src/package.ts",
+      "markers": ["SELECT authz.lock_authorization_epoch($1)"]
+    },
+    {
+      "path": "tools/query-policy-persistence/integration/postgres.test.ts",
+      "markers": [
+        "REAL_POSTGRES_16_FORWARD_MIGRATION_AND_NON_OWNER_THIN_SLICE",
+        "assertEveryG20303MigrationRollsBack",
+        "authorizationEpochTransactionalAndNotified"
+      ]
+    },
+    {
+      "path": "tools/database/materialization-postgres.integration.test.ts",
+      "markers": [
+        "exerciseQueryPolicyLeaseBoundary",
+        "REAL_SERVING_GENERATION_QUERY_LEASE_GC_ROOT",
+        "activeLeaseRootedEveryGeneration"
+      ]
+    }
+  ],
+  "requiredGates": [
+    "lockfile-install",
+    "toolchain",
+    "format",
+    "documentation-links",
+    "lint",
+    "typecheck",
+    "unit",
+    "g2-03-01-web-spike",
+    "runtime-read-contract-generation",
+    "g2-03-02-contract-evidence",
+    "materialization-mapping-capacity",
+    "materialization-base-capacity",
+    "admin-api-unit",
+    "contract-golden-diff",
+    "architecture-dependency",
+    "testkit-provenance",
+    "metadata-fixtures",
+    "materialization-fixtures",
+    "metadata-negative-fixtures",
+    "secret-private-key",
+    "foundation-scope-evidence",
+    "metadata-scope-evidence",
+    "license-sbom-vulnerability",
+    "materialization-ingress-integration",
+    "postgres-integration",
+    "g2-03-03-persistence-evidence",
+    "projection-ddl-production-postgres",
+    "projection-capacity-postgres-smoke",
+    "materialization-worker-postgres",
+    "admin-api-oidc-postgres",
+    "materialization-production",
+    "materialization-clean-room",
+    "materialization-scope-evidence",
+    "g2-03-01-architecture-evidence",
+    "metadata-clean-room",
+    "production-boundary-up",
+    "production-boundary-smoke",
+    "production-boundary-down"
+  ],
+  "owner": "wyd-git",
+  "residualRisks": [
+    {
+      "id": "RISK-G2-03-03-01",
+      "risk": "The database persists identity types and Claim Mapping revisions, but production JWT-to-Identity mapping and Delegation verification remain G2-03-04.",
+      "owner": "Identity / Security (accountable: wyd-git)",
+      "nextGate": "G2-03-04"
+    },
+    {
+      "id": "RISK-G2-03-03-02",
+      "risk": "Policy compilation facts are immutable and release-bound, while the formal Policy parser/compiler/test runner remains deferred to G2-03-05.",
+      "owner": "Policy / Metadata (accountable: wyd-git)",
+      "nextGate": "G2-03-05"
+    },
+    {
+      "id": "RISK-G2-03-03-03",
+      "risk": "Query Lease persistence protects real serving Generations, but no Runtime Query HTTP request consumes it until the later Query execution gates.",
+      "owner": "Query / Runtime (accountable: wyd-git)",
+      "nextGate": "G2-03-07 through G2-03-12"
+    }
+  ]
+}

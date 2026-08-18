@@ -676,14 +676,11 @@ export class PostgresReleaseStore implements ReleaseLifecycleRepository {
       this.#faultInjector("after_project");
 
       const epochResult = await client.query<{ readonly epoch: string }>(
-        `UPDATE authz.authorization_epochs
-         SET epoch = epoch + 1, changed_at = clock_timestamp()
-         WHERE project_id = $1
-         RETURNING epoch::text`,
+        `SELECT authz.advance_authorization_epoch($1, NULL)::text AS epoch`,
         [release.project_id],
       );
       const authorizationEpoch = BigInt(
-        requireRow(epochResult.rows[0], "Authorization Epoch update returned no row.").epoch,
+        requireRow(epochResult.rows[0], "Authorization Epoch advance returned no row.").epoch,
       );
       this.#faultInjector("after_epoch");
 
@@ -1476,17 +1473,33 @@ async function persistEvaluation(
 }
 
 async function lockProjectControl(client: pg.PoolClient, projectId: string): Promise<ControlRow> {
-  const result = await client.query<ControlRow>(
+  const projectResult = await client.query<
+    Pick<ControlRow, "project_state" | "publication_sequence">
+  >(
     `SELECT project.state AS project_state,
-            project.publication_sequence::text,
-            epoch.epoch::text AS authorization_epoch
+            project.publication_sequence::text
      FROM meta.projects AS project
-     JOIN authz.authorization_epochs AS epoch ON epoch.project_id = project.project_id
      WHERE project.project_id = $1
-     FOR UPDATE OF project, epoch`,
+     FOR UPDATE OF project`,
     [projectId],
   );
-  const row = requireRow(result.rows[0], "Project control state does not exist.", "NOT_FOUND");
+  const project = requireRow(
+    projectResult.rows[0],
+    "Project control state does not exist.",
+    "NOT_FOUND",
+  );
+  const epochResult = await client.query<Pick<ControlRow, "authorization_epoch">>(
+    `SELECT authz.lock_authorization_epoch($1)::text AS authorization_epoch`,
+    [projectId],
+  );
+  const row: ControlRow = {
+    ...project,
+    authorization_epoch: requireRow(
+      epochResult.rows[0],
+      "Authorization Epoch does not exist.",
+      "NOT_FOUND",
+    ).authorization_epoch,
+  };
   if (row.project_state !== "active") {
     throw new MetadataApplicationError(
       "INVALID_STATE",

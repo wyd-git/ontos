@@ -1641,10 +1641,7 @@ function compareValidationText(left: string, right: string): number {
 
 async function lockEpoch(client: pg.PoolClient, projectId: string): Promise<bigint> {
   const result = await client.query<EpochRow>(
-    `SELECT epoch::text
-     FROM authz.authorization_epochs
-     WHERE project_id = $1
-     FOR UPDATE`,
+    `SELECT authz.lock_authorization_epoch($1)::text AS epoch`,
     [projectId],
   );
   return BigInt(
@@ -1654,13 +1651,10 @@ async function lockEpoch(client: pg.PoolClient, projectId: string): Promise<bigi
 
 async function incrementEpoch(client: pg.PoolClient, projectId: string): Promise<bigint> {
   const result = await client.query<EpochRow>(
-    `UPDATE authz.authorization_epochs
-     SET epoch = epoch + 1, changed_at = clock_timestamp()
-     WHERE project_id = $1
-     RETURNING epoch::text`,
+    `SELECT authz.advance_authorization_epoch($1, NULL)::text AS epoch`,
     [projectId],
   );
-  return BigInt(requireRow(result.rows[0], "Authorization Epoch update returned no row.").epoch);
+  return BigInt(requireRow(result.rows[0], "Authorization Epoch advance returned no row.").epoch);
 }
 
 function assertExpectedEpoch(actual: bigint, expected: bigint): void {

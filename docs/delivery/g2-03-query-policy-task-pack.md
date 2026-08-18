@@ -3,7 +3,7 @@
 - 版本：v1
 - 日期：2026-08-17
 - 状态：Frozen；可行性复审与红队修订已写回权威文档
-- 执行进度：2/15；G2-03-01～02 已 PASS，当前只放行 G2-03-03，未 PASS 前不得开始 G2-03-04 或正式 Runtime Endpoint
+- 执行进度：3/15；G2-03-01～03 已 PASS，当前只放行 G2-03-04，未 PASS 前不得开始 G2-03-05 或正式 Runtime Endpoint
 - 上游 Gate：G2-00、G2-01、G2-02 已 PASS
 - 目标 Gate：正式 Runtime Read Kernel + 统一 Policy Gateway + 真实只读 Web 消费者
 - 配套边界：[G2-03 UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)
@@ -205,7 +205,7 @@ flowchart LR
 
 规模使用理想工程日：S = 1–2 天，M = 3–5 天，L = 5–8 天。当前只有一条有效工程通道，任务按依赖顺序合并；测试、红队和 Evidence 跟随当前项，不伪装成第二条开发线。
 
-旧矩阵的 3–4 工程周没有计入真实 Identity/Delegation、Query Lease/GC、OpenAPI 生成、只读 Web 消费者和浏览器 Gate。按下方 5 个 L + 10 个 M 顺序任务逐项相加，任务包候选重估为 **11–18 工程周单通道规划范围**（55–90 理想工程日）。这不是日期承诺，也不用自动化的历史墙钟速度代替风险容量；03-03 真实 Migration/Identity 薄切片和 03-09 的 10k/100k 查询薄切片后必须各重估一次。
+旧矩阵的 3–4 工程周没有计入真实 Identity/Delegation、Query Lease/GC、OpenAPI 生成、只读 Web 消费者和浏览器 Gate。按下方 5 个 L + 10 个 M 顺序任务逐项相加，入口候选为 **11–18 工程周单通道规划范围**（55–90 理想工程日）。03-03 的真实 Migration/Identity/Lease 薄切片已经关闭结构性阻断且未触发返工，剩余 4 个 L + 8 个 M 按同一规模口径重估为 **9–15 工程周**（44–72 理想工程日）。这不是日期承诺，也不用自动化墙钟速度代替风险容量；03-09 的 10k/100k 查询薄切片后再次重估。
 
 ## 5. Why–What–Acceptance 工作项
 
@@ -268,6 +268,7 @@ Query AST、Cursor、Property 受限状态和 Policy Decision 将同时被 SQL�
 
 ### G2-03-03：实现 Query/Policy 前向 Migration 与最小权限
 
+- 状态：PASS（以同一 commit 的 `g2-03-03-evidence-manifest.json=CLEAN_ROOM_PASS` 为准）；见 [ADR-021](../architecture/adr/021-query-policy-persistence-boundary.md) 与 [Evidence](../evidence/g2-03-03-query-policy-persistence.md)
 - 规模：L
 - 建议 Owner：Database / Identity / Security
 - 依赖：G2-03-01、G2-03-02

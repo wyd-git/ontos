@@ -47,13 +47,14 @@ void test("the fast profile is bounded and the full profile retains clean-room",
     "secret-private-key",
   ]);
   const full = gateNamesForProfile("full");
-  assert.equal(full.length, 37);
+  assert.equal(full.length, 38);
   assert.ok(full.includes("materialization-clean-room"));
   assert.ok(full.includes("metadata-clean-room"));
   assert.ok(full.includes("g2-03-01-web-spike"));
   assert.ok(full.includes("g2-03-01-architecture-evidence"));
   assert.ok(full.includes("runtime-read-contract-generation"));
   assert.ok(full.includes("g2-03-02-contract-evidence"));
+  assert.ok(full.includes("g2-03-03-persistence-evidence"));
   assert.deepEqual(full.slice(-3), [
     "production-boundary-up",
     "production-boundary-smoke",
