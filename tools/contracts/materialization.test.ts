@@ -26,8 +26,8 @@ void test("Materialization catalog, schema, parsers, baseline and Golden Fixture
     semanticRejectionCount: 0,
     stableReasonCodeCount: 7,
     stableOperationErrorCodeCount: 11,
-    activeResourceFamilyCount: 4,
-    deferredResourceFamilyCount: 6,
+    activeResourceFamilyCount: 5,
+    deferredResourceFamilyCount: 5,
     // The optional Link dangling policy is now frozen into the deployed v1
     // reader/writer baseline, so the active schema has no outstanding drift.
     compatibilityFindingCount: 0,

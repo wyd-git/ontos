@@ -32,8 +32,8 @@ void test("Metadata catalog, schema, parsers, baseline and Golden Fixtures agree
     goldenCaseCount: 36,
     structuralRejectionCount: 7,
     semanticRejectionCount: 5,
-    activeResourceFamilyCount: 4,
-    deferredResourceFamilyCount: 6,
+    activeResourceFamilyCount: 5,
+    deferredResourceFamilyCount: 5,
     compatibilityFindingCount: 0,
   });
 });
@@ -120,10 +120,14 @@ void test("direct Resource API and Package expansion share one Resource Family R
     parseDirectResourceContent("object_type", objectType),
     parsePackageResourceContent("object_type", objectType),
   );
+  const policy = policyFixture();
+  assert.deepEqual(
+    parseDirectResourceContent("policy", policy),
+    parsePackageResourceContent("policy", policy),
+  );
 
   const expectedGates: Readonly<Record<string, string>> = {
     interface: "G2-05",
-    policy: "G2-03",
     function_type: "G2-04",
     action_type: "G2-04",
     object_view: "G2-05",
@@ -298,6 +302,64 @@ function objectFixture() {
         classification: "internal",
       },
     ],
+  };
+}
+
+function policyFixture() {
+  const target = { kind: "object", resourceId, resourceRevisionId: revisionId } as const;
+  return {
+    schemaVersion: 1,
+    rules: [
+      {
+        ruleId: "ALLOW_SHIPMENT",
+        target,
+        effect: "allow",
+        predicate: { kind: "constant", value: true },
+      },
+      {
+        ruleId: "DENY_NEVER",
+        target,
+        effect: "deny",
+        predicate: { kind: "constant", value: false },
+      },
+    ],
+    testVectors: [
+      {
+        vectorId: "ALLOW",
+        identity: policyIdentity("018f47a2-755b-7cc3-98c8-4d2fb871c201"),
+        requestTime: "2026-08-19T00:00:00.000000Z",
+        target,
+        facts: [],
+        expectedDecision: "allow",
+      },
+      {
+        vectorId: "DENY_MISSING",
+        identity: policyIdentity("018f47a2-755b-7cc3-98c8-4d2fb871c202"),
+        requestTime: "2026-08-19T00:00:00.000000Z",
+        target,
+        facts: [{ source: "object_property", apiName: "shipmentId", state: "missing" }],
+        expectedDecision: "deny",
+      },
+      {
+        vectorId: "DENY_NULL",
+        identity: policyIdentity("018f47a2-755b-7cc3-98c8-4d2fb871c203"),
+        requestTime: "2026-08-19T00:00:00.000000Z",
+        target,
+        facts: [{ source: "object_property", apiName: "shipmentId", state: "null" }],
+        expectedDecision: "deny",
+      },
+    ],
+  };
+}
+
+function policyIdentity(principalId: string) {
+  return {
+    schemaVersion: 1,
+    actor: { principalId, identityType: "human" },
+    delegationChain: [],
+    claimsFingerprint: digestA,
+    authenticatedAt: "2026-08-19T00:00:00.000000Z",
+    authorizationMode: "intersection",
   };
 }
 

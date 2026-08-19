@@ -11,9 +11,11 @@ import { fileURLToPath } from "node:url";
 import {
   canonicalizeContractForDigest,
   canonicalizeMaterializationContractForDigest,
+  extractPolicyResourceDependencies,
   parseArtifactDigest,
   parseCanonicalInstant,
   parseOntosId,
+  parsePolicyResourceDefinition,
   type ArtifactDigest,
 } from "@ontos/contracts";
 import {
@@ -261,6 +263,9 @@ const ids = {
   queryLease: "60000000-0000-4000-8000-000000000007",
   expiredQueryLease: "60000000-0000-4000-8000-000000000008",
   staleQueryLease: "60000000-0000-4000-8000-000000000009",
+  policyCompilation3: "60000000-0000-4000-8000-00000000000a",
+  policyArtifact3: "60000000-0000-4000-8000-00000000000b",
+  policyTestReport3: "60000000-0000-4000-8000-00000000000c",
 } as const;
 
 let activatedRelease2Id: string = ids.activation1;
@@ -281,11 +286,79 @@ const digests = {
   generation: digestOf("d"),
   evidence: digestOf("e"),
   job: digestOf("f"),
+  policy: definitionDigest(defaultReadPolicyDefinition()),
   batch1: digestOf("0"),
   batch2: digestOf("a"),
   checkpoint: digestOf("b"),
   activation0: digestOf("c"),
 } as const;
+
+function defaultReadPolicyDefinition() {
+  const target = {
+    kind: "object" as const,
+    resourceId: ids.objectResource,
+    resourceRevisionId: ids.objectRevision,
+  };
+  const identity = (seed: string) => ({
+    schemaVersion: 1,
+    actor: { principalId: ids.principal, identityType: "human" as const },
+    delegationChain: [],
+    claimsFingerprint: sha256Digest(`g2-03-policy-${seed}`),
+    authenticatedAt: "2026-08-19T08:00:00.000000Z",
+    authorizationMode: "intersection" as const,
+  });
+  const fact = (state: "value" | "null" | "missing", value?: string) => ({
+    source: "object_property" as const,
+    apiName: "orderId",
+    state,
+    ...(state === "value" ? { value } : {}),
+  });
+  const vector = (
+    vectorId: string,
+    expectedDecision: "allow" | "deny",
+    orderId: ReturnType<typeof fact>,
+  ) => ({
+    vectorId,
+    identity: identity(vectorId),
+    requestTime: "2026-08-19T08:00:00.000000Z",
+    target,
+    facts: [orderId],
+    expectedDecision,
+  });
+  return parsePolicyResourceDefinition({
+    schemaVersion: 1,
+    rules: [
+      {
+        ruleId: "ALLOW_ORDER",
+        target,
+        effect: "allow",
+        predicate: {
+          kind: "compare",
+          left: { source: "object_property", apiName: "orderId" },
+          op: "prefix",
+          right: { source: "constant", value: "order-" },
+        },
+      },
+      {
+        ruleId: "DENY_BLOCKED",
+        target,
+        effect: "deny",
+        predicate: {
+          kind: "compare",
+          left: { source: "object_property", apiName: "orderId" },
+          op: "eq",
+          right: { source: "constant", value: "blocked" },
+        },
+      },
+    ],
+    testVectors: [
+      vector("ALLOW_ORDER", "allow", fact("value", "order-1")),
+      vector("DENY_BLOCKED", "deny", fact("value", "blocked")),
+      vector("DENY_MISSING", "deny", fact("missing")),
+      vector("DENY_NULL", "deny", fact("null")),
+    ],
+  });
+}
 
 interface ProjectionBenchmarkPlan {
   readonly indexPlanId: string;
@@ -357,7 +430,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -565,6 +638,11 @@ async function createPublishedResource(
     readonly apiName: string;
     readonly contentDigest: string;
     readonly content?: unknown;
+    readonly dependencies?: readonly {
+      readonly targetRevisionId: string;
+      readonly dependencyType: string;
+      readonly sourcePath: string;
+    }[];
   },
 ): Promise<void> {
   await client.query(
@@ -587,6 +665,20 @@ async function createPublishedResource(
       ids.principal,
     ],
   );
+  for (const dependency of input.dependencies ?? []) {
+    await client.query(
+      `INSERT INTO meta.resource_dependencies
+         (dependency_id, source_revision_id, target_revision_id, dependency_type, source_path)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [
+        randomUUID(),
+        input.revisionId,
+        dependency.targetRevisionId,
+        dependency.dependencyType,
+        dependency.sourcePath,
+      ],
+    );
+  }
   await client.query(
     `INSERT INTO meta.validation_reports
        (report_id, subject_type, subject_id, resource_revision_id,
@@ -644,8 +736,12 @@ async function prepareRuntimeFacts(
     reportId: ids.policyValidation,
     family: "policy",
     apiName: "DefaultReadPolicy",
-    contentDigest: sha256Digest("g2-03-default-read-policy"),
-    content: { schemaVersion: 1, effect: "allow", target: "object:Order" },
+    contentDigest: digests.policy,
+    content: defaultReadPolicyDefinition(),
+    dependencies: extractPolicyResourceDependencies(
+      ids.policyRevision,
+      defaultReadPolicyDefinition(),
+    ),
   });
   if (projectionCapacityMode) {
     await prepareLinkTypeFacts(client);
@@ -687,13 +783,7 @@ async function prepareRuntimeFacts(
     [0, ids.objectResource, ids.objectRevision, "object_type", digests.object],
     [1, ids.schemaResource, ids.schemaRevision, "snapshot_schema", digests.schema],
     [2, ids.mappingResource, ids.mappingRevision, "mapping", digests.mapping],
-    [
-      3,
-      ids.policyResource,
-      ids.policyRevision,
-      "policy",
-      sha256Digest("g2-03-default-read-policy"),
-    ],
+    [3, ids.policyResource, ids.policyRevision, "policy", digests.policy],
   ] as const) {
     await client.query(
       `INSERT INTO meta.release_pins
@@ -718,6 +808,12 @@ async function prepareRuntimeFacts(
       );
     }
   }
+  await recordDefaultPolicyCompilation(client, {
+    releaseId: ids.release2,
+    compilationId: ids.policyCompilation,
+    artifactId: ids.policyArtifact,
+    testReportId: ids.policyTestReport,
+  });
   await client.query(
     `INSERT INTO meta.validation_reports
        (report_id, subject_type, subject_id, release_id, subject_digest,
@@ -4372,6 +4468,12 @@ async function exerciseRuntimeCompatibilityCoordinator(
        FROM meta.release_pins WHERE release_id = $2 ORDER BY pin_order`,
       [ids.release3, ids.release2],
     );
+    await recordDefaultPolicyCompilation(admin, {
+      releaseId: ids.release3,
+      compilationId: ids.policyCompilation3,
+      artifactId: ids.policyArtifact3,
+      testReportId: ids.policyTestReport3,
+    });
     await admin.query(
       `INSERT INTO meta.validation_reports
          (report_id, subject_type, subject_id, release_id, subject_digest,
@@ -6442,9 +6544,6 @@ async function exerciseQueryPolicyLeaseBoundary(
   apiConfig: pg.ClientConfig,
   workerConfig: pg.ClientConfig,
 ): Promise<void> {
-  const policyContentDigest = sha256Digest("g2-03-default-read-policy");
-  const policyArtifactDigest = sha256Digest("g2-03-compiled-policy-artifact");
-  const policyTestReportDigest = sha256Digest("g2-03-policy-test-report");
   const identityContextHash = sha256Digest("g2-03-verified-identity-context");
   const policyContextHash = sha256Digest("g2-03-policy-context");
 
@@ -6454,22 +6553,8 @@ async function exerciseQueryPolicyLeaseBoundary(
       readonly status: string;
     }>(
       `SELECT policy_compilation_id::text, status
-       FROM authz.record_policy_compilation(
-         $1, $2, $3, $4, $5, $6, 'policy-sql-v1',
-         $7, $8, $9, $10, 4, 4, 0, 'passed'
-       )`,
-      [
-        ids.project,
-        ids.policyCompilation,
-        ids.release2,
-        ids.policyResource,
-        ids.policyRevision,
-        policyContentDigest,
-        ids.policyArtifact,
-        policyArtifactDigest,
-        ids.policyTestReport,
-        policyTestReportDigest,
-      ],
+       FROM authz.resolve_policy_compilation($1, $2, $3)`,
+      [ids.project, ids.release2, ids.policyRevision],
     );
     assert.deepEqual(compilation.rows[0], {
       policy_compilation_id: ids.policyCompilation,
@@ -6673,6 +6758,45 @@ async function exerciseQueryPolicyLeaseBoundary(
     assert.equal(await queryLeaseRootCount(admin, ids.expiredQueryLease), 0);
   });
   await writeG20303QueryLeaseArtifact(adminConfig);
+}
+
+async function recordDefaultPolicyCompilation(
+  client: pg.Client,
+  input: {
+    readonly releaseId: string;
+    readonly compilationId: string;
+    readonly artifactId: string;
+    readonly testReportId: string;
+  },
+): Promise<void> {
+  const policyArtifactDigest = sha256Digest(`g2-03-compiled-policy-artifact-${input.releaseId}`);
+  const policyTestReportDigest = sha256Digest(`g2-03-policy-test-report-${input.releaseId}`);
+  const compilation = await client.query<{
+    readonly policy_compilation_id: string;
+    readonly status: string;
+  }>(
+    `SELECT policy_compilation_id::text, status
+     FROM authz.record_policy_compilation(
+       $1, $2, $3, $4, $5, $6, 'policy-compiler-g2-03-05-v1',
+       $7, $8, $9, $10, 4, 4, 0, 'passed'
+     )`,
+    [
+      ids.project,
+      input.compilationId,
+      input.releaseId,
+      ids.policyResource,
+      ids.policyRevision,
+      digests.policy,
+      input.artifactId,
+      policyArtifactDigest,
+      input.testReportId,
+      policyTestReportDigest,
+    ],
+  );
+  assert.deepEqual(compilation.rows[0], {
+    policy_compilation_id: input.compilationId,
+    status: "passed",
+  });
 }
 
 async function queryLeaseRootCount(client: pg.Client, queryLeaseId: string): Promise<number> {
@@ -7519,11 +7643,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 25);
+  assert.equal(left.applied.length + right.applied.length, 26);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 25)).length, 25);
+    assert.equal((await migrationLedger(client, 26)).length, 26);
   });
 }
 

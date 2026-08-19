@@ -17,6 +17,9 @@
       "packages/metadata-domain",
       "packages/metadata-postgres",
       "packages/object-store-s3",
+      "packages/policy-application",
+      "packages/policy-domain",
+      "packages/policy-postgres",
       "packages/runtime-read-client",
       "packages/testkit",
       "packages/value-codec"
@@ -46,7 +49,8 @@
       "migrations/db-00/0022_query_policy_identity_facts.sql",
       "migrations/db-00/0023_query_lease_gc_boundary.sql",
       "migrations/db-00/0024_query_policy_authorization_boundary.sql",
-      "migrations/db-00/0025_runtime_identity_boundary.sql"
+      "migrations/db-00/0025_runtime_identity_boundary.sql",
+      "migrations/db-00/0026_policy_resource_compiler_release_gate.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",

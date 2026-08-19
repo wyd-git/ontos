@@ -8,10 +8,10 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
 - G2-00 Foundation：**PASS，13/13 已合并**；
 - G2-01 Metadata：**PASS，G2-01-01～12 已实现并通过 clean-room 总验收**；
-- 正式产品实现：**Metadata/Package 控制面、Materialization 数据运行面与 Runtime Identity 信任边界已具备真实 OIDC/DPoP、最小权限、PostgreSQL、版本化 S3、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；完整 Gate 共 40 道**；Policy/Query 公共合同已验证，正式 Runtime Read Endpoint 与真实 Web 消费者尚未实现；
+- 正式产品实现：**Metadata/Package 控制面、Materialization 数据运行面、Runtime Identity 信任边界与 Policy 编译/发布门禁已具备真实 OIDC/DPoP、最小权限、PostgreSQL、版本化 S3、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；完整 Gate 共 42 道**；正式 Policy Gateway、Runtime Read Endpoint 与真实 Web 消费者尚未实现；
 - G2-02 Materialization：**PASS，G2-02-01～14 全部完成；独立 Ubuntu 24 / 8C16G clean-room 已跑通冷/热 100k Object + 1m Link、20 次 Cutover、容量、安全、GC 与整体重启恢复**；
-- G2-03 Query + Policy：**G2-03-01～04 PASS，当前进度 4/15；Migration 已到 0025，真实 Runtime OIDC/DPoP、Claim Mapping 求值、Service Capability、持久 Replay 和全链 Permission Intersection 已落地**；
-- 下一唯一允许的工作项：**G2-03-05，激活 Policy Resource、Compiler/Test 与 Release Gate；仍不建 Policy Gateway、Query Endpoint 或产品页**。
+- G2-03 Query + Policy：**G2-03-01～05 PASS，当前进度 5/15；Migration 已到 0026，真实 Runtime Identity、受限 Policy AST/IR、确定性 Artifact、必需测试向量与 Release fail-closed Gate 已落地**；
+- 下一唯一允许的工作项：**G2-03-06，实现生产 Policy Gateway 与 5 秒撤权上界；仍不建 Query Endpoint 或产品页**。
 
 ## 权威文档
 
@@ -19,7 +19,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 |---|---|
 | [产品需求文档](docs/product/ontology-kernel-prd.md) | P0/P1/P2 范围、产品语义和 AC-01～AC-10 |
 | [生产实现蓝图](docs/product/ontology-kernel-implementation-blueprint.md) | 工程结构、模块、数据、事务、状态机和 Gate |
-| [核心数据库设计](docs/architecture/core-database-design.md) | 当前 25 个 Migration 的 Metadata、AuthZ/Runtime Identity、Shared Projection、Cutover、Job/Index/GC、Query Lease 总图，以及后续 Query/Action 未实现边界 |
+| [核心数据库设计](docs/architecture/core-database-design.md) | 当前 26 个 Migration 的 Metadata、AuthZ/Runtime Identity、Policy Release Gate、Shared Projection、Cutover、Job/Index/GC、Query Lease 总图，以及后续 Query/Action 未实现边界 |
 | [蓝图红队审查](docs/reviews/g2-blueprint-red-team.md) | 承重假设、最低成本验证、停止条件和放行结论 |
 | [G2-00 任务包](docs/delivery/g2-00-foundation-task-pack.md) | Foundation 的依赖、WWA 工作项和可执行退出条件 |
 | [G2-01 Metadata 任务包](docs/delivery/g2-01-metadata-task-pack.md) | Metadata 控制面的 12 个顺序工作项、边界与验收条件 |
@@ -41,6 +41,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [G2-03-02 Runtime Read 合同与 Evidence](docs/architecture/g2-03-runtime-read-contract.md) | Query/Policy/Identity/Cursor/Response、Golden、OpenAPI Candidate、Generated Read Client 与兼容基线 |
 | [ADR-021 与 G2-03-03 Evidence](docs/architecture/adr/021-query-policy-persistence-boundary.md) | Identity/Claim Mapping/Policy Compilation/Epoch/Query Lease/GC 的前向持久事实、最小权限与真实 PostgreSQL 验收 |
 | [ADR-022 与 G2-03-04 Evidence](docs/architecture/adr/022-runtime-identity-claim-mapping-delegation.md) | Runtime OIDC/DPoP、Claim Mapping 白名单、Service Capability、持久 Replay、双 API 进程与 Permission Intersection |
+| [ADR-023 与 G2-03-05 Evidence](docs/architecture/adr/023-policy-resource-compiler-release-gate.md) | Policy Resource 严格合同、精确依赖、受限编译器、版本化 Artifact 与 Release fail-closed Gate |
 | [G2-03 UI/API 早期消费者合同](docs/architecture/g2-03-ui-api-consumer-contract.md) | G2-03 只读 Web、G2-04 Action 和 G2-05 完整 UI/SDK 的责任分界与防返工 Gate |
 | [G2-03 可行性复审](docs/reviews/g2-03-task-pack-feasibility.md) | 代码现状核验、端到端落地走查、55–90 理想工程日对账和 Conditional Go |
 | [G2-03 任务包红队](docs/reviews/g2-03-task-pack-red-team.md) | Identity、Policy SQL、Query Lease/GC、OpenAPI/Web 和工期的 Kill Assumption 与修订结论 |

@@ -1,11 +1,13 @@
 import {
   canonicalizeContractForDigest,
   canonicalizeManifestForDigest,
+  extractPolicyResourceDependencies,
   parseOntosId,
   parsePackageManifest,
   parsePackageResourceContent,
   type ArtifactDigest,
   type LinkTypeDefinition,
+  type PolicyResourceDependency,
   type PackageManifestContract,
   type ResourceFamily,
 } from "@ontos/contracts";
@@ -37,8 +39,13 @@ export interface PackageInstallInputBinding {
 export interface PreparedPackageDependency {
   readonly sourceRevisionId: string;
   readonly targetRevisionId: string;
-  readonly dependencyType: "link_source" | "link_target";
-  readonly sourcePath: "/source/objectTypeRevisionId" | "/target/objectTypeRevisionId";
+  readonly dependencyType:
+    "link_source" | "link_target" | PolicyResourceDependency["dependencyType"];
+  readonly sourcePath: string;
+  readonly targetResourceId?: string;
+  readonly expectedFamily?: "object_type" | "link_type" | "action_type";
+  readonly expectedApiName?: string;
+  readonly propertyApiName?: string;
 }
 
 export interface PreparedPackageResource {
@@ -155,7 +162,9 @@ export function preparePackageCandidate(input: {
     const dependencies =
       entry.family === "link_type"
         ? packageLinkDependencies(entry.revisionId, content as LinkTypeDefinition)
-        : Object.freeze([]);
+        : entry.family === "policy"
+          ? extractPolicyResourceDependencies(entry.revisionId, content)
+          : Object.freeze([]);
     return Object.freeze({
       namespace: entry.namespace,
       apiName: entry.apiName,

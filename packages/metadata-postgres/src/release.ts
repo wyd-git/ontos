@@ -37,6 +37,7 @@ import {
   METADATA_COMPATIBILITY_VERSION,
   METADATA_RELEASE_VALIDATOR_VERSION,
   METADATA_VALIDATOR_VERSION,
+  POLICY_VALIDATOR_VERSION,
   buildCompatibilityReport,
   evaluateReleaseGate,
   type CompatibilityEvaluation,
@@ -97,6 +98,15 @@ interface PinRow {
   readonly revision_content_digest: string;
   readonly content: unknown;
   readonly has_current_validation_report: boolean;
+  readonly policy_compilation_id: string | null;
+  readonly policy_content_digest: string | null;
+  readonly policy_compiler_version: string | null;
+  readonly policy_artifact_digest: string | null;
+  readonly policy_test_report_digest: string | null;
+  readonly policy_test_vector_count: number | null;
+  readonly policy_passed_vector_count: number | null;
+  readonly policy_failed_vector_count: number | null;
+  readonly policy_compilation_status: "passed" | "failed" | null;
 }
 
 interface DependencyRow {
@@ -1357,6 +1367,7 @@ async function evaluateReleaseFacts(
       resourceState: pin.resource_state,
       revisionState: pin.revision_state,
       hasCurrentValidationReport: pin.has_current_validation_report,
+      policyCompilation: policyCompilationFromRow(pin),
     })),
     dependencies,
     baseline: baseline.map(({ resourceId, revisionId, family, contentDigest }) => ({
@@ -1679,17 +1690,33 @@ async function readPins(
               WHERE report.subject_type = 'resource_revision'
                 AND report.resource_revision_id = revision.revision_id
                 AND report.subject_digest = revision.content_digest
-                AND report.validator_version = $2
+                AND report.validator_version = CASE
+                  WHEN revision.family = 'policy' THEN $3
+                  ELSE $2
+                END
                 AND report.valid = TRUE
-            ) AS has_current_validation_report
+            ) AS has_current_validation_report,
+            compilation.policy_compilation_id,
+            compilation.policy_content_digest,
+            compilation.compiler_version AS policy_compiler_version,
+            compilation.artifact_digest AS policy_artifact_digest,
+            compilation.test_report_digest AS policy_test_report_digest,
+            compilation.test_vector_count AS policy_test_vector_count,
+            compilation.passed_vector_count AS policy_passed_vector_count,
+            compilation.failed_vector_count AS policy_failed_vector_count,
+            compilation.status AS policy_compilation_status
      FROM meta.release_pins AS pin
+     JOIN meta.releases AS release ON release.release_id = pin.release_id
      JOIN meta.resources AS resource ON resource.resource_id = pin.resource_id
      JOIN meta.resource_revisions AS revision
        ON revision.resource_id = pin.resource_id
       AND revision.revision_id = pin.revision_id
+     LEFT JOIN LATERAL authz.resolve_release_policy_compilations(
+       release.project_id, release.release_id
+     ) AS compilation ON compilation.policy_revision_id = pin.revision_id
      WHERE pin.release_id = $1
      ORDER BY pin.pin_order, pin.resource_id${lock ? " FOR UPDATE OF resource, revision" : ""}`,
-    [releaseId, METADATA_VALIDATOR_VERSION],
+    [releaseId, METADATA_VALIDATOR_VERSION, POLICY_VALIDATOR_VERSION],
   );
   return Object.freeze(result.rows);
 }
@@ -1897,6 +1924,60 @@ function releaseGatePin(row: PinRow): ReleaseGatePin {
     resourceState: row.resource_state,
     revisionState: row.revision_state,
     hasCurrentValidationReport: row.has_current_validation_report,
+    policyCompilation: policyCompilationFromRow(row),
+  });
+}
+
+function policyCompilationFromRow(
+  row: PinRow,
+): NonNullable<ReleaseGatePin["policyCompilation"]> | null {
+  const values = [
+    row.policy_content_digest,
+    row.policy_compiler_version,
+    row.policy_artifact_digest,
+    row.policy_test_report_digest,
+    row.policy_test_vector_count,
+    row.policy_passed_vector_count,
+    row.policy_failed_vector_count,
+    row.policy_compilation_status,
+  ];
+  if (row.policy_compilation_id === null) {
+    if (values.some((value) => value !== null)) {
+      throw new MetadataApplicationError(
+        "STORAGE_FAILURE",
+        "Policy Compilation facts are partially populated.",
+      );
+    }
+    return null;
+  }
+  return Object.freeze({
+    policyCompilationId: row.policy_compilation_id,
+    policyContentDigest: parseArtifactDigest(
+      requireValue(row.policy_content_digest, "Policy Content Digest is unavailable."),
+    ),
+    compilerVersion: requireValue(
+      row.policy_compiler_version,
+      "Policy Compiler Version is unavailable.",
+    ),
+    artifactDigest: parseArtifactDigest(
+      requireValue(row.policy_artifact_digest, "Policy Artifact Digest is unavailable."),
+    ),
+    testReportDigest: parseArtifactDigest(
+      requireValue(row.policy_test_report_digest, "Policy Test Digest is unavailable."),
+    ),
+    testVectorCount: requireValue(
+      row.policy_test_vector_count,
+      "Policy Test count is unavailable.",
+    ),
+    passedVectorCount: requireValue(
+      row.policy_passed_vector_count,
+      "Policy passed count is unavailable.",
+    ),
+    failedVectorCount: requireValue(
+      row.policy_failed_vector_count,
+      "Policy failed count is unavailable.",
+    ),
+    status: requireValue(row.policy_compilation_status, "Policy status is unavailable."),
   });
 }
 
@@ -1923,6 +2004,15 @@ function pinRowFromCreation(
     resource_state: "active",
     revision_family: row.family,
     revision_state: row.state,
+    policy_compilation_id: null,
+    policy_content_digest: null,
+    policy_compiler_version: null,
+    policy_artifact_digest: null,
+    policy_test_report_digest: null,
+    policy_test_vector_count: null,
+    policy_passed_vector_count: null,
+    policy_failed_vector_count: null,
+    policy_compilation_status: null,
     revision_content_digest: row.content_digest,
     content: {},
     has_current_validation_report: true,

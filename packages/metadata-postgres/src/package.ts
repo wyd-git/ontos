@@ -20,7 +20,6 @@ import {
 } from "@ontos/metadata-application";
 import {
   METADATA_PACKAGE_VALIDATOR_VERSION,
-  METADATA_VALIDATOR_VERSION,
   PackageDomainError,
   assertPackageCandidateIntegrity,
   buildCompatibilityReport,
@@ -28,6 +27,8 @@ import {
   preparePackageCandidate,
   summarizeCompatibilityFindings,
   validateRevisionDefinition,
+  validateDependencyTargets,
+  validatorVersionForFamily,
   type CompatibilityEvaluation,
   type PackageInstallInputBinding,
   type PreparedPackageCandidate,
@@ -923,7 +924,7 @@ async function persistPackageResources(
 ): Promise<void> {
   const ordered = [...resources].sort(
     (left, right) =>
-      Number(left.family === "link_type") - Number(right.family === "link_type") ||
+      packageFamilyOrder(left.family) - packageFamilyOrder(right.family) ||
       compareText(left.resourceId, right.resourceId),
   );
   for (const resource of ordered) {
@@ -938,6 +939,48 @@ async function persistPackageResources(
         "INVALID_INPUT",
         `Package Resource ${resource.resourceId} failed active definition validation.`,
       );
+    }
+    if (semantic.dependencies.length > 0) {
+      const targets = await client.query<{
+        readonly revision_id: string;
+        readonly resource_id: string;
+        readonly project_id: string;
+        readonly family: ResourceFamily;
+        readonly resource_state: "active" | "deprecated" | "archived";
+        readonly revision_state: "draft" | "validated" | "published" | "deprecated" | "archived";
+        readonly api_name: string;
+        readonly content: unknown;
+      }>(
+        `SELECT revision.revision_id, revision.resource_id, resource.project_id,
+                revision.family, resource.state AS resource_state,
+                revision.state AS revision_state, resource.api_name, revision.content
+         FROM meta.resource_revisions AS revision
+         JOIN meta.resources AS resource ON resource.resource_id = revision.resource_id
+         WHERE revision.revision_id = ANY($1::uuid[])
+         ORDER BY revision.revision_id`,
+        [semantic.dependencies.map(({ targetRevisionId }) => targetRevisionId)],
+      );
+      const dependencyIssues = validateDependencyTargets({
+        projectId,
+        resourceId: resource.resourceId,
+        dependencies: semantic.dependencies,
+        targets: targets.rows.map((target) => ({
+          revisionId: target.revision_id,
+          resourceId: target.resource_id,
+          projectId: target.project_id,
+          family: target.family,
+          resourceState: target.resource_state,
+          revisionState: target.revision_state,
+          apiName: target.api_name,
+          content: target.content,
+        })),
+      });
+      if (dependencyIssues.some(({ severity }) => severity === "error")) {
+        throw new MetadataApplicationError(
+          "INVALID_INPUT",
+          `Package Resource ${resource.resourceId} has an unavailable dependency binding.`,
+        );
+      }
     }
     const existingResource = await client.query<{
       readonly resource_id: string;
@@ -1064,9 +1107,10 @@ async function persistPackageResources(
         ],
       );
     }
+    const validatorVersion = validatorVersionForFamily(resource.family);
     const validationContextDigest = digestCanonical({
       schemaVersion: 1,
-      validatorVersion: METADATA_VALIDATOR_VERSION,
+      validatorVersion,
       packageValidatorVersion: METADATA_PACKAGE_VALIDATOR_VERSION,
       revisionId: resource.revisionId,
       contentDigest: resource.contentDigest,
@@ -1082,7 +1126,7 @@ async function persistPackageResources(
         resource.revisionId,
         resource.contentDigest,
         validationContextDigest,
-        METADATA_VALIDATOR_VERSION,
+        validatorVersion,
       ],
     );
     await client.query(
@@ -1092,6 +1136,13 @@ async function persistPackageResources(
       [resource.revisionId],
     );
   }
+}
+
+function packageFamilyOrder(family: ResourceFamily): number {
+  if (family === "object_type" || family === "snapshot_schema" || family === "mapping") return 0;
+  if (family === "link_type") return 1;
+  if (family === "policy") return 2;
+  return 3;
 }
 
 async function createPackageReleaseDraft(

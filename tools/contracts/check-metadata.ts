@@ -97,8 +97,8 @@ export async function runMetadataContractChecks(
     (registration) => registration.status === "active",
   ).length;
   const deferredResourceFamilyCount = registrations.length - activeResourceFamilyCount;
-  if (activeResourceFamilyCount !== 4 || deferredResourceFamilyCount !== 6) {
-    throw new Error("G2-02 Resource Family Registry activation boundary drifted.");
+  if (activeResourceFamilyCount !== 5 || deferredResourceFamilyCount !== 5) {
+    throw new Error("G2-03 Resource Family Registry activation boundary drifted.");
   }
 
   return Object.freeze({

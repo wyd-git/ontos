@@ -4,8 +4,11 @@ import {
   MANAGEMENT_ROLE_VALUES,
   RESOURCE_FAMILY_VALUES,
   canonicalizeContractForDigest,
+  extractPolicyResourceDependencies,
   parseDirectResourceContent,
+  parseLinkTypeDefinition,
   parseOntosId,
+  parseObjectTypeDefinition,
   type LinkTypeDefinition,
   type ManagementRoleValue,
   type ObjectTypeDefinition,
@@ -58,6 +61,7 @@ export type {
   ReleaseBaselinePin,
   ReleaseGateEvaluation,
   ReleaseGatePin,
+  PolicyCompilationGateFact,
   ReleaseLifecycleState,
 } from "./release.ts";
 
@@ -125,14 +129,30 @@ export interface PreparedResourceContent {
 }
 
 export const METADATA_VALIDATOR_VERSION = "metadata-g2-01-v1" as const;
+export const POLICY_VALIDATOR_VERSION = "policy-g2-03-v1" as const;
 
-export type ResourceDependencyType = "property_reference" | "link_source" | "link_target";
+export function validatorVersionForFamily(family: ResourceFamily): string {
+  return family === "policy" ? POLICY_VALIDATOR_VERSION : METADATA_VALIDATOR_VERSION;
+}
+
+export type ResourceDependencyType =
+  | "property_reference"
+  | "link_source"
+  | "link_target"
+  | "policy_object_target"
+  | "policy_property_target"
+  | "policy_link_target"
+  | "policy_action_target";
 
 export interface ExtractedResourceDependency {
   readonly sourceRevisionId: string;
   readonly targetRevisionId: string;
   readonly dependencyType: ResourceDependencyType;
   readonly sourcePath: string;
+  readonly targetResourceId?: string;
+  readonly expectedFamily?: "object_type" | "link_type" | "action_type";
+  readonly expectedApiName?: string;
+  readonly propertyApiName?: string;
 }
 
 export type DependencyGraphEdge = ExtractedResourceDependency;
@@ -142,6 +162,8 @@ export interface DependencyTargetSnapshot {
   readonly resourceId: string;
   readonly projectId: string;
   readonly family: ResourceFamily;
+  readonly apiName?: string;
+  readonly content?: unknown;
   readonly resourceState: ResourceState;
   readonly revisionState: ResourceRevisionState;
 }
@@ -306,6 +328,9 @@ export function extractResourceDependencies(
   contentInput: unknown,
 ): readonly ExtractedResourceDependency[] {
   const content = parseDirectResourceContent(family, contentInput);
+  if (family === "policy") {
+    return extractPolicyResourceDependencies(sourceRevisionId, content);
+  }
   if (family !== "link_type") return Object.freeze([]);
   const link = content as LinkTypeDefinition;
   return Object.freeze(
@@ -336,6 +361,20 @@ export function validateDependencyTargets(input: {
   const issues: ValidationIssueContract[] = [];
   for (const dependency of [...input.dependencies].sort(compareDependencyEdges)) {
     const target = targets.get(dependency.targetRevisionId);
+    if (dependency.dependencyType.startsWith("policy_")) {
+      if (!validPolicyDependencyTarget(input.projectId, dependency, target)) {
+        issues.push(
+          validationIssue(
+            "POLICY_TARGET_UNAVAILABLE",
+            input.resourceId,
+            dependency.sourcePath,
+            "The exact Policy target is unavailable in this Project and Release closure.",
+            "Bind an exact reusable Revision with the required Resource, Family and API identity.",
+          ),
+        );
+      }
+      continue;
+    }
     if (target === undefined || target.projectId !== input.projectId) {
       issues.push(
         validationIssue(
@@ -391,6 +430,52 @@ export function validateDependencyTargets(input: {
     }
   }
   return sortValidationIssues(issues);
+}
+
+function validPolicyDependencyTarget(
+  projectId: string,
+  dependency: ExtractedResourceDependency,
+  target: DependencyTargetSnapshot | undefined,
+): boolean {
+  if (
+    target === undefined ||
+    target.projectId !== projectId ||
+    target.resourceState === "archived" ||
+    target.revisionState === "draft" ||
+    target.revisionState === "archived" ||
+    (dependency.targetResourceId !== undefined &&
+      target.resourceId !== dependency.targetResourceId) ||
+    (dependency.expectedFamily !== undefined && target.family !== dependency.expectedFamily)
+  ) {
+    return false;
+  }
+  try {
+    if (target.family === "object_type") {
+      const definition = parseObjectTypeDefinition(target.content);
+      if (
+        dependency.expectedApiName !== undefined &&
+        (target.apiName !== dependency.expectedApiName ||
+          definition.apiName !== dependency.expectedApiName)
+      ) {
+        return false;
+      }
+      return (
+        dependency.propertyApiName === undefined ||
+        definition.properties.some(({ apiName }) => apiName === dependency.propertyApiName)
+      );
+    }
+    if (target.family === "link_type") {
+      const definition = parseLinkTypeDefinition(target.content);
+      return (
+        dependency.expectedApiName === undefined ||
+        (target.apiName === dependency.expectedApiName &&
+          definition.apiName === dependency.expectedApiName)
+      );
+    }
+    return target.family === "action_type" && dependency.expectedFamily === "action_type";
+  } catch {
+    return false;
+  }
 }
 
 /**

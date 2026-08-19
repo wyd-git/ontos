@@ -135,7 +135,11 @@ export interface PolicyNotPredicate {
 export interface PolicyLinkExistsPredicate {
   readonly kind: "link_exists";
   readonly linkTypeApiName: string;
+  readonly linkTypeResourceId?: OntosId;
+  readonly linkTypeRevisionId?: OntosId;
   readonly targetObjectTypeApiName: string;
+  readonly targetObjectTypeResourceId?: OntosId;
+  readonly targetObjectTypeRevisionId?: OntosId;
   readonly predicate: PolicyPredicate;
 }
 
@@ -165,6 +169,7 @@ export interface PolicyFact {
   readonly apiName: string;
   readonly state: "value" | "null" | "missing";
   readonly value?: QueryScalar;
+  readonly values?: readonly string[];
 }
 
 export interface PolicyTestVector {
@@ -177,6 +182,37 @@ export interface PolicyTestVector {
   readonly expectedPropertyDisposition?: PropertyPolicyDisposition;
 }
 
+export type PolicyActorAttributeValueType = "string" | "string_array" | "boolean";
+
+export interface PolicyActorAttributeSchema {
+  readonly apiName: string;
+  readonly valueType: PolicyActorAttributeValueType;
+}
+
+/**
+ * Author-owned Policy Resource content. Compiler identity and Artifact facts
+ * are deliberately absent so a client cannot submit a forged compiled result.
+ */
+export interface PolicyResourceDefinition {
+  readonly schemaVersion: ContractSchemaVersion;
+  readonly rules: readonly PolicyRule[];
+  readonly testVectors: readonly PolicyTestVector[];
+}
+
+export type PolicyResourceDependencyType =
+  "policy_object_target" | "policy_property_target" | "policy_link_target" | "policy_action_target";
+
+export interface PolicyResourceDependency {
+  readonly sourceRevisionId: string;
+  readonly targetResourceId: OntosId;
+  readonly targetRevisionId: OntosId;
+  readonly dependencyType: PolicyResourceDependencyType;
+  readonly sourcePath: string;
+  readonly expectedFamily: "object_type" | "link_type" | "action_type";
+  readonly expectedApiName?: string;
+  readonly propertyApiName?: string;
+}
+
 export interface PolicyArtifact {
   readonly schemaVersion: ContractSchemaVersion;
   readonly projectId: OntosId;
@@ -184,6 +220,8 @@ export interface PolicyArtifact {
   readonly policyRevisionId: OntosId;
   readonly compilerVersion: string;
   readonly artifactDigest: ArtifactDigest;
+  readonly dependencyContextDigest?: ArtifactDigest;
+  readonly trustedActorAttributes?: readonly PolicyActorAttributeSchema[];
   readonly rules: readonly PolicyRule[];
   readonly testVectors: readonly PolicyTestVector[];
 }
@@ -226,6 +264,16 @@ export const POLICY_NOT_PREDICATE_FIELDS = Object.freeze(["kind", "predicate"] a
 export const POLICY_LINK_EXISTS_PREDICATE_FIELDS = Object.freeze([
   "kind",
   "linkTypeApiName",
+  "linkTypeResourceId",
+  "linkTypeRevisionId",
+  "targetObjectTypeApiName",
+  "targetObjectTypeResourceId",
+  "targetObjectTypeRevisionId",
+  "predicate",
+] as const);
+export const POLICY_LINK_EXISTS_PREDICATE_REQUIRED_FIELDS = Object.freeze([
+  "kind",
+  "linkTypeApiName",
   "targetObjectTypeApiName",
   "predicate",
 ] as const);
@@ -243,7 +291,13 @@ export const POLICY_RULE_REQUIRED_FIELDS = Object.freeze([
   "effect",
   "predicate",
 ] as const);
-export const POLICY_FACT_FIELDS = Object.freeze(["source", "apiName", "state", "value"] as const);
+export const POLICY_FACT_FIELDS = Object.freeze([
+  "source",
+  "apiName",
+  "state",
+  "value",
+  "values",
+] as const);
 export const POLICY_FACT_REQUIRED_FIELDS = Object.freeze(["source", "apiName", "state"] as const);
 export const POLICY_TEST_VECTOR_FIELDS = Object.freeze([
   "vectorId",
@@ -262,6 +316,15 @@ export const POLICY_TEST_VECTOR_REQUIRED_FIELDS = Object.freeze([
   "facts",
   "expectedDecision",
 ] as const);
+export const POLICY_ACTOR_ATTRIBUTE_SCHEMA_FIELDS = Object.freeze([
+  "apiName",
+  "valueType",
+] as const);
+export const POLICY_RESOURCE_DEFINITION_FIELDS = Object.freeze([
+  "schemaVersion",
+  "rules",
+  "testVectors",
+] as const);
 export const POLICY_ARTIFACT_FIELDS = Object.freeze([
   "schemaVersion",
   "projectId",
@@ -269,9 +332,16 @@ export const POLICY_ARTIFACT_FIELDS = Object.freeze([
   "policyRevisionId",
   "compilerVersion",
   "artifactDigest",
+  "dependencyContextDigest",
+  "trustedActorAttributes",
   "rules",
   "testVectors",
 ] as const);
+export const POLICY_ARTIFACT_REQUIRED_FIELDS = Object.freeze(
+  POLICY_ARTIFACT_FIELDS.filter(
+    (field) => field !== "dependencyContextDigest" && field !== "trustedActorAttributes",
+  ),
+);
 export const POLICY_DECISION_FIELDS = Object.freeze([
   "schemaVersion",
   "target",
@@ -293,28 +363,19 @@ export const POLICY_DECISION_REQUIRED_FIELDS = Object.freeze([
 
 export function parsePolicyArtifact(value: unknown): PolicyArtifact {
   const path = "$policyArtifact";
-  const record = strictRecord(value, path, POLICY_ARTIFACT_FIELDS, POLICY_ARTIFACT_FIELDS);
-  const rules = Object.freeze(
-    requireArray(record.rules, `${path}.rules`, {
-      minimumItems: 1,
-      maximumItems: POLICY_RULE_MAXIMUM_ITEMS,
-    }).map((item, index) => parsePolicyRule(item, `${path}.rules[${index}]`)),
-  );
-  assertUniqueSorted(
-    rules.map(({ ruleId }) => ruleId),
-    `${path}.rules`,
-  );
-  const testVectors = Object.freeze(
-    requireArray(record.testVectors, `${path}.testVectors`, {
-      minimumItems: 1,
-      maximumItems: POLICY_TEST_VECTOR_MAXIMUM_ITEMS,
-    }).map((item, index) => parsePolicyTestVector(item, `${path}.testVectors[${index}]`)),
-  );
-  assertUniqueSorted(
-    testVectors.map(({ vectorId }) => vectorId),
-    `${path}.testVectors`,
-  );
-  assertTestCoverage(rules, testVectors, `${path}.testVectors`);
+  const record = strictRecord(value, path, POLICY_ARTIFACT_FIELDS, POLICY_ARTIFACT_REQUIRED_FIELDS);
+  const rules = parsePolicyRules(record.rules, path);
+  const testVectors = parsePolicyTestVectors(record.testVectors, rules, path);
+  for (const [index, rule] of rules.entries()) {
+    assertPolicyResourcePredicateBindings(
+      rule.predicate,
+      `${path}.rules[${String(index)}].predicate`,
+    );
+  }
+  const trustedActorAttributes =
+    record.trustedActorAttributes === undefined
+      ? undefined
+      : parsePolicyActorAttributes(record.trustedActorAttributes, `${path}.trustedActorAttributes`);
   return Object.freeze({
     schemaVersion: parseSchemaVersion(record.schemaVersion, `${path}.schemaVersion`),
     projectId: parseOntosId(record.projectId, `${path}.projectId`),
@@ -326,9 +387,117 @@ export function parsePolicyArtifact(value: unknown): PolicyArtifact {
       pattern: compilerVersionExpression,
     }),
     artifactDigest: parseArtifactDigest(record.artifactDigest, `${path}.artifactDigest`),
+    ...(record.dependencyContextDigest === undefined
+      ? {}
+      : {
+          dependencyContextDigest: parseArtifactDigest(
+            record.dependencyContextDigest,
+            `${path}.dependencyContextDigest`,
+          ),
+        }),
+    ...(trustedActorAttributes === undefined ? {} : { trustedActorAttributes }),
     rules,
     testVectors,
   });
+}
+
+export function parsePolicyResourceDefinition(value: unknown): PolicyResourceDefinition {
+  const path = "$policy";
+  const record = strictRecord(
+    value,
+    path,
+    POLICY_RESOURCE_DEFINITION_FIELDS,
+    POLICY_RESOURCE_DEFINITION_FIELDS,
+  );
+  const rules = parsePolicyRules(record.rules, path);
+  if (
+    rules.some(({ target }) => target.kind === "resource") ||
+    testVectorsContainResourceTarget(record.testVectors)
+  ) {
+    failContract(
+      "CONTRACT_FORMAT_INVALID",
+      "Policy Resources require an explicit Object, Property, Link or Action target.",
+      `${path}.rules`,
+    );
+  }
+  const testVectors = parsePolicyTestVectors(record.testVectors, rules, path);
+  return Object.freeze({
+    schemaVersion: parseSchemaVersion(record.schemaVersion, `${path}.schemaVersion`),
+    rules,
+    testVectors,
+  });
+}
+
+export function extractPolicyResourceDependencies(
+  sourceRevisionId: string,
+  definitionInput: unknown,
+): readonly PolicyResourceDependency[] {
+  const definition = parsePolicyResourceDefinition(definitionInput);
+  const dependencies: PolicyResourceDependency[] = [];
+  for (const [index, rule] of definition.rules.entries()) {
+    const path = `/rules/${String(index)}`;
+    if (rule.target.kind === "object") {
+      dependencies.push(
+        policyDependency(sourceRevisionId, rule.target.resourceId, rule.target.resourceRevisionId, {
+          dependencyType: "policy_object_target",
+          sourcePath: `${path}/target/resourceRevisionId`,
+          expectedFamily: "object_type",
+        }),
+      );
+    } else if (rule.target.kind === "property") {
+      const propertyApiName = requiredPolicyBinding(rule.target.propertyApiName);
+      dependencies.push(
+        policyDependency(sourceRevisionId, rule.target.resourceId, rule.target.resourceRevisionId, {
+          dependencyType: "policy_property_target",
+          sourcePath: `${path}/target/resourceRevisionId`,
+          expectedFamily: "object_type",
+          propertyApiName,
+        }),
+      );
+    } else if (rule.target.kind === "link") {
+      dependencies.push(
+        policyDependency(sourceRevisionId, rule.target.resourceId, rule.target.resourceRevisionId, {
+          dependencyType: "policy_link_target",
+          sourcePath: `${path}/target/resourceRevisionId`,
+          expectedFamily: "link_type",
+        }),
+      );
+    } else if (rule.target.kind === "action_target") {
+      const targetObjectTypeResourceId = requiredPolicyBinding(
+        rule.target.targetObjectTypeResourceId,
+      );
+      const targetObjectTypeRevisionId = requiredPolicyBinding(
+        rule.target.targetObjectTypeRevisionId,
+      );
+      dependencies.push(
+        policyDependency(sourceRevisionId, rule.target.resourceId, rule.target.resourceRevisionId, {
+          dependencyType: "policy_action_target",
+          sourcePath: `${path}/target/resourceRevisionId`,
+          expectedFamily: "action_type",
+        }),
+        policyDependency(sourceRevisionId, targetObjectTypeResourceId, targetObjectTypeRevisionId, {
+          dependencyType: "policy_object_target",
+          sourcePath: `${path}/target/targetObjectTypeRevisionId`,
+          expectedFamily: "object_type",
+        }),
+      );
+    }
+    collectPredicateDependencies(
+      sourceRevisionId,
+      rule.predicate,
+      `${path}/predicate`,
+      dependencies,
+    );
+  }
+  for (const [index, vector] of definition.testVectors.entries()) {
+    collectTargetDependencies(
+      sourceRevisionId,
+      vector.target,
+      `/testVectors/${String(index)}/target`,
+      dependencies,
+    );
+  }
+  return Object.freeze(dependencies.sort(comparePolicyDependencies));
 }
 
 export function parsePolicyDecision(value: unknown): PolicyDecision {
@@ -574,7 +743,7 @@ function parsePolicyPredicateNode(
     requireObjectShape(
       record,
       POLICY_LINK_EXISTS_PREDICATE_FIELDS,
-      POLICY_LINK_EXISTS_PREDICATE_FIELDS,
+      POLICY_LINK_EXISTS_PREDICATE_REQUIRED_FIELDS,
       path,
     );
     if (!linkAllowed) {
@@ -584,13 +753,53 @@ function parsePolicyPredicateNode(
         path,
       );
     }
+    const exactBindings = [
+      record.linkTypeResourceId,
+      record.linkTypeRevisionId,
+      record.targetObjectTypeResourceId,
+      record.targetObjectTypeRevisionId,
+    ];
+    if (
+      exactBindings.some((binding) => binding === undefined) &&
+      exactBindings.some((binding) => binding !== undefined)
+    ) {
+      failContract(
+        "CONTRACT_FIELD_MISSING",
+        "Exact Link Policy bindings must be supplied together.",
+        path,
+      );
+    }
     return Object.freeze({
       kind,
       linkTypeApiName: parseApiName(record.linkTypeApiName, `${path}.linkTypeApiName`),
+      ...(record.linkTypeResourceId === undefined
+        ? {}
+        : {
+            linkTypeResourceId: parseOntosId(
+              record.linkTypeResourceId,
+              `${path}.linkTypeResourceId`,
+            ),
+            linkTypeRevisionId: parseOntosId(
+              record.linkTypeRevisionId,
+              `${path}.linkTypeRevisionId`,
+            ),
+          }),
       targetObjectTypeApiName: parseApiName(
         record.targetObjectTypeApiName,
         `${path}.targetObjectTypeApiName`,
       ),
+      ...(record.targetObjectTypeResourceId === undefined
+        ? {}
+        : {
+            targetObjectTypeResourceId: parseOntosId(
+              record.targetObjectTypeResourceId,
+              `${path}.targetObjectTypeResourceId`,
+            ),
+            targetObjectTypeRevisionId: parseOntosId(
+              record.targetObjectTypeRevisionId,
+              `${path}.targetObjectTypeRevisionId`,
+            ),
+          }),
       predicate: parsePolicyPredicateNode(
         record.predicate,
         `${path}.predicate`,
@@ -707,18 +916,51 @@ function parsePolicyFact(value: unknown, path: string): PolicyFact {
     new Set(["value", "null", "missing"] as const),
     `${path}.state`,
   );
-  if ((state === "value") !== Object.hasOwn(record, "value")) {
+  const hasScalarValue = Object.hasOwn(record, "value");
+  const hasStringValues = Object.hasOwn(record, "values");
+  if (
+    (state === "value" && Number(hasScalarValue) + Number(hasStringValues) !== 1) ||
+    (state !== "value" && (hasScalarValue || hasStringValues))
+  ) {
     failContract(
       "CONTRACT_FORMAT_INVALID",
-      "Policy fact value is required exactly for value state.",
+      "Policy fact requires exactly one scalar value or string values collection for value state.",
       `${path}.value`,
+    );
+  }
+  const values = hasStringValues
+    ? Object.freeze(
+        requireArray(record.values, `${path}.values`, {
+          maximumItems: POLICY_COLLECTION_MAXIMUM_ITEMS,
+        }).map((item, index) => {
+          const parsed = parseQueryScalar(item, `${path}.values[${String(index)}]`);
+          if (typeof parsed !== "string") {
+            failContract(
+              "CONTRACT_TYPE_INVALID",
+              "Policy fact collections contain only strings.",
+              `${path}.values[${String(index)}]`,
+            );
+          }
+          return parsed;
+        }),
+      )
+    : undefined;
+  if (
+    values !== undefined &&
+    values.some((item, index) => index > 0 && item <= (values[index - 1] ?? ""))
+  ) {
+    failContract(
+      "CONTRACT_FORMAT_INVALID",
+      "Policy fact string collections must be unique and sorted.",
+      `${path}.values`,
     );
   }
   return Object.freeze({
     source,
     apiName: parseApiName(record.apiName, `${path}.apiName`),
     state,
-    ...(state === "value" ? { value: parseQueryScalar(record.value, `${path}.value`) } : {}),
+    ...(hasScalarValue ? { value: parseQueryScalar(record.value, `${path}.value`) } : {}),
+    ...(values === undefined ? {} : { values }),
   });
 }
 
@@ -763,6 +1005,233 @@ function assertTestCoverage(
       );
     }
   }
+}
+
+function parsePolicyRules(value: unknown, parentPath: string): readonly PolicyRule[] {
+  const path = `${parentPath}.rules`;
+  const rules = Object.freeze(
+    requireArray(value, path, {
+      minimumItems: 1,
+      maximumItems: POLICY_RULE_MAXIMUM_ITEMS,
+    }).map((item, index) => parsePolicyRule(item, `${path}[${index}]`)),
+  );
+  assertUniqueSorted(
+    rules.map(({ ruleId }) => ruleId),
+    path,
+  );
+  return rules;
+}
+
+function parsePolicyTestVectors(
+  value: unknown,
+  rules: readonly PolicyRule[],
+  parentPath: string,
+): readonly PolicyTestVector[] {
+  const path = `${parentPath}.testVectors`;
+  const testVectors = Object.freeze(
+    requireArray(value, path, {
+      minimumItems: 1,
+      maximumItems: POLICY_TEST_VECTOR_MAXIMUM_ITEMS,
+    }).map((item, index) => parsePolicyTestVector(item, `${path}[${index}]`)),
+  );
+  assertUniqueSorted(
+    testVectors.map(({ vectorId }) => vectorId),
+    path,
+  );
+  assertTestCoverage(rules, testVectors, path);
+  return testVectors;
+}
+
+function parsePolicyActorAttributes(
+  value: unknown,
+  path: string,
+): readonly PolicyActorAttributeSchema[] {
+  const valueTypes = new Set<PolicyActorAttributeValueType>(["string", "string_array", "boolean"]);
+  const attributes = Object.freeze(
+    requireArray(value, path, { maximumItems: 32 }).map((item, index) => {
+      const itemPath = `${path}[${String(index)}]`;
+      const record = strictRecord(
+        item,
+        itemPath,
+        POLICY_ACTOR_ATTRIBUTE_SCHEMA_FIELDS,
+        POLICY_ACTOR_ATTRIBUTE_SCHEMA_FIELDS,
+      );
+      return Object.freeze({
+        apiName: parseApiName(record.apiName, `${itemPath}.apiName`),
+        valueType: requireOneOf(record.valueType, valueTypes, `${itemPath}.valueType`),
+      });
+    }),
+  );
+  assertUniqueSorted(
+    attributes.map(({ apiName }) => apiName),
+    path,
+  );
+  return attributes;
+}
+
+function policyDependency(
+  sourceRevisionId: string,
+  targetResourceId: OntosId,
+  targetRevisionId: OntosId,
+  descriptor: Omit<
+    PolicyResourceDependency,
+    "sourceRevisionId" | "targetResourceId" | "targetRevisionId"
+  >,
+): PolicyResourceDependency {
+  return Object.freeze({ sourceRevisionId, targetResourceId, targetRevisionId, ...descriptor });
+}
+
+function collectTargetDependencies(
+  sourceRevisionId: string,
+  target: PolicyTarget,
+  path: string,
+  dependencies: PolicyResourceDependency[],
+): void {
+  if (target.kind === "object" || target.kind === "property" || target.kind === "link") {
+    const propertyApiName =
+      target.kind === "property" ? requiredPolicyBinding(target.propertyApiName) : undefined;
+    dependencies.push(
+      policyDependency(sourceRevisionId, target.resourceId, target.resourceRevisionId, {
+        dependencyType:
+          target.kind === "object"
+            ? "policy_object_target"
+            : target.kind === "property"
+              ? "policy_property_target"
+              : "policy_link_target",
+        sourcePath: `${path}/resourceRevisionId`,
+        expectedFamily: target.kind === "link" ? "link_type" : "object_type",
+        ...(propertyApiName === undefined ? {} : { propertyApiName }),
+      }),
+    );
+  } else if (target.kind === "action_target") {
+    const targetObjectTypeResourceId = requiredPolicyBinding(target.targetObjectTypeResourceId);
+    const targetObjectTypeRevisionId = requiredPolicyBinding(target.targetObjectTypeRevisionId);
+    dependencies.push(
+      policyDependency(sourceRevisionId, target.resourceId, target.resourceRevisionId, {
+        dependencyType: "policy_action_target",
+        sourcePath: `${path}/resourceRevisionId`,
+        expectedFamily: "action_type",
+      }),
+      policyDependency(sourceRevisionId, targetObjectTypeResourceId, targetObjectTypeRevisionId, {
+        dependencyType: "policy_object_target",
+        sourcePath: `${path}/targetObjectTypeRevisionId`,
+        expectedFamily: "object_type",
+      }),
+    );
+  }
+}
+
+function testVectorsContainResourceTarget(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.some((item) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) return false;
+    const target = (item as Readonly<Record<string, unknown>>)["target"];
+    return (
+      typeof target === "object" &&
+      target !== null &&
+      !Array.isArray(target) &&
+      (target as Readonly<Record<string, unknown>>)["kind"] === "resource"
+    );
+  });
+}
+
+function collectPredicateDependencies(
+  sourceRevisionId: string,
+  predicate: PolicyPredicate,
+  path: string,
+  dependencies: PolicyResourceDependency[],
+): void {
+  if (predicate.kind === "link_exists") {
+    const linkTypeResourceId = requiredPolicyBinding(predicate.linkTypeResourceId);
+    const linkTypeRevisionId = requiredPolicyBinding(predicate.linkTypeRevisionId);
+    const targetObjectTypeResourceId = requiredPolicyBinding(predicate.targetObjectTypeResourceId);
+    const targetObjectTypeRevisionId = requiredPolicyBinding(predicate.targetObjectTypeRevisionId);
+    dependencies.push(
+      policyDependency(sourceRevisionId, linkTypeResourceId, linkTypeRevisionId, {
+        dependencyType: "policy_link_target",
+        sourcePath: `${path}/linkTypeRevisionId`,
+        expectedFamily: "link_type",
+        expectedApiName: predicate.linkTypeApiName,
+      }),
+      policyDependency(sourceRevisionId, targetObjectTypeResourceId, targetObjectTypeRevisionId, {
+        dependencyType: "policy_object_target",
+        sourcePath: `${path}/targetObjectTypeRevisionId`,
+        expectedFamily: "object_type",
+        expectedApiName: predicate.targetObjectTypeApiName,
+      }),
+    );
+    collectPredicateDependencies(
+      sourceRevisionId,
+      predicate.predicate,
+      `${path}/predicate`,
+      dependencies,
+    );
+    return;
+  }
+  if (predicate.kind === "all" || predicate.kind === "any") {
+    predicate.predicates.forEach((item, index) =>
+      collectPredicateDependencies(
+        sourceRevisionId,
+        item,
+        `${path}/predicates/${String(index)}`,
+        dependencies,
+      ),
+    );
+  } else if (predicate.kind === "not") {
+    collectPredicateDependencies(
+      sourceRevisionId,
+      predicate.predicate,
+      `${path}/predicate`,
+      dependencies,
+    );
+  }
+}
+
+function assertPolicyResourcePredicateBindings(predicate: PolicyPredicate, path: string): void {
+  if (predicate.kind === "link_exists") {
+    if (
+      predicate.linkTypeResourceId === undefined ||
+      predicate.linkTypeRevisionId === undefined ||
+      predicate.targetObjectTypeResourceId === undefined ||
+      predicate.targetObjectTypeRevisionId === undefined
+    ) {
+      failContract(
+        "CONTRACT_FIELD_MISSING",
+        "Policy Resource Link Exists requires exact Link and target Object Revision bindings.",
+        path,
+      );
+    }
+    assertPolicyResourcePredicateBindings(predicate.predicate, `${path}.predicate`);
+  } else if (predicate.kind === "all" || predicate.kind === "any") {
+    predicate.predicates.forEach((item, index) =>
+      assertPolicyResourcePredicateBindings(item, `${path}.predicates[${String(index)}]`),
+    );
+  } else if (predicate.kind === "not") {
+    assertPolicyResourcePredicateBindings(predicate.predicate, `${path}.predicate`);
+  }
+}
+
+function comparePolicyDependencies(
+  left: PolicyResourceDependency,
+  right: PolicyResourceDependency,
+): number {
+  return (
+    compareText(left.sourceRevisionId, right.sourceRevisionId) ||
+    compareText(left.dependencyType, right.dependencyType) ||
+    compareText(left.sourcePath, right.sourcePath) ||
+    compareText(left.targetRevisionId, right.targetRevisionId)
+  );
+}
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function requiredPolicyBinding<T>(value: T | undefined): T {
+  if (value === undefined) {
+    throw new TypeError("Parsed Policy target lost a required exact binding.");
+  }
+  return value;
 }
 
 function predicateContainsLink(predicate: PolicyPredicate): boolean {

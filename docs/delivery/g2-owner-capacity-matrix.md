@@ -188,11 +188,17 @@
 - 历史 21 个 Migration 的名称/Hash 保持不变；空库/历史库、并发 Runner、逐版本回滚、真实 `api_runtime`/`worker_runtime`/`read_only_ops` 与 G2-02 Serving Generation/GC 闭环均通过。
 - 结构性停止条件未触发，且没有要求改写 Release、Activation、Generation、GC 或 Runtime Read 合同。完成的 2 个 M + 1 个 L 从原 55–90 理想工程日中扣除后，剩余 4 个 L + 8 个 M 重估为 **9–15 工程周**（44–72 理想工程日）单通道容量情景。
 - 最大未知已转为真实 JWT/Claim Mapping/Delegation、Policy Compiler/Gateway 与 Policy 下的 Query 性能；自动化 Migration 的短墙钟不用于压缩这些工作。下一次强制重估仍在 G2-03-09 的 10k Object/100k Link Query 薄切片后。
-- G2-03-04 已 PASS：正式 Runtime OIDC/DPoP、Claim Mapping 求值、Service Capability、持久 Replay 与全链 Permission Intersection 已落地；当前只放行 **G2-03-05** Policy Resource/Compiler/Release Gate，未 PASS 前不开始 Policy Gateway、Query Endpoint 或产品页。
+- G2-03-04 已 PASS：正式 Runtime OIDC/DPoP、Claim Mapping 求值、Service Capability、持久 Replay 与全链 Permission Intersection 已落地。
+
+### G2-03-05 后检查点（2026-08-19）
+
+- G2-03-05 已 PASS，当前进度为 **5/15**；Policy Resource 从 Deferred 切换为严格 Direct/Package 同源合同，精确 Dependency、受限 AST/IR、确定性版本化 S3 Artifact 和必需 Test Vector 已进入 Release fail-closed Gate。
+- 真实 PostgreSQL 16 + 版本化 S3 证明缺失/伪造/错绑编译、API 写编译事实、直连数据库旁路和 Migration 中途失败都不能伪造 READY。
+- 结构性停止条件未触发；当前只放行 **G2-03-06** 生产 Policy Gateway 与 5 秒撤权，未 PASS 前不开始 Query SQL、Query Endpoint 或产品页。
 
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01、G2-02 与 G2-03-01～04 已 PASS；当前只允许执行 G2-03-05，未 PASS 前不得直接建 Policy Gateway、Query Endpoint、产品页或 Action。
+1. G2-00、G2-01、G2-02 与 G2-03-01～05 已 PASS；当前只允许执行 G2-03-06，未 PASS 前不得直接建 Query SQL、Query Endpoint、产品页或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

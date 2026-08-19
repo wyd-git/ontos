@@ -108,7 +108,10 @@ void test(
     const clean = await cleanCheckoutIdentity();
     assert.equal(clean.dirty, false, "G2-02-14 must run from a clean checkout");
     const expectedMigrations = await loadMigrationDefinitions(databaseMigrationDirectory);
-    assert.equal(expectedMigrations.at(-1)?.fileName, "0025_runtime_identity_boundary.sql");
+    assert.equal(
+      expectedMigrations.at(-1)?.fileName,
+      "0026_policy_resource_compiler_release_gate.sql",
+    );
 
     const suffix = `${process.pid}-${randomUUID().slice(0, 8)}`;
     const postgresContainer = `ontos-g20214-pg-${suffix}`;

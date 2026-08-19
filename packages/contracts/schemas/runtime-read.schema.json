@@ -603,8 +603,20 @@
         "linkTypeApiName": {
           "$ref": "#/$defs/ApiName"
         },
+        "linkTypeResourceId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "linkTypeRevisionId": {
+          "$ref": "#/$defs/OntosId"
+        },
         "targetObjectTypeApiName": {
           "$ref": "#/$defs/ApiName"
+        },
+        "targetObjectTypeResourceId": {
+          "$ref": "#/$defs/OntosId"
+        },
+        "targetObjectTypeRevisionId": {
+          "$ref": "#/$defs/OntosId"
         },
         "predicate": {
           "$ref": "#/$defs/PolicyPredicate"
@@ -693,6 +705,15 @@
         },
         "value": {
           "$ref": "#/$defs/QueryScalar"
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 500,
+          "uniqueItems": true
         }
       },
       "required": ["source", "apiName", "state"]
@@ -734,6 +755,20 @@
       },
       "required": ["vectorId", "identity", "requestTime", "target", "facts", "expectedDecision"]
     },
+    "PolicyActorAttributeSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiName": {
+          "$ref": "#/$defs/ApiName"
+        },
+        "valueType": {
+          "type": "string",
+          "enum": ["string", "string_array", "boolean"]
+        }
+      },
+      "required": ["apiName", "valueType"]
+    },
     "PolicyArtifact": {
       "type": "object",
       "additionalProperties": false,
@@ -758,6 +793,16 @@
         },
         "artifactDigest": {
           "$ref": "#/$defs/ArtifactDigest"
+        },
+        "dependencyContextDigest": {
+          "$ref": "#/$defs/ArtifactDigest"
+        },
+        "trustedActorAttributes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyActorAttributeSchema"
+          },
+          "maxItems": 32
         },
         "rules": {
           "type": "array",

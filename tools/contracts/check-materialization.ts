@@ -88,14 +88,14 @@ export async function runMaterializationContractChecks(
   ).length;
   const deferredResourceFamilyCount = registrations.length - activeResourceFamilyCount;
   if (
-    activeResourceFamilyCount !== 4 ||
-    deferredResourceFamilyCount !== 6 ||
+    activeResourceFamilyCount !== 5 ||
+    deferredResourceFamilyCount !== 5 ||
     RESOURCE_FAMILY_REGISTRY.mapping.status !== "active" ||
     RESOURCE_FAMILY_REGISTRY.mapping.freezeGate !== "G2-02" ||
     RESOURCE_FAMILY_REGISTRY.snapshot_schema.status !== "active" ||
     RESOURCE_FAMILY_REGISTRY.snapshot_schema.freezeGate !== "G2-02"
   ) {
-    throw new Error("G2-02 Resource Family Registry activation boundary drifted.");
+    throw new Error("G2-03 Resource Family Registry activation boundary drifted.");
   }
 
   return Object.freeze({

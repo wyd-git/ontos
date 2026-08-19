@@ -296,12 +296,20 @@ export function buildRuntimeReadSchema(): Readonly<Record<string, unknown>> {
       kind: { type: "string", const: "not" },
       predicate: ref("PolicyPredicate"),
     }),
-    PolicyLinkExistsPredicate: strictObject(contract.POLICY_LINK_EXISTS_PREDICATE_FIELDS, {
-      kind: { type: "string", const: "link_exists" },
-      linkTypeApiName: ref("ApiName"),
-      targetObjectTypeApiName: ref("ApiName"),
-      predicate: ref("PolicyPredicate"),
-    }),
+    PolicyLinkExistsPredicate: strictObject(
+      contract.POLICY_LINK_EXISTS_PREDICATE_FIELDS,
+      {
+        kind: { type: "string", const: "link_exists" },
+        linkTypeApiName: ref("ApiName"),
+        linkTypeResourceId: ref("OntosId"),
+        linkTypeRevisionId: ref("OntosId"),
+        targetObjectTypeApiName: ref("ApiName"),
+        targetObjectTypeResourceId: ref("OntosId"),
+        targetObjectTypeRevisionId: ref("OntosId"),
+        predicate: ref("PolicyPredicate"),
+      },
+      contract.POLICY_LINK_EXISTS_PREDICATE_REQUIRED_FIELDS,
+    ),
     PolicyPredicate: {
       oneOf: [
         ref("PolicyConstantPredicate"),
@@ -342,6 +350,13 @@ export function buildRuntimeReadSchema(): Readonly<Record<string, unknown>> {
         apiName: ref("ApiName"),
         state: { type: "string", enum: ["value", "null", "missing"] },
         value: ref("QueryScalar"),
+        values: arrayOf(
+          { type: "string", maxLength: 4_096 },
+          {
+            maximumItems: contract.POLICY_COLLECTION_MAXIMUM_ITEMS,
+            uniqueItems: true,
+          },
+        ),
       },
       contract.POLICY_FACT_REQUIRED_FIELDS,
     ),
@@ -368,27 +383,39 @@ export function buildRuntimeReadSchema(): Readonly<Record<string, unknown>> {
       },
       contract.POLICY_TEST_VECTOR_REQUIRED_FIELDS,
     ),
-    PolicyArtifact: strictObject(contract.POLICY_ARTIFACT_FIELDS, {
-      schemaVersion: ref("SchemaVersion"),
-      projectId: ref("OntosId"),
-      releaseId: ref("OntosId"),
-      policyRevisionId: ref("OntosId"),
-      compilerVersion: {
-        type: "string",
-        minLength: 1,
-        maxLength: 64,
-        pattern: contract.POLICY_COMPILER_VERSION_PATTERN,
-      },
-      artifactDigest: ref("ArtifactDigest"),
-      rules: arrayOf(ref("PolicyRule"), {
-        minimumItems: 1,
-        maximumItems: contract.POLICY_RULE_MAXIMUM_ITEMS,
-      }),
-      testVectors: arrayOf(ref("PolicyTestVector"), {
-        minimumItems: 1,
-        maximumItems: contract.POLICY_TEST_VECTOR_MAXIMUM_ITEMS,
-      }),
+    PolicyActorAttributeSchema: strictObject(contract.POLICY_ACTOR_ATTRIBUTE_SCHEMA_FIELDS, {
+      apiName: ref("ApiName"),
+      valueType: { type: "string", enum: ["string", "string_array", "boolean"] },
     }),
+    PolicyArtifact: strictObject(
+      contract.POLICY_ARTIFACT_FIELDS,
+      {
+        schemaVersion: ref("SchemaVersion"),
+        projectId: ref("OntosId"),
+        releaseId: ref("OntosId"),
+        policyRevisionId: ref("OntosId"),
+        compilerVersion: {
+          type: "string",
+          minLength: 1,
+          maxLength: 64,
+          pattern: contract.POLICY_COMPILER_VERSION_PATTERN,
+        },
+        artifactDigest: ref("ArtifactDigest"),
+        dependencyContextDigest: ref("ArtifactDigest"),
+        trustedActorAttributes: arrayOf(ref("PolicyActorAttributeSchema"), {
+          maximumItems: 32,
+        }),
+        rules: arrayOf(ref("PolicyRule"), {
+          minimumItems: 1,
+          maximumItems: contract.POLICY_RULE_MAXIMUM_ITEMS,
+        }),
+        testVectors: arrayOf(ref("PolicyTestVector"), {
+          minimumItems: 1,
+          maximumItems: contract.POLICY_TEST_VECTOR_MAXIMUM_ITEMS,
+        }),
+      },
+      contract.POLICY_ARTIFACT_REQUIRED_FIELDS,
+    ),
     PolicyDecision: strictObject(
       contract.POLICY_DECISION_FIELDS,
       {
