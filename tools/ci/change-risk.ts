@@ -1,4 +1,4 @@
-export type GateProfile = "fast-docs" | "full";
+export type GateProfile = "fast-docs" | "preflight" | "full";
 
 export interface ChangeRiskClassification {
   readonly schemaVersion: 1;
@@ -74,6 +74,33 @@ export function unavailableRangeClassification(
     changedFiles: [],
     fullGateFiles: [],
     reason,
+  };
+}
+
+export function routeDraftPullRequestProfile(
+  classification: ChangeRiskClassification,
+  githubActions: string | undefined,
+  eventName: string | undefined,
+  pullRequestDraft: string | undefined,
+): ChangeRiskClassification {
+  if (
+    classification.profile !== "full" ||
+    !isCommitSha(classification.baseCommit ?? undefined) ||
+    !isCommitSha(classification.headCommit ?? undefined) ||
+    classification.changedFiles.length === 0 ||
+    classification.fullGateFiles.length === 0 ||
+    githubActions !== "true" ||
+    eventName !== "pull_request" ||
+    pullRequestDraft !== "true"
+  ) {
+    return classification;
+  }
+
+  return {
+    ...classification,
+    profile: "preflight",
+    reason:
+      "A trusted Draft pull request with runtime-affecting changes receives non-qualifying preflight coverage; converting it to Ready triggers the complete Foundation Gate.",
   };
 }
 

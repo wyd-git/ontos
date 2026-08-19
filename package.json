@@ -92,7 +92,8 @@
     "env:down": "node tools/local-env/compose.ts down",
     "env:reset": "node tools/local-env/compose.ts reset",
     "env:smoke": "node tools/local-env/smoke.ts",
-    "verify": "node tools/ci/run.ts"
+    "verify": "node tools/ci/run.ts",
+    "verify:preflight": "node tools/ci/run.ts --preflight"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1109.0",

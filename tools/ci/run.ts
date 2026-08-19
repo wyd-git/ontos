@@ -17,6 +17,7 @@ import {
   type GateProfile,
   isCommitSha,
   isTrustedFastGateEvent,
+  routeDraftPullRequestProfile,
   unavailableRangeClassification,
 } from "./change-risk.ts";
 
@@ -42,6 +43,16 @@ interface GateResult {
 interface CommandResult {
   readonly exitCode: number;
   readonly output: string;
+}
+
+type NonQualifyingGateProfile = Exclude<GateProfile, "full">;
+
+interface NonQualifyingEvidenceDefinition {
+  readonly fileName: "fast-docs-evidence.json" | "preflight-evidence.json";
+  readonly gate: "Foundation Gate" | "Foundation Preflight";
+  readonly qualification: "FAST_DOCS_PASS" | "PREFLIGHT_PASS";
+  readonly closesG2Gate: false;
+  readonly statement: string;
 }
 
 const fullGates: readonly GateDefinition[] = [
@@ -188,6 +199,12 @@ const fastGateNames = new Set([
   "secret-private-key",
 ]);
 
+const preflightExcludedGateNames = new Set([
+  "materialization-clean-room",
+  "materialization-scope-evidence",
+  "g2-03-01-architecture-evidence",
+]);
+
 export function redactOutput(value: string): string {
   return value
     .replaceAll(
@@ -198,8 +215,47 @@ export function redactOutput(value: string): string {
     .slice(-12_000);
 }
 
-async function runFoundationGate(repositoryRoot: string): Promise<void> {
-  const changeRisk = await classifyChangeRisk(repositoryRoot);
+export function nonQualifyingEvidenceDefinition(
+  profile: NonQualifyingGateProfile,
+  githubActions: string | undefined,
+  eventName: string | undefined,
+  pullRequestDraft: string | undefined,
+): NonQualifyingEvidenceDefinition {
+  const draftCheck =
+    profile === "preflight" ||
+    (githubActions === "true" && eventName === "pull_request" && pullRequestDraft === "true");
+  return profile === "fast-docs"
+    ? {
+        fileName: "fast-docs-evidence.json",
+        gate: draftCheck ? "Foundation Preflight" : "Foundation Gate",
+        qualification: "FAST_DOCS_PASS",
+        closesG2Gate: false,
+        statement:
+          "This profile validates low-risk Markdown documentation only and does not regenerate or replace any clean-room evidence.",
+      }
+    : {
+        fileName: "preflight-evidence.json",
+        gate: "Foundation Preflight",
+        qualification: "PREFLIGHT_PASS",
+        closesG2Gate: false,
+        statement:
+          "This Draft/local preflight omits the Materialization clean-room and dependent qualification manifests. It cannot satisfy the protected Foundation Gate, close a G2 work item, or authorize merge.",
+      };
+}
+
+async function runFoundationGate(repositoryRoot: string, localPreflight: boolean): Promise<void> {
+  const changeRisk: ChangeRiskClassification = localPreflight
+    ? {
+        schemaVersion: 1,
+        profile: "preflight",
+        baseCommit: null,
+        headCommit: null,
+        changedFiles: [],
+        fullGateFiles: [],
+        reason:
+          "An explicit local preflight validates the non-qualifying 35-gate profile; it cannot replace GitHub Foundation Gate qualification.",
+      }
+    : await classifyChangeRisk(repositoryRoot);
   const gates = gateDefinitionsForProfile(changeRisk.profile);
   const outputDirectory = join(repositoryRoot, "generated/ci-report");
   await rm(outputDirectory, { recursive: true, force: true });
@@ -250,18 +306,24 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
   }
 
   const completedAt = new Date();
-  if (changeRisk.profile === "fast-docs") {
+  if (changeRisk.profile !== "full") {
+    const definition = nonQualifyingEvidenceDefinition(
+      changeRisk.profile,
+      process.env.GITHUB_ACTIONS,
+      process.env.ONTOS_CI_EVENT_NAME?.trim(),
+      process.env.ONTOS_CI_PR_DRAFT?.trim(),
+    );
     await writeFile(
-      join(outputDirectory, "fast-docs-evidence.json"),
+      join(outputDirectory, definition.fileName),
       `${JSON.stringify(
         {
           schemaVersion: 1,
-          gate: "Foundation Gate",
+          gate: definition.gate,
           profile: changeRisk.profile,
           status: failure === null ? "PASS" : "FAIL",
           qualification:
             failure === null && !dirty
-              ? "FAST_DOCS_PASS"
+              ? definition.qualification
               : failure === null
                 ? "WORKTREE_PASS"
                 : "FAIL",
@@ -275,8 +337,8 @@ async function runFoundationGate(repositoryRoot: string): Promise<void> {
             durationMs,
             testCount,
           })),
-          statement:
-            "This profile validates low-risk Markdown documentation only and does not regenerate or replace G2-00, G2-01, or G2-02 clean-room evidence.",
+          closesG2Gate: definition.closesG2Gate,
+          statement: definition.statement,
         },
         null,
         2,
@@ -538,10 +600,15 @@ async function classifyChangeRisk(repositoryRoot: string): Promise<ChangeRiskCla
         );
       }
     }
-    return classifyChangedPaths(
-      await captureChangedPaths(repositoryRoot, safeBase, safeHead),
-      safeBase,
-      safeHead,
+    return routeDraftPullRequestProfile(
+      classifyChangedPaths(
+        await captureChangedPaths(repositoryRoot, safeBase, safeHead),
+        safeBase,
+        safeHead,
+      ),
+      process.env.GITHUB_ACTIONS,
+      eventName,
+      process.env.ONTOS_CI_PR_DRAFT?.trim(),
     );
   } catch (error) {
     return unavailableRangeClassification(
@@ -553,9 +620,13 @@ async function classifyChangeRisk(repositoryRoot: string): Promise<ChangeRiskCla
 }
 
 function gateDefinitionsForProfile(profile: GateProfile): readonly GateDefinition[] {
-  return profile === "fast-docs"
-    ? fullGates.filter(({ name }) => fastGateNames.has(name))
-    : fullGates;
+  if (profile === "fast-docs") {
+    return fullGates.filter(({ name }) => fastGateNames.has(name));
+  }
+  if (profile === "preflight") {
+    return fullGates.filter(({ name }) => !preflightExcludedGateNames.has(name));
+  }
+  return fullGates;
 }
 
 export function gateNamesForProfile(profile: GateProfile): readonly string[] {
@@ -829,7 +900,9 @@ function renderSummary(report: {
   const title =
     report.profile === "full"
       ? "Foundation + Metadata + Materialization + Query Contract Gate"
-      : "Fast Documentation Gate";
+      : report.profile === "preflight"
+        ? "Draft Pull Request Preflight"
+        : "Fast Documentation Gate";
   return `# ${title}: ${report.status}\n\n- Profile: \`${report.profile}\`\n- Reason: ${report.changeRisk.reason}\n- Changed files: ${String(report.changeRisk.changedFiles.length)}\n- Commit: \`${report.commit}\`\n- Tests: ${String(testCount)}\n- Duration: ${String(report.durationMs)} ms\n- Failed gate: ${report.failedGate ?? "none"}\n\n| Gate | Status | Tests | Duration |\n| --- | --- | ---: | ---: |\n${rows}\n`;
 }
 
@@ -839,7 +912,17 @@ if (
 ) {
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
   try {
-    await runFoundationGate(repositoryRoot);
+    const arguments_ = process.argv.slice(2);
+    const localPreflight = arguments_.length === 1 && arguments_[0] === "--preflight";
+    if (arguments_.length > 0 && !localPreflight) {
+      throw new Error("Usage: run.ts [--preflight].");
+    }
+    if (localPreflight && process.env.GITHUB_ACTIONS === "true") {
+      throw new Error(
+        "The local --preflight override is forbidden in GitHub Actions; trusted Draft metadata must select preflight.",
+      );
+    }
+    await runFoundationGate(repositoryRoot, localPreflight);
   } catch (error) {
     process.stderr.write(`foundation gate: FAIL (${String(error)})\n`);
     process.exitCode = 1;

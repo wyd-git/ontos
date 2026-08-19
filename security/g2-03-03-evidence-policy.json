@@ -18,6 +18,7 @@
   ],
   "scope": {
     "allowedExactPaths": [
+      ".github/workflows/foundation-ci.yml",
       "README.md",
       "docs/README.md",
       "docs/architecture/adr/021-query-policy-persistence-boundary.md",
@@ -26,6 +27,7 @@
       "docs/delivery/g2-03-query-policy-task-pack.md",
       "docs/delivery/g2-owner-capacity-matrix.md",
       "docs/evidence/g2-03-03-query-policy-persistence.md",
+      "docs/operations/ci-change-risk-routing.md",
       "docs/product/ontology-kernel-implementation-blueprint.md",
       "docs/reviews/g2-03-03-intended-vs-implemented.md",
       "migrations/db-00/0022_query_policy_identity_facts.sql",
@@ -44,6 +46,8 @@
       "tools/ci/g2-03-03-evidence.ts",
       "tools/ci/g2-03-01-evidence.test.ts",
       "tools/ci/g2-03-02-evidence.test.ts",
+      "tools/ci/change-risk.test.ts",
+      "tools/ci/change-risk.ts",
       "tools/ci/run.test.ts",
       "tools/ci/run.ts",
       "tools/database/materialization-postgres.integration.test.ts",

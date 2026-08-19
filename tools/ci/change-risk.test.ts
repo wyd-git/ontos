@@ -6,6 +6,7 @@ import {
   isCommitSha,
   isFastDocumentationPath,
   isTrustedFastGateEvent,
+  routeDraftPullRequestProfile,
 } from "./change-risk.ts";
 
 const base = "a".repeat(40);
@@ -83,4 +84,43 @@ void test("only trusted pull request and push events may select the fast profile
   assert.equal(isTrustedFastGateEvent("true", "workflow_dispatch"), false);
   assert.equal(isTrustedFastGateEvent(undefined, "pull_request"), false);
   assert.equal(isTrustedFastGateEvent("false", "push"), false);
+});
+
+void test("routes only a trusted high-risk Draft pull request to non-qualifying preflight", () => {
+  const highRisk = classifyChangedPaths(["packages/query/src/index.ts"], base, head);
+  const draft = routeDraftPullRequestProfile(highRisk, "true", "pull_request", "true");
+
+  assert.equal(draft.profile, "preflight");
+  assert.deepEqual(draft.changedFiles, ["packages/query/src/index.ts"]);
+  assert.deepEqual(draft.fullGateFiles, ["packages/query/src/index.ts"]);
+  assert.match(draft.reason, /Draft pull request/u);
+
+  for (const [githubActions, eventName, pullRequestDraft] of [
+    ["true", "pull_request", "false"],
+    ["true", "push", "true"],
+    ["false", "pull_request", "true"],
+    [undefined, "pull_request", "true"],
+  ] as const) {
+    assert.equal(
+      routeDraftPullRequestProfile(highRisk, githubActions, eventName, pullRequestDraft).profile,
+      "full",
+    );
+  }
+});
+
+void test("never downgrades fast documentation or fail-closed classifications to preflight", () => {
+  const documentation = classifyChangedPaths(["docs/operations/query-runtime.md"], base, head);
+  assert.equal(
+    routeDraftPullRequestProfile(documentation, "true", "pull_request", "true").profile,
+    "fast-docs",
+  );
+
+  const empty = classifyChangedPaths([], base, head);
+  assert.equal(routeDraftPullRequestProfile(empty, "true", "pull_request", "true").profile, "full");
+
+  const invalidRange = classifyChangedPaths(["packages/query/src/index.ts"], null, head);
+  assert.equal(
+    routeDraftPullRequestProfile(invalidRange, "true", "pull_request", "true").profile,
+    "full",
+  );
 });

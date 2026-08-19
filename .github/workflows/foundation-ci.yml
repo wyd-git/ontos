@@ -2,6 +2,12 @@ name: Foundation CI
 
 on:
   pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - converted_to_draft
   push:
     branches:
       - main
@@ -18,7 +24,7 @@ concurrency:
 
 jobs:
   foundation:
-    name: Foundation Gate
+    name: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft && 'Foundation Preflight' || 'Foundation Gate' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -39,6 +45,7 @@ jobs:
           ONTOS_CI_EVENT_NAME: ${{ github.event_name }}
           ONTOS_CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
           ONTOS_CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          ONTOS_CI_PR_DRAFT: ${{ github.event.pull_request.draft || false }}
         run: npm run verify
 
       - name: Upload gate evidence
