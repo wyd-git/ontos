@@ -53,6 +53,23 @@ void test("Package preflight verifies canonical digests, bindings and the active
   );
 });
 
+void test("Package expansion activates Policy through the same strict parser and exact dependencies", () => {
+  const bundle = policyPackageBundle();
+  const prepared = preparePackageCandidate(bundle);
+  assertPackageCandidateIntegrity(prepared, digestText);
+  const resource = prepared.resources[0];
+  assert.equal(resource?.family, "policy");
+  assert.equal(resource?.dependencies.length, 5);
+  assert.ok(
+    resource?.dependencies.every(
+      ({ dependencyType, targetResourceId, targetRevisionId }) =>
+        dependencyType === "policy_object_target" &&
+        targetResourceId === resourceId &&
+        targetRevisionId === revisionId,
+    ),
+  );
+});
+
 void test("Package preflight rejects SQL, Kernel migrations, paths, fixed addresses and deferred families", () => {
   const forbidden = [
     { kernelMigrations: ["DROP SCHEMA kernel CASCADE"] },
@@ -88,7 +105,7 @@ void test("Package preflight rejects SQL, Kernel migrations, paths, fixed addres
   assert.ok(deferredEntry);
   deferred.manifest.resourceEntries[0] = {
     ...deferredEntry,
-    family: "policy",
+    family: "action_type",
   };
   assert.throws(
     () => preparePackageCandidate(deferred),
@@ -249,6 +266,104 @@ function packageBundle(marker = "baseline") {
     manifest,
     resources: [{ resourceId, revisionId, content }],
     installInputBindings: [{ apiName: "environment", value: "prod" }],
+  };
+}
+
+function policyPackageBundle() {
+  const target = { kind: "object", resourceId, resourceRevisionId: revisionId } as const;
+  const content = {
+    schemaVersion: 1,
+    rules: [
+      {
+        ruleId: "ALLOW_OPEN",
+        target,
+        effect: "allow",
+        predicate: {
+          kind: "compare",
+          left: { source: "object_property", apiName: "status" },
+          op: "eq",
+          right: { source: "constant", value: "OPEN" },
+        },
+      },
+      {
+        ruleId: "DENY_BLOCKED",
+        target,
+        effect: "deny",
+        predicate: {
+          kind: "compare",
+          left: { source: "object_property", apiName: "status" },
+          op: "eq",
+          right: { source: "constant", value: "BLOCKED" },
+        },
+      },
+    ],
+    testVectors: [
+      policyVector("ALLOW_OPEN", target, "allow", [
+        { source: "object_property", apiName: "status", state: "value", value: "OPEN" },
+      ]),
+      policyVector("DENY_MISSING", target, "deny", [
+        { source: "object_property", apiName: "status", state: "missing" },
+      ]),
+      policyVector("DENY_NULL", target, "deny", [
+        { source: "object_property", apiName: "status", state: "null" },
+      ]),
+    ],
+  };
+  const contentDigest = digestText(canonicalizeContractForDigest(content));
+  const manifest = {
+    schemaVersion: 1,
+    packageApiName: "PolicyCore",
+    version: "1.0.0",
+    namespace: "fixture.policy",
+    kernelContractVersion: "metadata-1",
+    resourceEntries: [
+      {
+        namespace: "fixture.policy",
+        apiName: "WorkItemAccess",
+        family: "policy",
+        resourceId: "00000000-0000-4000-8000-000000010102",
+        revisionId: "00000000-0000-4000-8000-000000010202",
+        contentDigest,
+      },
+    ],
+    artifactDigests: [] as string[],
+    installInputs: [],
+    manifestDigest: `sha256:${"0".repeat(64)}`,
+  };
+  manifest.manifestDigest = digestText(canonicalizeManifestForDigest(manifest));
+  return {
+    manifest,
+    resources: [
+      {
+        resourceId: manifest.resourceEntries[0]?.resourceId,
+        revisionId: manifest.resourceEntries[0]?.revisionId,
+        content,
+      },
+    ],
+    installInputBindings: [],
+  };
+}
+
+function policyVector(
+  vectorId: string,
+  target: object,
+  expectedDecision: "allow" | "deny",
+  facts: readonly object[],
+) {
+  return {
+    vectorId,
+    identity: {
+      schemaVersion: 1,
+      actor: { principalId: projectId, identityType: "human" },
+      delegationChain: [],
+      claimsFingerprint: digestText(vectorId),
+      authenticatedAt: "2026-08-19T08:00:00.000000Z",
+      authorizationMode: "intersection",
+    },
+    requestTime: "2026-08-19T08:00:00.000000Z",
+    target,
+    facts,
+    expectedDecision,
   };
 }
 

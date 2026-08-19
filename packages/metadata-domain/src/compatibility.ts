@@ -3,6 +3,7 @@ import {
   parseLinkTypeDefinition,
   parseMappingDefinition,
   parseObjectTypeDefinition,
+  parsePolicyResourceDefinition,
   parseSnapshotSchemaDefinition,
   type ArtifactDigest,
   type CompatibilityFindingContract,
@@ -14,6 +15,7 @@ import {
   type PropertyDefinition,
   type ResourceFamily,
 } from "@ontos/contracts";
+import { comparePolicyDefinitions } from "@ontos/policy-domain";
 
 export const METADATA_COMPATIBILITY_VERSION = "metadata-compatibility-g2-02-10-v1" as const;
 
@@ -22,6 +24,7 @@ const runtimePlanCompatibilityFamilies = new Set<ResourceFamily>([
   "link_type",
   "snapshot_schema",
   "mapping",
+  "policy",
 ]);
 
 export interface ResourceCompatibilityInput {
@@ -138,6 +141,43 @@ export function compareResourceCompatibility(
             "Derive the new Runtime Plan and complete a new trusted Generation before Release readiness.",
           ),
         ]);
+  }
+  if (input.baselineFamily === "policy") {
+    const baseline = parsePolicyResourceDefinition(input.baselineContent);
+    const candidate = parsePolicyResourceDefinition(input.candidateContent);
+    const direction = comparePolicyDefinitions(baseline, candidate);
+    if (direction === "unchanged") return evaluation([]);
+    if (direction === "tightening") {
+      return evaluation([
+        finding(
+          "compatible",
+          "POLICY_PERMISSION_TIGHTENED",
+          "/rules",
+          "The new immutable Policy Revision only removes grants or adds deny/mask rules.",
+          "Review the affected consumers and publish the new compiled Policy Revision.",
+        ),
+      ]);
+    }
+    if (direction === "widening") {
+      return evaluation([
+        finding(
+          "breaking",
+          "POLICY_PERMISSION_WIDENED",
+          "/rules",
+          "The new Policy Revision adds a grant or removes a deny/mask boundary.",
+          "Perform an explicit security review and publish through a separately approved migration path.",
+        ),
+      ]);
+    }
+    return evaluation([
+      finding(
+        "breaking",
+        "POLICY_SEMANTICS_CHANGED",
+        "/rules",
+        "The Policy changed target, predicate, effect, or mixed grant and restriction semantics.",
+        "Create a reviewed migration with new immutable Rules and test vectors.",
+      ),
+    ]);
   }
 
   return evaluation([

@@ -53,6 +53,7 @@ import {
   sortValidationIssues,
   validateDependencyTargets,
   validateRevisionDefinition,
+  validatorVersionForFamily,
   type DependencyGraphEdge,
   type DependencyTargetSnapshot,
   type ExtractedResourceDependency,
@@ -154,12 +155,13 @@ interface RevisionScopeRow extends ResourceScopeRow {
 interface ValidationNodeRow extends RevisionRow {
   readonly project_id: string;
   readonly resource_state: ResourceState;
+  readonly api_name: string;
 }
 
 interface DependencyRow {
   readonly source_revision_id: string;
   readonly target_revision_id: string;
-  readonly dependency_type: "property_reference" | "link_source" | "link_target";
+  readonly dependency_type: ExtractedResourceDependency["dependencyType"];
   readonly source_path: string;
 }
 
@@ -824,7 +826,10 @@ export class PostgresMetadataControlPlane
     readonly revisionId: string;
     readonly validatorVersion: string;
   }): Promise<RevisionValidationResult> {
-    if (input.validatorVersion !== METADATA_VALIDATOR_VERSION) {
+    if (
+      input.validatorVersion !== METADATA_VALIDATOR_VERSION &&
+      input.validatorVersion !== "policy-g2-03-v1"
+    ) {
       throw new MetadataApplicationError("INVALID_INPUT", "Validator version is not active.");
     }
     return this.#transaction(async (client) => {
@@ -882,6 +887,9 @@ export class PostgresMetadataControlPlane
       const root = revisionRecord(
         requireRow(rootResult.rows[0], "Resource Revision does not exist.", "NOT_FOUND"),
       );
+      if (input.validatorVersion !== validatorVersionForFamily(root.family)) {
+        throw new MetadataApplicationError("INVALID_INPUT", "Validator version is not active.");
+      }
       if (root.state !== "draft") {
         if (
           new Set<ResourceRevisionState>(["validated", "published", "deprecated"]).has(root.state)
@@ -929,7 +937,7 @@ export class PostgresMetadataControlPlane
                 revision.revision_number::text, revision.family, revision.state,
                 revision.etag::text, revision.content_digest, revision.content,
                 revision.created_by_principal_id, revision.created_at,
-                resource.project_id, resource.state AS resource_state
+                resource.project_id, resource.state AS resource_state, resource.api_name
          FROM closure
          JOIN meta.resource_revisions AS revision ON revision.revision_id = closure.revision_id
          JOIN meta.resources AS resource ON resource.resource_id = revision.resource_id
@@ -977,6 +985,8 @@ export class PostgresMetadataControlPlane
         resourceId: revision.resourceId,
         projectId: row.project_id,
         family: revision.family,
+        apiName: row.api_name,
+        content: revision.content,
         resourceState: row.resource_state,
         revisionState: revision.state,
       }));

@@ -5,6 +5,8 @@ import type {
   ValidationIssueContract,
 } from "@ontos/contracts";
 import { parseOntosId } from "@ontos/contracts";
+import { parsePolicyResourceDefinition } from "@ontos/contracts";
+import { POLICY_COMPILER_VERSION } from "@ontos/policy-domain";
 
 import {
   compareReleaseCompatibility,
@@ -32,6 +34,19 @@ export interface ReleaseGatePin extends PinnedCompatibilityRevision {
   readonly storedContentDigest: ArtifactDigest;
   readonly revisionContentDigest: ArtifactDigest;
   readonly hasCurrentValidationReport: boolean;
+  readonly policyCompilation?: PolicyCompilationGateFact | null;
+}
+
+export interface PolicyCompilationGateFact {
+  readonly policyCompilationId: string;
+  readonly policyContentDigest: ArtifactDigest;
+  readonly compilerVersion: string;
+  readonly artifactDigest: ArtifactDigest;
+  readonly testReportDigest: ArtifactDigest;
+  readonly testVectorCount: number;
+  readonly passedVectorCount: number;
+  readonly failedVectorCount: number;
+  readonly status: "passed" | "failed";
 }
 
 export interface ReleaseBaselinePin extends PinnedCompatibilityRevision {
@@ -167,6 +182,17 @@ export function evaluateReleaseGate(input: {
         ),
       );
     }
+    if (pin.family === "policy" && !validPolicyCompilation(pin)) {
+      issues.push(
+        issue(
+          "RELEASE_POLICY_COMPILATION_REQUIRED",
+          pin.resourceId,
+          `${path}/revisionId`,
+          "The pinned Policy has no exact passed Compiler and Test result for this Release.",
+          "Compile the immutable Policy Revision with the active Compiler and pass every published test vector.",
+        ),
+      );
+    }
   }
 
   const resourceByRevision = new Map(sortedPins.map((pin) => [pin.revisionId, pin.resourceId]));
@@ -202,6 +228,25 @@ export function evaluateReleaseGate(input: {
     issues: boundedIssues,
     compatibility,
   });
+}
+
+function validPolicyCompilation(pin: ReleaseGatePin): boolean {
+  const compilation = pin.policyCompilation ?? null;
+  if (compilation === null) return false;
+  let vectorCount: number;
+  try {
+    vectorCount = parsePolicyResourceDefinition(pin.content).testVectors.length;
+  } catch {
+    return false;
+  }
+  return (
+    compilation.policyContentDigest === pin.revisionContentDigest &&
+    compilation.compilerVersion === POLICY_COMPILER_VERSION &&
+    compilation.status === "passed" &&
+    compilation.testVectorCount === vectorCount &&
+    compilation.passedVectorCount === vectorCount &&
+    compilation.failedVectorCount === 0
+  );
 }
 
 export function assertReleaseStateTransition(

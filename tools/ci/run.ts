@@ -10,6 +10,7 @@ import { writeG20301EvidenceManifest } from "./g2-03-01-evidence.ts";
 import { writeG20302EvidenceManifest } from "./g2-03-02-evidence.ts";
 import { writeG20303EvidenceManifest } from "./g2-03-03-evidence.ts";
 import { writeG20304EvidenceManifest } from "./g2-03-04-evidence.ts";
+import { writeG20305EvidenceManifest } from "./g2-03-05-evidence.ts";
 import { writeMaterializationEvidenceManifest } from "./materialization-evidence.ts";
 import { writeMetadataEvidenceManifest } from "./metadata-evidence.ts";
 import {
@@ -140,6 +141,16 @@ const fullGates: readonly GateDefinition[] = [
     name: "g2-03-04-identity-evidence",
     command: "npm",
     arguments: ["run", "check:g2-03-04-evidence"],
+  },
+  {
+    name: "policy-compiler-postgres",
+    command: "npm",
+    arguments: ["run", "test:policy-compiler:integration"],
+  },
+  {
+    name: "g2-03-05-policy-evidence",
+    command: "npm",
+    arguments: ["run", "check:g2-03-05-evidence"],
   },
   {
     name: "projection-ddl-production-postgres",
@@ -481,6 +492,13 @@ async function runFoundationGate(repositoryRoot: string, localPreflight: boolean
       await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-04", commit, error);
       evidenceFailure ??= "g2-03-04-evidence-manifest";
       failure ??= new Error("G2-03-04 evidence manifest could not be completed.");
+    }
+    try {
+      await writeG20305EvidenceManifest(outputDirectory, report);
+    } catch (error) {
+      await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-05", commit, error);
+      evidenceFailure ??= "g2-03-05-evidence-manifest";
+      failure ??= new Error("G2-03-05 evidence manifest could not be completed.");
     }
   }
   const finalReport = {
@@ -864,7 +882,8 @@ async function fingerprintPaths(repositoryRoot: string, paths: readonly string[]
 
 async function writeUnavailableEvidenceManifest(
   outputDirectory: string,
-  gate: "G2-00" | "G2-01" | "G2-02" | "G2-03-01" | "G2-03-02" | "G2-03-03" | "G2-03-04",
+  gate:
+    "G2-00" | "G2-01" | "G2-02" | "G2-03-01" | "G2-03-02" | "G2-03-03" | "G2-03-04" | "G2-03-05",
   commit: string,
   error: unknown,
 ): Promise<void> {
@@ -881,7 +900,9 @@ async function writeUnavailableEvidenceManifest(
               ? "g2-03-02"
               : gate === "G2-03-03"
                 ? "g2-03-03"
-                : "g2-03-04";
+                : gate === "G2-03-04"
+                  ? "g2-03-04"
+                  : "g2-03-05";
   await writeFile(
     join(outputDirectory, `${name}-evidence-manifest.json`),
     `${JSON.stringify(

@@ -203,11 +203,11 @@ void test("Snapshot Schema and Mapping changes require a new trusted Generation"
   assert.deepEqual(codes(mappingResult), ["MAPPING_REMATERIALIZATION_REQUIRED"]);
 });
 
-void test("deferred Resource families remain conditional even when unchanged or newly pinned", () => {
+void test("a deferred Resource family remains conditional even when unchanged or newly pinned", () => {
   const deferred = pin(
     "00000000-0000-4000-8000-000000000099",
     "00000000-0000-4000-8000-000000000098",
-    "policy",
+    "action_type",
     { opaque: "not interpreted in G2-01" },
   );
   for (const baselinePins of [[], [deferred]] as const) {

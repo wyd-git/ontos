@@ -11,9 +11,14 @@ import {
   type MappingDefinition,
   type SnapshotSchemaDefinition,
 } from "./materialization.ts";
+import { parsePolicyResourceDefinition, type PolicyResourceDefinition } from "./policy.ts";
 
 export type PublishableResourceContent =
-  ObjectTypeDefinition | LinkTypeDefinition | MappingDefinition | SnapshotSchemaDefinition;
+  | ObjectTypeDefinition
+  | LinkTypeDefinition
+  | MappingDefinition
+  | SnapshotSchemaDefinition
+  | PolicyResourceDefinition;
 
 export type ResourceFamilyGate = "G2-01" | "G2-02" | "G2-03" | "G2-04" | "G2-05";
 export type ResourceFamilyStatus = "active" | "deferred";
@@ -74,7 +79,12 @@ export const RESOURCE_FAMILY_REGISTRY: Readonly<
     freezeGate: "G2-02",
     parser: parseSnapshotSchemaDefinition,
   }),
-  policy: deferred("policy", "G2-03"),
+  policy: Object.freeze({
+    family: "policy",
+    status: "active",
+    freezeGate: "G2-03",
+    parser: parsePolicyResourceDefinition,
+  }),
   function_type: deferred("function_type", "G2-04"),
   action_type: deferred("action_type", "G2-04"),
   object_view: deferred("object_view", "G2-05"),

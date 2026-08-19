@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { PassThrough } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 
 import {
   DeleteObjectCommand,
@@ -10,6 +10,13 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import {
+  canonicalizeContractForDigest,
+  parseArtifactDigest,
+  type ArtifactDigest,
+} from "@ontos/contracts";
+import type { PolicyArtifactKind, PolicyArtifactStore } from "@ontos/policy-application";
+import { createHash } from "node:crypto";
 
 export interface S3ManagedObjectStoreConfig {
   readonly endpoint: string;
@@ -53,10 +60,17 @@ export interface ManagedObjectVersionEntry {
   readonly deleteMarker: boolean;
 }
 
+export type ManagedObjectMediaType =
+  | "text/csv"
+  | "application/vnd.ontos.rejected-rows+json"
+  | "application/vnd.ontos.policy-ir+json"
+  | "application/vnd.ontos.policy-test+json";
+
 const ingressObjectKeyPattern =
   /^ingress\/[0-9a-f]{2}\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}[.]csv$/u;
 const rejectedObjectKeyPattern =
   /^rejected\/[0-9a-f]{2}\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}[.]jsonl$/u;
+const policyObjectKeyPattern = /^policy\/(?:ir|test)\/[0-9a-f]{64}[.]json$/u;
 const silentS3Logger = Object.freeze({
   trace: () => undefined,
   debug: () => undefined,
@@ -104,7 +118,7 @@ export class S3ManagedObjectStore {
     readonly objectKey: string;
     readonly body: AsyncIterable<Uint8Array>;
     readonly expectedByteCount: number;
-    readonly mediaType: "text/csv" | "application/vnd.ontos.rejected-rows+json";
+    readonly mediaType: ManagedObjectMediaType;
   }): Promise<ManagedObjectVersionMetadata> {
     const objectKey = parseManagedObjectKey(input.objectKey);
     assertManagedMediaType(objectKey, input.mediaType);
@@ -258,6 +272,68 @@ export class S3ManagedObjectStore {
   }
 }
 
+export class S3PolicyArtifactStore implements PolicyArtifactStore {
+  readonly #store: PolicyManagedObjectStore;
+
+  constructor(store: PolicyManagedObjectStore) {
+    this.#store = store;
+  }
+
+  async putArtifact(input: {
+    readonly kind: PolicyArtifactKind;
+    readonly digest: ArtifactDigest;
+    readonly canonicalBytes: string;
+  }): Promise<void> {
+    const digest = parseArtifactDigest(input.digest);
+    assertPolicyBytesDigest(input.kind, input.canonicalBytes, digest);
+    const objectKey = policyArtifactKey(input.kind, digest);
+    const mediaType = policyArtifactMediaType(input.kind);
+    try {
+      const existing = await this.#store.headLatestVersion(objectKey);
+      if (existing.mediaType !== mediaType) throw new ManagedObjectStoreError("VERSION_MISMATCH");
+      const body = await this.#store.readVersion(objectKey, existing.versionId);
+      const bytes = await readUtf8Body(body.body, existing.byteCount);
+      assertPolicyBytesDigest(input.kind, bytes, digest);
+      return;
+    } catch (error) {
+      if (!(error instanceof ManagedObjectStoreError) || error.code !== "NOT_FOUND") throw error;
+    }
+    const bytes = new TextEncoder().encode(input.canonicalBytes);
+    await this.#store.putVersion({
+      objectKey,
+      body: singleChunk(bytes),
+      expectedByteCount: bytes.byteLength,
+      mediaType,
+    });
+  }
+
+  async readArtifact(input: {
+    readonly kind: PolicyArtifactKind;
+    readonly digest: ArtifactDigest;
+  }): Promise<string> {
+    const digest = parseArtifactDigest(input.digest);
+    const objectKey = policyArtifactKey(input.kind, digest);
+    const mediaType = policyArtifactMediaType(input.kind);
+    const head = await this.#store.headLatestVersion(objectKey);
+    if (head.mediaType !== mediaType) throw new ManagedObjectStoreError("VERSION_MISMATCH");
+    const object = await this.#store.readVersion(objectKey, head.versionId);
+    const bytes = await readUtf8Body(object.body, object.byteCount);
+    assertPolicyBytesDigest(input.kind, bytes, digest);
+    return bytes;
+  }
+}
+
+export interface PolicyManagedObjectStore {
+  headLatestVersion(objectKey: string): Promise<ManagedObjectVersionMetadata>;
+  readVersion(objectKey: string, versionId: string): Promise<ManagedObjectVersionBody>;
+  putVersion(input: {
+    readonly objectKey: string;
+    readonly body: AsyncIterable<Uint8Array>;
+    readonly expectedByteCount: number;
+    readonly mediaType: ManagedObjectMediaType;
+  }): Promise<ManagedObjectVersionMetadata>;
+}
+
 async function pumpExactLength(
   source: AsyncIterable<Uint8Array>,
   expectedByteCount: number,
@@ -340,24 +416,92 @@ function parseConfig(value: S3ManagedObjectStoreConfig): Required<S3ManagedObjec
 function parseManagedObjectKey(value: unknown): string {
   if (
     typeof value !== "string" ||
-    (!ingressObjectKeyPattern.test(value) && !rejectedObjectKeyPattern.test(value))
+    (!ingressObjectKeyPattern.test(value) &&
+      !rejectedObjectKeyPattern.test(value) &&
+      !policyObjectKeyPattern.test(value))
   ) {
     throw new ManagedObjectStoreError("CONFIGURATION_INVALID");
   }
   return value;
 }
 
-function assertManagedMediaType(
-  objectKey: string,
-  mediaType: "text/csv" | "application/vnd.ontos.rejected-rows+json",
-): void {
+function assertManagedMediaType(objectKey: string, mediaType: ManagedObjectMediaType): void {
   if (
     (ingressObjectKeyPattern.test(objectKey) && mediaType !== "text/csv") ||
     (rejectedObjectKeyPattern.test(objectKey) &&
-      mediaType !== "application/vnd.ontos.rejected-rows+json")
+      mediaType !== "application/vnd.ontos.rejected-rows+json") ||
+    (objectKey.startsWith("policy/ir/") && mediaType !== "application/vnd.ontos.policy-ir+json") ||
+    (objectKey.startsWith("policy/test/") && mediaType !== "application/vnd.ontos.policy-test+json")
   ) {
     throw new ManagedObjectStoreError("CONFIGURATION_INVALID");
   }
+}
+
+function policyArtifactKey(kind: PolicyArtifactKind, digest: ArtifactDigest): string {
+  return `policy/${kind}/${digest.slice("sha256:".length)}.json`;
+}
+
+function policyArtifactMediaType(kind: PolicyArtifactKind): ManagedObjectMediaType {
+  return kind === "ir"
+    ? "application/vnd.ontos.policy-ir+json"
+    : "application/vnd.ontos.policy-test+json";
+}
+
+function assertPolicyBytesDigest(
+  kind: PolicyArtifactKind,
+  bytes: string,
+  expected: ArtifactDigest,
+): void {
+  let preimage = bytes;
+  if (kind === "ir") {
+    try {
+      const parsed: unknown = JSON.parse(bytes);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new TypeError("Policy Artifact must be an object.");
+      }
+      const { artifactDigest: embedded, ...withoutDigest } = parsed as Record<string, unknown>;
+      if (embedded !== expected) throw new TypeError("Policy Artifact digest binding differs.");
+      preimage = canonicalizeContractForDigest(withoutDigest);
+    } catch (error) {
+      throw new ManagedObjectStoreError("VERSION_MISMATCH", { cause: error });
+    }
+  }
+  const actual = parseArtifactDigest(
+    `sha256:${createHash("sha256").update(preimage, "utf8").digest("hex")}`,
+  );
+  if (actual !== expected) throw new ManagedObjectStoreError("VERSION_MISMATCH");
+}
+
+function singleChunk(value: Uint8Array): AsyncIterable<Uint8Array> {
+  return Readable.from([value]);
+}
+
+async function readUtf8Body(
+  body: AsyncIterable<Uint8Array>,
+  expectedByteCount: number,
+): Promise<string> {
+  if (expectedByteCount > 64 * 1024 * 1024) {
+    throw new ManagedObjectStoreError("CONTENT_LENGTH_MISMATCH");
+  }
+  const chunks: Uint8Array[] = [];
+  let byteCount = 0;
+  for await (const chunk of body) {
+    byteCount += chunk.byteLength;
+    if (byteCount > expectedByteCount) {
+      throw new ManagedObjectStoreError("CONTENT_LENGTH_MISMATCH");
+    }
+    chunks.push(chunk);
+  }
+  if (byteCount !== expectedByteCount) {
+    throw new ManagedObjectStoreError("CONTENT_LENGTH_MISMATCH");
+  }
+  const joined = new Uint8Array(byteCount);
+  let offset = 0;
+  for (const chunk of chunks) {
+    joined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder("utf-8", { fatal: true }).decode(joined);
 }
 
 function parseVersionId(value: unknown): string {

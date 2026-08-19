@@ -9,7 +9,6 @@ import {
   type ValidationReportContract,
 } from "@ontos/contracts";
 import {
-  METADATA_VALIDATOR_VERSION,
   MetadataDomainError,
   isManagementPermissionAllowed,
   prepareDirectResourceContent,
@@ -20,6 +19,7 @@ import {
   validateResourceApiName,
   validateResourceFamily,
   validateResourceNamespace,
+  validatorVersionForFamily,
   type DirectResourceContent,
   type ManagementPermission,
   type ManagementRole,
@@ -601,7 +601,7 @@ export class ResourceLifecycleApplicationService {
     });
     return this.#resources.validateDraftRevision({
       revisionId,
-      validatorVersion: METADATA_VALIDATOR_VERSION,
+      validatorVersion: validatorVersionForFamily(scope.family),
     });
   }
 
@@ -619,7 +619,7 @@ export class ResourceLifecycleApplicationService {
     });
     return this.#resources.getRevisionValidationReport({
       revisionId,
-      validatorVersion: METADATA_VALIDATOR_VERSION,
+      validatorVersion: validatorVersionForFamily(scope.family),
     });
   }
 
