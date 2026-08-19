@@ -48,6 +48,7 @@
       "migrations/db-00/0025_runtime_identity_boundary.sql",
       "package-lock.json",
       "package.json",
+      "packages/materialization-application/src/production-pipeline.ts",
       "packages/contracts/catalog.json",
       "packages/contracts/error-codes.json",
       "packages/contracts/fixtures/runtime-read-golden.json",
@@ -98,6 +99,7 @@
       "tools/database/postgres.integration.test.ts",
       "tools/admin-api/oidc-provider.ts",
       "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts",
+      "tools/materialization-worker/application.test.ts",
       "tools/projection-ddl/integration/postgres.test.ts",
       "tsconfig.json"
     ],

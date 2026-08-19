@@ -8,15 +8,21 @@ import {
   MaterializationStageError,
   MaterializationWorker,
   MaterializationWorkerError,
+  ProductionMaterializationStageExecutor,
   type ClaimedMaterializationJob,
+  type MaterializationBaseService,
   type MaterializationFailure,
   type MaterializationJobCheckpoint,
   type MaterializationJobControl,
   type MaterializationJobRepository,
   type MaterializationJobState,
   type MaterializationLeaseRuntime,
+  type MaterializationQualityService,
   type MaterializationStageExecution,
   type MaterializationStageResult,
+  type ProductionMaterializationObjectStore,
+  type ProductionMaterializationPipelineRepository,
+  type ProjectionCapacityAdmissionService,
 } from "@ontos/materialization-application";
 
 const projectId = id(1);
@@ -109,6 +115,51 @@ void test("persists a controlled retryable failure and bounded redacted samples"
   });
   assert.equal(repository.failed?.failure.code, failure.code);
   assert.equal(repository.failed?.samples.length, 1);
+});
+
+void test("classifies transient transport and PostgreSQL interruptions as retryable dependencies", async () => {
+  for (const code of ["ECONNRESET", "EPIPE", "ETIMEDOUT", "08006", "57P01"]) {
+    const failure = await productionScanFailure(
+      Object.assign(new Error("redacted dependency interruption"), { code }),
+    );
+    assert.equal(failure.category, "dependency", code);
+    assert.equal(failure.retryable, true, code);
+  }
+
+  assert.equal(
+    (await productionScanFailure(Object.assign(new Error("reset"), { code: "ECONNRESET" }))).code,
+    "ECONNRESET",
+  );
+  assert.equal(
+    (await productionScanFailure(Object.assign(new Error("postgres"), { code: "08006" }))).code,
+    "POSTGRES_CONNECTION_INTERRUPTED",
+  );
+});
+
+void test("keeps protocol and unknown production failures fail-closed", async () => {
+  assert.deepEqual(
+    await productionScanFailure(
+      Object.assign(new Error("source changed"), { code: "SOURCE_OBJECT_VERSION_MISMATCH" }),
+    ),
+    {
+      code: "SOURCE_OBJECT_VERSION_MISMATCH",
+      category: "permanent",
+      retryable: false,
+    },
+  );
+  assert.deepEqual(await productionScanFailure(new Error("unknown")), {
+    code: "PIPELINE_STAGE_FAILED",
+    category: "permanent",
+    retryable: false,
+  });
+  assert.deepEqual(
+    await productionScanFailure(Object.assign(new Error("unknown"), { code: "08_NOT_SQLSTATE" })),
+    {
+      code: "PIPELINE_STAGE_FAILED",
+      category: "permanent",
+      retryable: false,
+    },
+  );
 });
 
 void test("does not retry a permanent input failure", async () => {
@@ -300,6 +351,60 @@ function stageResult(sequence: number): MaterializationStageResult {
     outputReferenceId: id(200 + sequence),
     outputDigest: digest(`stage-${String(sequence)}`),
   });
+}
+
+async function productionScanFailure(
+  error: Error,
+): Promise<Omit<MaterializationFailure, "fingerprint">> {
+  const executor = new ProductionMaterializationStageExecutor({
+    repository: {
+      discoverMemberKeys: () => Promise.reject(error),
+    } as unknown as ProductionMaterializationPipelineRepository,
+    objectStore: {} as ProductionMaterializationObjectStore,
+    base: {} as MaterializationBaseService,
+    quality: {} as MaterializationQualityService,
+    capacity: {} as ProjectionCapacityAdmissionService,
+    scanPhysicalInventory: () => Promise.reject(new Error("not reached")),
+    crypto: {
+      randomId: () => id(999),
+      digestCanonicalText: digest,
+      createStreamingDigest: () => {
+        throw new Error("not reached");
+      },
+    },
+  });
+  try {
+    await executor.execute({
+      job: {
+        projectId,
+        jobId,
+        snapshotGroupId,
+        groupVersion: 1,
+        inputDigest: digest("input"),
+        attemptNumber: 1,
+        lease: {
+          projectId,
+          jobId,
+          attemptId: id(998),
+          workerInstanceId,
+          fencingToken: 1n,
+        },
+        latestCheckpoint: null,
+      },
+      stage: "scan",
+      sequence: 1,
+      previousCheckpoint: null,
+      signal: new AbortController().signal,
+    });
+  } catch (caught) {
+    assert.ok(caught instanceof MaterializationStageError);
+    return {
+      code: caught.failure.code,
+      category: caught.failure.category,
+      retryable: caught.failure.retryable,
+    };
+  }
+  throw new Error("Expected the production scan to fail.");
 }
 
 function id(value: number): string {
