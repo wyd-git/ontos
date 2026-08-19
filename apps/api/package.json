@@ -8,6 +8,9 @@
   },
   "dependencies": {
     "@ontos/contracts": "0.0.0",
+    "@ontos/identity-application": "0.0.0",
+    "@ontos/identity-domain": "0.0.0",
+    "@ontos/identity-postgres": "0.0.0",
     "@ontos/materialization-application": "0.0.0",
     "@ontos/materialization-postgres": "0.0.0",
     "@ontos/metadata-application": "0.0.0",

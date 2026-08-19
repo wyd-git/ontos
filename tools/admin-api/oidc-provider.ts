@@ -11,6 +11,11 @@ export interface TestTokenInput {
   readonly scope?: string;
   readonly expiresInSeconds?: number;
   readonly issuedAtOffsetSeconds?: number;
+  readonly notBeforeOffsetSeconds?: number;
+  readonly tokenType?: string;
+  readonly jwtId?: string;
+  readonly authorizedParty?: string;
+  readonly claims?: Readonly<Record<string, unknown>>;
 }
 
 export interface TestOidcProvider {
@@ -60,17 +65,23 @@ export async function startTestOidcProvider(
     async token(input: TestTokenInput = {}) {
       const now = Math.floor(Date.now() / 1_000);
       const issuedAt = now + (input.issuedAtOffsetSeconds ?? 0);
-      return new SignJWT({
+      let token = new SignJWT({
+        ...input.claims,
         scope: input.scope ?? "openid ontos.admin",
         name: input.name ?? "Test Administrator",
+        ...(input.authorizedParty === undefined ? {} : { azp: input.authorizedParty }),
       })
-        .setProtectedHeader({ alg: "RS256", kid, typ: "JWT" })
+        .setProtectedHeader({ alg: "RS256", kid, typ: input.tokenType ?? "JWT" })
         .setIssuer(input.issuer ?? issuer)
         .setAudience(input.audience ?? audience)
         .setSubject(input.subject ?? "administrator")
         .setIssuedAt(issuedAt)
-        .setExpirationTime(now + (input.expiresInSeconds ?? 300))
-        .sign(privateKey);
+        .setExpirationTime(now + (input.expiresInSeconds ?? 300));
+      if (input.notBeforeOffsetSeconds !== undefined) {
+        token = token.setNotBefore(now + input.notBeforeOffsetSeconds);
+      }
+      if (input.jwtId !== undefined) token = token.setJti(input.jwtId);
+      return token.sign(privateKey);
     },
     close: () => close(server),
   });

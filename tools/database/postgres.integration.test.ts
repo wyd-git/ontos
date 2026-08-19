@@ -172,6 +172,7 @@ void test(
             "0022_query_policy_identity_facts.sql",
             "0023_query_lease_gc_boundary.sql",
             "0024_query_policy_authorization_boundary.sql",
+            "0025_runtime_identity_boundary.sql",
           ],
         );
 
@@ -246,7 +247,7 @@ async function assertSecondDatabaseAndConcurrentRunner(
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 24);
+  assert.equal(left.applied.length + right.applied.length, 25);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
 }
 
@@ -590,7 +591,9 @@ async function assertDb01ScopeBoundary(client: pg.Client): Promise<void> {
     FROM pg_catalog.pg_tables
     WHERE schemaname IN ('action', 'audit')
     ORDER BY schemaname, tablename`);
-  assert.deepEqual(deferredTables.rows, []);
+  assert.deepEqual(deferredTables.rows, [
+    { schemaname: "audit", tablename: "claim_mapping_activation_events" },
+  ]);
 }
 
 async function createPrivilegeProbe(client: pg.Client): Promise<void> {
@@ -662,9 +665,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
   const twentySecondMigration = resolve(directory, "0022_query_policy_identity_facts.sql");
   const twentyThirdMigration = resolve(directory, "0023_query_lease_gc_boundary.sql");
   const twentyFourthMigration = resolve(directory, "0024_query_policy_authorization_boundary.sql");
-  const failedMigration = resolve(directory, "0025_failed_attempt.sql");
-  const defectMigration = resolve(directory, "0025_forward_repair_probe.sql");
-  const repairMigration = resolve(directory, "0026_forward_repair.sql");
+  const twentyFifthMigration = resolve(directory, "0025_runtime_identity_boundary.sql");
+  const failedMigration = resolve(directory, "0026_failed_attempt.sql");
+  const defectMigration = resolve(directory, "0026_forward_repair_probe.sql");
+  const repairMigration = resolve(directory, "0027_forward_repair.sql");
 
   try {
     await copyFile(resolve(databaseMigrationDirectory, "0001_foundation.sql"), firstMigration);
@@ -760,6 +764,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       resolve(databaseMigrationDirectory, "0024_query_policy_authorization_boundary.sql"),
       twentyFourthMigration,
     );
+    await copyFile(
+      resolve(databaseMigrationDirectory, "0025_runtime_identity_boundary.sql"),
+      twentyFifthMigration,
+    );
     await writeFile(
       failedMigration,
       `CREATE TABLE ops.db01_forward_repair_probe (
@@ -773,7 +781,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_EXECUTION_FAILED",
     );
-    await assertProbeAndLedgerState(client, false, 24);
+    await assertProbeAndLedgerState(client, false, 25);
 
     await rm(failedMigration);
     await writeFile(
@@ -787,7 +795,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const defectRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       defectRun.applied.map(({ version }) => version),
-      [25],
+      [26],
     );
 
     await writeFile(
@@ -801,7 +809,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const repairRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       repairRun.applied.map(({ version }) => version),
-      [26],
+      [27],
     );
 
     const definitions = await loadMigrationDefinitions(directory);
@@ -837,7 +845,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_HISTORY_DIVERGED",
     );
-    await assertProbeAndLedgerState(client, true, 26);
+    await assertProbeAndLedgerState(client, true, 27);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

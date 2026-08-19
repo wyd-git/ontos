@@ -20,13 +20,13 @@
 4. 全部 Unit Test，包括风险路由的故意绕过向量；
 5. 全仓 Secret/Private Key Scan。
 
-`preflight` 执行完整 Profile 中除以下三项外的 35 道 Gate：
+`preflight` 执行完整 Profile 中除以下三项外的 37 道 Gate：
 
 1. `materialization-clean-room`；
 2. 依赖该运行产物的 `materialization-scope-evidence`；
 3. 依赖同一 100k/1m PostgreSQL Spike Artifact 的 `g2-03-01-architecture-evidence`。
 
-它仍覆盖 Lint、TypeScript、478+ Unit、合同生成、容量薄切片、真实 PostgreSQL Migration/回滚/RLS、Query Lease/GC、Worker/DDL、Metadata Clean-room、供应链和生产边界 Smoke。缺失的三项只允许由 Ready PR 的完整 Gate 补齐。
+它仍覆盖 Lint、TypeScript、全部 Unit、合同生成、容量薄切片、真实 PostgreSQL Migration/回滚/RLS、Runtime OIDC/DPoP/双进程 Replay、Query Lease/GC、Worker/DDL、Metadata Clean-room、供应链和生产边界 Smoke。缺失的三项只允许由 Ready PR 的完整 Gate 补齐。
 
 ## 3. 必定完整 Gate 的变更
 
@@ -82,8 +82,8 @@ GitHub Job Summary 顶部显示 `Profile`、选择原因和 Changed File 数。A
 
 每次修改预检规则时，用一个包含代码或机器策略的 Draft PR 验证：
 
-1. Draft Check 名称必须为 `Foundation Preflight`，Profile 为 `preflight`，只能运行 35 项；
+1. Draft Check 名称必须为 `Foundation Preflight`，Profile 为 `preflight`，只能运行 37 项；
 2. Artifact 必须有 `preflight-evidence.json=PREFLIGHT_PASS`、`closesG2Gate=false`，且不得出现任何新的 G2 Clean-room Manifest；
 3. main 的 Required Check `Foundation Gate` 必须仍为缺失，Draft 也必须保持不可合并；
-4. 转为 Ready 后必须在同一 Head 上新建 `Foundation Gate`，Profile 为 `full`，运行完整 38 项；
+4. 转为 Ready 后必须在同一 Head 上新建 `Foundation Gate`，Profile 为 `full`，运行完整 40 项；
 5. 只有完整 Manifest 全部绑定当前 clean checkout 后才允许合并；再次转为 Draft 必须恢复 `Foundation Preflight`，再次 Ready 必须重跑 full。

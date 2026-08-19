@@ -51,6 +51,7 @@ void test(
   async () => {
     const containerName = `ontos-g20303-${process.pid}-${randomUUID().slice(0, 8)}`;
     const prefix21 = await migrationPrefixDirectory(21);
+    const prefix24 = await migrationPrefixDirectory(24);
     await docker([
       "run",
       "--detach",
@@ -107,18 +108,18 @@ void test(
       await withClient(apiConfig, seedHistoricalIdentity);
       await withClient(adminConfig, async (admin) => {
         prefixHistory = await migrationLedger(admin, 21);
-        const upgrade = await runDatabaseMigrations(admin);
+        const upgrade = await runDatabaseMigrations(admin, { directory: prefix24 });
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
           [22, 23, 24],
         );
-        assert.equal((await runDatabaseMigrations(admin)).noOp, true);
+        assert.equal((await runDatabaseMigrations(admin, { directory: prefix24 })).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 21), prefixHistory);
         await assertHistoricalPrincipalBackfill(admin);
         await assertCatalogAndRls(admin);
       });
 
-      await assertFreshConcurrentMigration(adminConfig);
+      await assertFreshConcurrentMigration(adminConfig, prefix24);
       await assertEveryG20303MigrationRollsBack(adminConfig);
 
       const listener = new pg.Client(adminConfig);
@@ -179,6 +180,7 @@ void test(
       process.stdout.write(`CI_G2_03_03 ${JSON.stringify(durableArtifact)}\n`);
     } finally {
       await rm(prefix21, { recursive: true, force: true });
+      await rm(prefix24, { recursive: true, force: true });
       await docker(["rm", "--force", "--volumes", containerName], true);
     }
   },
@@ -721,12 +723,15 @@ function assertNotification(
   });
 }
 
-async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Promise<void> {
+async function assertFreshConcurrentMigration(
+  adminConfig: pg.ClientConfig,
+  directory: string,
+): Promise<void> {
   await withClient(adminConfig, (admin) => admin.query("CREATE DATABASE ontos_g20303_fresh"));
   const config = { ...adminConfig, database: "ontos_g20303_fresh" };
   const [left, right] = await Promise.all([
-    withClient(config, runMigrationsWithCause),
-    withClient(config, runMigrationsWithCause),
+    withClient(config, (client) => runMigrationsWithCause(client, directory)),
+    withClient(config, (client) => runMigrationsWithCause(client, directory)),
   ]);
   assert.equal(left.applied.length + right.applied.length, 24);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
@@ -812,9 +817,9 @@ async function createRuntimeLogins(client: pg.Client): Promise<void> {
   `);
 }
 
-async function runMigrationsWithCause(client: pg.Client) {
+async function runMigrationsWithCause(client: pg.Client, directory: string) {
   try {
-    return await runDatabaseMigrations(client);
+    return await runDatabaseMigrations(client, { directory });
   } catch (error) {
     if (isDatabaseMigrationError(error) && error.cause instanceof Error) throw error.cause;
     throw error;
