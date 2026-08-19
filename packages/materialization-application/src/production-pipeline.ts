@@ -738,36 +738,20 @@ function stageFailure(
   error: unknown,
   crypto: Pick<ProductionMaterializationPipelineCrypto, "digestCanonicalText">,
 ): MaterializationStageError {
-  const sourceCode = errorCode(error);
-  const confirmation = sourceCode === "ROW_COUNT_CONFIRMATION_REQUIRED";
-  const fenced = /FENCED|LEASE/u.test(sourceCode);
-  const dependency =
-    /DEPENDENCY|UNAVAILABLE|CONNECTION|TIMEOUT/u.test(sourceCode) ||
-    sourceCode === "CAPACITY_INVENTORY_STALE";
-  const retryable = confirmation || fenced || dependency;
-  const category = confirmation
-    ? ("throttled" as const)
-    : fenced
-      ? ("lease" as const)
-      : dependency
-        ? ("dependency" as const)
-        : ("permanent" as const);
-  const stableCode = /^[A-Z][A-Z0-9_]{1,63}$/u.test(sourceCode)
-    ? sourceCode
-    : "PIPELINE_STAGE_FAILED";
+  const classification = classifyProductionStageFailure(error);
   return new MaterializationStageError(
     {
-      code: stableCode,
-      category,
-      retryable,
+      code: classification.code,
+      category: classification.category,
+      retryable: classification.retryable,
       fingerprint: parseArtifactDigest(
         crypto.digestCanonicalText(
           canonicalizeContractForDigest({
             schemaVersion: 1,
             contractVersion: "materialization-stage-failure-v1",
             stage,
-            code: stableCode,
-            category,
+            code: classification.code,
+            category: classification.category,
           }),
         ),
       ),
@@ -775,6 +759,66 @@ function stageFailure(
     [],
     { cause: error },
   );
+}
+
+interface ProductionStageFailureClassification {
+  readonly code: string;
+  readonly category: "dependency" | "lease" | "permanent" | "throttled";
+  readonly retryable: boolean;
+}
+
+const transientTransportCodes = new Set([
+  "EAI_AGAIN",
+  "ECONNABORTED",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "EHOSTDOWN",
+  "EHOSTUNREACH",
+  "ENETDOWN",
+  "ENETRESET",
+  "ENETUNREACH",
+  "EPIPE",
+  "ETIMEDOUT",
+]);
+
+const transientPostgresOperatorCodes = new Set(["57P01", "57P02", "57P03"]);
+
+function classifyProductionStageFailure(error: unknown): ProductionStageFailureClassification {
+  const sourceCode = errorCode(error);
+  const confirmation = sourceCode === "ROW_COUNT_CONFIRMATION_REQUIRED";
+  const fenced = /FENCED|LEASE/u.test(sourceCode);
+  const dependency = isTransientDependencyCode(sourceCode);
+  const category = confirmation
+    ? ("throttled" as const)
+    : fenced
+      ? ("lease" as const)
+      : dependency
+        ? ("dependency" as const)
+        : ("permanent" as const);
+  return Object.freeze({
+    code: stableFailureCode(sourceCode),
+    category,
+    retryable: confirmation || fenced || dependency,
+  });
+}
+
+function isTransientDependencyCode(sourceCode: string): boolean {
+  return (
+    /DEPENDENCY|UNAVAILABLE|CONNECTION|TIMEOUT/u.test(sourceCode) ||
+    sourceCode === "CAPACITY_INVENTORY_STALE" ||
+    transientTransportCodes.has(sourceCode) ||
+    /^08[0-9A-Z]{3}$/u.test(sourceCode) ||
+    transientPostgresOperatorCodes.has(sourceCode)
+  );
+}
+
+function stableFailureCode(sourceCode: string): string {
+  if (/^[A-Z][A-Z0-9_]{1,63}$/u.test(sourceCode)) return sourceCode;
+  if (/^08[0-9A-Z]{3}$/u.test(sourceCode)) return "POSTGRES_CONNECTION_INTERRUPTED";
+  if (transientPostgresOperatorCodes.has(sourceCode)) {
+    return "POSTGRES_TEMPORARILY_UNAVAILABLE";
+  }
+  return "PIPELINE_STAGE_FAILED";
 }
 
 function errorCode(error: unknown): string {
