@@ -1,0 +1,16 @@
+{
+  "name": "@ontos/identity-application",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "application"
+  },
+  "dependencies": {
+    "@ontos/contracts": "0.0.0",
+    "@ontos/identity-domain": "0.0.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -15,8 +15,8 @@ GitHub Actions 不重新拼装业务命令，只在固定 Node/npm 环境执行 
 | Profile     | 触发条件                                                                                      | 执行内容                                                                         | 证据语义                                                     |
 | ----------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `fast-docs` | `README.md`、`docs/README.md` 和非 ADR/Evidence/Review 的 `docs/**/*.md`                      | Lockfile Install、Toolchain、Format、Documentation Links、全部 Unit、Secret Scan | 只能产生 `FAST_DOCS_PASS`，不重生历史 Clean-room             |
-| `preflight` | 可信 GitHub Draft PR 的任意高风险变更；必须具备有效 Base/Head、非空 Diff 和至少一个高风险路径 | 除 100k/1m Materialization Clean-room 及其两个依赖资格生成器外的 35 道 Gate      | 只能产生 `PREFLIGHT_PASS`；不能满足 Required Check 或关闭 G2 |
-| `full`      | Ready PR 或 main 的高风险变更、每日定时、手动运行、本地默认，或任何无法可信分类的上下文       | 完整 Foundation + Metadata + Materialization + G2-03 共 38 道 Gate               | 按原合同重生 G2-00/01/02 与 G2-03-01～03 Manifest            |
+| `preflight` | 可信 GitHub Draft PR 的任意高风险变更；必须具备有效 Base/Head、非空 Diff 和至少一个高风险路径 | 除 100k/1m Materialization Clean-room 及其两个依赖资格生成器外的 37 道 Gate      | 只能产生 `PREFLIGHT_PASS`；不能满足 Required Check 或关闭 G2 |
+| `full`      | Ready PR 或 main 的高风险变更、每日定时、手动运行、本地默认，或任何无法可信分类的上下文       | 完整 Foundation + Metadata + Materialization + G2-03 共 40 道 Gate               | 按原合同重生 G2-00/01/02 与 G2-03-01～04 Manifest            |
 
 分类器没有“手动强制快速”参数。空 Diff、Commit 不完整、Git 比较失败、路径越界、可疑路径或超过分类输出上限均 Fail Closed 到 `full`。关闭 Rename Detection 使“把运行时代码移到文档路径”同时显示为删除高风险路径和新增文档，不能被误分为快速。
 
@@ -40,9 +40,9 @@ GitHub Actions 不重新拼装业务命令，只在固定 Node/npm 环境执行 
 - Secret、License、SBOM、Vulnerability Artifact 的路径、Hash 和计数；
 - 失败 Gate 和未执行 Gate，不能用缺失字段伪装成 PASS。
 
-同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。`fast-docs` 另生成 `fast-docs-evidence.json`；`preflight` 另生成 `preflight-evidence.json`，固定 `closesG2Gate=false` 并明文声明不能合并或替代 Clean-room；只有 `full` 才生成 G2-00、G2-01、G2-02 与 G2-03-01～03 Manifest。原始供应链机器输出保存在同一目录。
+同时生成简短的 `summary.md`，供 GitHub Job Summary 和人工审查使用。`fast-docs` 另生成 `fast-docs-evidence.json`；`preflight` 另生成 `preflight-evidence.json`，固定 `closesG2Gate=false` 并明文声明不能合并或替代 Clean-room；只有 `full` 才生成 G2-00、G2-01、G2-02 与 G2-03-01～04 Manifest。原始供应链机器输出保存在同一目录。
 
-G2-03-03 把 `g2-03-03-persistence-evidence` 放在 `postgres-integration` 之后：前者必须读取同一运行刚生成的 Persistence 与 Query Lease Artifact，再检查三个 Migration、历史 Scope 前向接纳、Required Record 和 Source Marker。full profile 现有 38 道 Gate；最终 Manifest 还要求两个 PostgreSQL Artifact 与 Report 同 Commit、`cleanCheckout=true` 且每个 Required Gate 恰好 PASS 一次。
+G2-03-03 把 `g2-03-03-persistence-evidence` 放在 `postgres-integration` 之后：前者必须读取同一运行刚生成的 Persistence 与 Query Lease Artifact，再检查三个 Migration、历史 Scope 前向接纳、Required Record 和 Source Marker。G2-03-04 继续追加 `runtime-identity-postgres` 与 `g2-03-04-identity-evidence`，用真 OIDC/DPoP/PostgreSQL 和两个独立 API 进程验证 Runtime Identity 与跨进程 Replay。full profile 现有 40 道 Gate；最终 Manifest 要求对应 Artifact 与 Report 同 Commit、`cleanCheckout=true` 且每个 Required Gate 恰好 PASS 一次。
 
 G2-00-13 在同一入口追加 `foundation-scope-evidence`，由 `security/g2-00-evidence-policy.json` 冻结当前允许的 Workspace、DB-00 Migration/表、ADR-007～012、G2-00-01～13 Evidence、Owner/容量和未关闭风险。出现 App、非 DB-00 Migration、额外表、非 Spike UI 文件或未提交的必需 Evidence 时 Gate 失败。
 

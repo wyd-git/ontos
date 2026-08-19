@@ -3,7 +3,7 @@
 - 版本：v1
 - 日期：2026-08-17
 - 状态：Frozen；可行性复审与红队修订已写回权威文档
-- 执行进度：3/15；G2-03-01～03 已 PASS，当前只放行 G2-03-04，未 PASS 前不得开始 G2-03-05 或正式 Runtime Endpoint
+- 执行进度：4/15；G2-03-01～04 已 PASS，当前只放行 G2-03-05，未 PASS 前不得开始 G2-03-06 或正式 Runtime Endpoint
 - 上游 Gate：G2-00、G2-01、G2-02 已 PASS
 - 目标 Gate：正式 Runtime Read Kernel + 统一 Policy Gateway + 真实只读 Web 消费者
 - 配套边界：[G2-03 UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)
@@ -294,6 +294,8 @@ G2-02 已经形成不可重写的 21 个 Migration、Principal/Role/Epoch 和 Ge
 - 用真实非 Owner 登录完成 Principal Type、Claim Mapping、Policy Artifact 和 Query Lease 薄切片后重估剩余工期；未完成不开始 04。
 
 ### G2-03-04：实现 Runtime Identity、Claim Mapping 与 Delegation 交集
+
+- 执行状态：**PASS**；见 [ADR-022](../architecture/adr/022-runtime-identity-claim-mapping-delegation.md) 与 [Evidence](../evidence/g2-03-04-runtime-identity.md)
 
 - 规模：M
 - 建议 Owner：Identity / Security / Backend
