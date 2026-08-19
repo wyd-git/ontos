@@ -42,7 +42,8 @@
       "tools/ci/g2-03-05-evidence.test.ts",
       "tools/ci/g2-03-05-evidence.ts",
       "tools/ci/run.test.ts",
-      "tools/ci/run.ts"
+      "tools/ci/run.ts",
+      "tools/runtime-identity/integration/postgres-oidc.test.ts"
     ],
     "allowedPrefixes": [
       "packages/contracts/",

@@ -113,7 +113,14 @@ void test(
       };
       try {
         const migrated = await withClient(admin, (client) => runDatabaseMigrations(client));
-        assert.deepEqual(migrated.applied.at(-1)?.version, 25);
+        assert.ok(
+          migrated.applied.some(({ version }) => version === 25),
+          "the G2-03-04 Runtime Identity migration must remain in the forward history",
+        );
+        assert.ok(
+          (migrated.applied.at(-1)?.version ?? 0) >= 25,
+          "later migrations must remain forward-compatible with the Runtime Identity gate",
+        );
         await createRuntimeLogins(admin);
         const api = new pg.Pool(apiConfig);
         try {

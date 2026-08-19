@@ -48,6 +48,7 @@
 - Actor `string_array` 合同有类型但 Test Fact 原本无法表达；已增加有界、唯一、排序的 `values` 并同步 Schema/Golden。
 - S3 写入失败初版被误分类为输入错误；已分类为 `STORAGE_FAILURE` 且证明不写 Compilation。
 - 复审最后发现 `api_runtime` 仍继承 0024 的 Recorder EXECUTE；已改为 API 只读、Worker/Compiler 独占写入，并用真非 Owner 登录证明 42501。
+- 首次远程 Gate 暴露 G2-03-04 集成测试把最新 Migration 写死为 25；已改为精确要求 0025 仍在前向历史中，同时允许更高 Migration，避免每个后续 Gate 误破坏 Runtime Identity 回归。
 
 ## 5. 未夸大的剩余边界
 
