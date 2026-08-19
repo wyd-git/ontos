@@ -2,14 +2,15 @@
 
 ## 1. 目标
 
-`Foundation Gate` 保持为 main 的唯一 Required Check，但不再让普通 Markdown 变更每次重跑约 35～45 分钟的 Materialization Clean-room。路由只减少与运行时无关的重复验收，不改变数据库、Identity、Policy、Worker、权限、供应链和 CI 自身的完整 Gate。
+`Foundation Gate` 保持为 main 的唯一 Required Check。普通 Markdown 使用快速路径；高风险 Draft PR 先运行不能合并的 `Foundation Preflight`，转为 Ready 后再运行完整 `Foundation Gate`。路由只减少开发迭代中的重复 100k/1m 验收，不改变数据库、Identity、Policy、Worker、权限、供应链和最终资格 Gate。
 
 ## 2. 路由结果
 
-| 结果        | 典型输入                                                                             | 预期耗时    | 合并语义                               |
-| ----------- | ------------------------------------------------------------------------------------ | ----------- | -------------------------------------- |
-| `fast-docs` | `README.md`，以及 `docs/` 下非 `architecture/adr`、`evidence`、`reviews` 的 Markdown | 1～3 分钟   | 允许合并文档；不产生新 Clean-room 结论 |
-| `full`      | 除上述路径外的任何变更，或分类不可信                                                 | 35～45 分钟 | 重生完整 G2-00/01/02 验收与 Clean-room |
+| 结果        | 典型输入                                                                             | 预期耗时       | 合并语义                                                    |
+| ----------- | ------------------------------------------------------------------------------------ | -------------- | ----------------------------------------------------------- |
+| `fast-docs` | `README.md`，以及 `docs/` 下非 `architecture/adr`、`evidence`、`reviews` 的 Markdown | 1～3 分钟      | Ready 后可满足文档 Required Check；不产生新 Clean-room 结论 |
+| `preflight` | 可信 Draft PR 中除快速文档外的变更，且 Base/Head/Diff 完整                           | 约 6～10 分钟  | Check 名为 `Foundation Preflight`，不可合并、不可关闭 G2    |
+| `full`      | Ready 高风险 PR、main 高风险 Push、定时/手动/本地默认，或任何分类不可信情况          | 约 30～50 分钟 | Check 名为 `Foundation Gate`，重生完整资格与 Clean-room     |
 
 `fast-docs` 仍执行：
 
@@ -19,20 +20,23 @@
 4. 全部 Unit Test，包括风险路由的故意绕过向量；
 5. 全仓 Secret/Private Key Scan。
 
+`preflight` 执行完整 Profile 中除以下三项外的 35 道 Gate：
+
+1. `materialization-clean-room`；
+2. 依赖该运行产物的 `materialization-scope-evidence`；
+3. 依赖同一 100k/1m PostgreSQL Spike Artifact 的 `g2-03-01-architecture-evidence`。
+
+它仍覆盖 Lint、TypeScript、478+ Unit、合同生成、容量薄切片、真实 PostgreSQL Migration/回滚/RLS、Query Lease/GC、Worker/DDL、Metadata Clean-room、供应链和生产边界 Smoke。缺失的三项只允许由 Ready PR 的完整 Gate 补齐。
+
 ## 3. 必定完整 Gate 的变更
 
-以下任一情况必定为 `full`：
+以下任一情况即使 PR 标记为 Draft，也必定 Fail Closed 为 `full`：
 
-- `apps/`、`packages/`、`tools/`、`migrations/`、`deploy/` 或任何可执行代码；
-- `package.json`、`package-lock.json`、Workflow、Secret/证据机器策略；
-- ADR、Gate Evidence、Review/Red-team 结论；
-- 图片、JSON、Schema、Fixture 等非 Markdown 资产；
-- 文档与代码混合变更；
-- 重命名的任一端不属于快速路径；
 - Base/Head 缺失、SHA 非完整小写 40 位、Diff 失败、空 Diff 或输出超上限；
+- GitHub 事件不是受信 `pull_request`，或者 `draft` 值不是精确的 `true`；
 - 每日定时和手动 Workflow。
 
-路由器不接受 `force-fast`、Label、PR 正文、分支名或作者输入。
+代码、Migration、Workflow、证据策略和 ADR 等高风险路径在可信 Draft 中只能降为 `preflight`，不能降为 `fast-docs`。路由器不接受 `force-fast`、Label、PR 正文、分支名或作者输入。
 
 ## 4. 如何查看结果
 
@@ -41,9 +45,10 @@ GitHub Job Summary 顶部显示 `Profile`、选择原因和 Changed File 数。A
 - `change-risk.json`：Base/Head、完整路径、触发完整 Gate 的路径和原因；
 - `report.json` / `summary.md`：实际执行的 Gate、耗时、测试数和失败点；
 - `fast-docs-evidence.json`：仅快速 Profile 产生，资格最高为 `FAST_DOCS_PASS`；
+- `preflight-evidence.json`：仅预检产生，资格最高为 `PREFLIGHT_PASS`，且 `closesG2Gate=false`；
 - `foundation-evidence-manifest.json`、`metadata-evidence-manifest.json`、`materialization-evidence-manifest.json`：只有完整 Profile 产生。
 
-如果一个预期快速的 PR 显示 `full`，先查 `fullGateFiles`；这是保守结果，不应通过放宽路径来“修复”。如果一个高风险 PR 显示 `fast-docs`，立即停止合并，将分类器、Workflow 和该 PR Diff 作为 CI 安全事件审查。
+如果一个预期 Draft 预检显示 `full`，先查 Base/Head、事件和 `fullGateFiles`；这是保守结果，不应通过放宽路径来“修复”。如果一个 Ready 高风险 PR 显示 `preflight` 或 `fast-docs`，立即停止合并，将分类器、Workflow 和该 PR Diff 作为 CI 安全事件审查。
 
 ## 5. 如何强制完整验收
 
@@ -51,13 +56,15 @@ GitHub Job Summary 顶部显示 `Profile`、选择原因和 Changed File 数。A
 - GitHub：手动触发 `Foundation CI`；
 - 定时：每日 18:00 UTC（上海时间次日 02:00）自动完整执行。
 
-不允许用手动输入强制 `fast-docs`。需要调整允许路径时，必须连同故意绕过测试一起修改，而该修改自身必定跑 `full`。
+本地 `npm run verify:preflight` 只能产生非资格工作树报告，建议在干净 Commit/Worktree 上使用；代码显式禁止在 GitHub Actions 中使用该参数。GitHub Draft/Ready 路由只读取 Workflow 注入的事件对象，不允许用手动输入强制 `preflight` 或 `fast-docs`。需要调整路由时，必须连同故意绕过测试一起修改，且 PR 转为 Ready 后仍必定跑 `full`。
 
 ## 6. 已知边界
 
 - 风险路由判断“文件是否可以影响运行时”，不判断文档观点是否正确；人工评审仍需要对 PRD/架构内容负责。
 - 外部依赖或基础镜像可能在两次代码变更之间发生问题；每日完整 Gate 承担这一检测责任。
 - `fast-docs` 不是 G2 阶段关闭证据；任何 Gate PASS 声明仍要求对应的完整、Commit-bound Manifest。
+- `preflight` 也不是 G2 阶段关闭证据；Draft PR 本身不可合并，分支保护所需的 `Foundation Gate` 只在 Ready 后出现。
+- 第一版优化不复用 PR Artifact，也不缩短 main、定时或手动全量运行；main 重复验收优化必须另行证明 Tree/Manifest 绑定后才能启用。
 
 ## 7. 上线后快速路径核对清单
 
@@ -70,3 +77,13 @@ GitHub Job Summary 顶部显示 `Profile`、选择原因和 Changed File 数。A
 5. 同一 PR 若混入代码、ADR、Evidence、Review、Workflow 或机器策略，路由测试必须证明结果立刻变为 `full`。
 
 只有以上五项同时成立，才能把快速路径视为已完成真实 GitHub 验证；本地单元测试不能替代这次远端事件上下文验证。
+
+## 8. Draft → Ready 预检核对清单
+
+每次修改预检规则时，用一个包含代码或机器策略的 Draft PR 验证：
+
+1. Draft Check 名称必须为 `Foundation Preflight`，Profile 为 `preflight`，只能运行 35 项；
+2. Artifact 必须有 `preflight-evidence.json=PREFLIGHT_PASS`、`closesG2Gate=false`，且不得出现任何新的 G2 Clean-room Manifest；
+3. main 的 Required Check `Foundation Gate` 必须仍为缺失，Draft 也必须保持不可合并；
+4. 转为 Ready 后必须在同一 Head 上新建 `Foundation Gate`，Profile 为 `full`，运行完整 38 项；
+5. 只有完整 Manifest 全部绑定当前 clean checkout 后才允许合并；再次转为 Draft 必须恢复 `Foundation Preflight`，再次 Ready 必须重跑 full。
