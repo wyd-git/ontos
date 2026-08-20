@@ -10,6 +10,13 @@ import { promisify } from "node:util";
 
 import { HeadBucketCommand, PutBucketVersioningCommand, S3Client } from "@aws-sdk/client-s3";
 import {
+  canonicalizeContractForDigest,
+  parseIdentityDelegationSummary,
+  type ArtifactDigest,
+  type IdentityType,
+} from "@ontos/contracts";
+import type { RuntimeIdentityContext } from "@ontos/identity-application";
+import {
   MetadataApplicationService,
   ReleaseLifecycleApplicationService,
   ResourceLifecycleApplicationService,
@@ -19,8 +26,18 @@ import {
 } from "@ontos/metadata-application";
 import { PostgresMetadataControlPlane, PostgresReleaseStore } from "@ontos/metadata-postgres";
 import { S3ManagedObjectStore, S3PolicyArtifactStore } from "@ontos/object-store-s3";
-import { PolicyCompilationApplicationService } from "@ontos/policy-application";
-import { PostgresPolicyCompilationStore, sha256PolicyText } from "@ontos/policy-postgres";
+import {
+  PolicyCompilationApplicationService,
+  ProductionPolicyGateway,
+  type PolicyGatewayMonotonicClock,
+  type PolicyGatewayRequest,
+} from "@ontos/policy-application";
+import {
+  PostgresPolicyCompilationStore,
+  PostgresPolicyEpochListener,
+  PostgresPolicyGatewayRepository,
+  sha256PolicyText,
+} from "@ontos/policy-postgres";
 import { canonicalClaimMapping, parseClaimMappingDefinition } from "@ontos/identity-domain";
 import pg from "pg";
 
@@ -40,8 +57,8 @@ const accessKeyId = "local-only-g20305-s3-access";
 const secretAccessKey = "local-only-g20305-s3-secret";
 
 void test(
-  "G2-03-05 compiles an exact Policy to versioned S3 and gates PostgreSQL Release publication",
-  { timeout: 180_000 },
+  "G2-03-05/06 compile an exact Policy and authorize it through two production Gateway processes",
+  { timeout: 240_000 },
   async () => {
     const suffix = `${process.pid}-${randomUUID().slice(0, 8)}`;
     const postgresContainer = `ontos-g20305-pg-${suffix}`;
@@ -104,6 +121,7 @@ void test(
       };
       await waitForPostgreSql(adminConfig);
       await assertMigration26RollsBack(adminConfig);
+      await assertMigration27RollsBack(adminConfig);
       admin = new pg.Pool(adminConfig);
       await withClient(adminConfig, async (client) => {
         await runDatabaseMigrations(client);
@@ -114,13 +132,14 @@ void test(
           GRANT worker_runtime TO g20305_policy_compiler_login;
         `);
       });
-      api = new pg.Pool({
+      const apiConfig: pg.PoolConfig = {
         ...adminConfig,
         user: "api_runtime",
         password: runtimePassword,
         application_name: "ontos-g2-03-05-api",
         max: 8,
-      });
+      };
+      api = new pg.Pool(apiConfig);
       compilerDatabase = new pg.Pool({
         ...adminConfig,
         user: "g20305_policy_compiler_login",
@@ -420,6 +439,27 @@ void test(
         postgresError("55000"),
       );
 
+      const gatewayEvidence = await exerciseProductionPolicyGateway({
+        adminConfig,
+        apiConfig,
+        admin,
+        api,
+        compilerDatabase,
+        metadataStore,
+        metadata,
+        artifacts,
+        managedS3,
+        owner,
+        ownerPrincipalId: ownerPrincipal.principalId,
+        projectId: project.project.projectId,
+        targetResourceId: workItem.resource.resourceId,
+        otherResourceId: person.resource.resourceId,
+        releaseId: release.releaseId,
+        policyRevisionId: policyValidation.revision.revisionId,
+        artifactDigest: compiled.artifactDigest,
+        compilerVersion: compiled.artifact.compilerVersion,
+      });
+
       const [{ stdout: commit }, { stdout: status }, postgresVersion] = await Promise.all([
         execFileAsync("git", ["rev-parse", "HEAD"]),
         execFileAsync("git", ["status", "--porcelain"]),
@@ -455,7 +495,26 @@ void test(
         resolve(outputDirectory, "g2-03-05-policy-compiler.json"),
         `${JSON.stringify(artifact, null, 2)}\n`,
       );
+      const gatewayArtifact = {
+        schemaVersion: 1,
+        gate: "G2-03-06",
+        status: "PASS",
+        qualification: "REAL_POSTGRES_16_VERSIONED_S3_TWO_PROCESS_POLICY_GATEWAY",
+        commit: commit.trim(),
+        cleanCheckout: status.trim().length === 0,
+        migrations: { historicalPrefix: 26, current: 27, applied: [27] },
+        postgres: { serverVersionNum: postgresVersion.rows[0]?.server_version_num ?? null },
+        compilerVersion: compiled.artifact.compilerVersion,
+        cacheTtlMs: 5_000,
+        gatewayProcesses: 2,
+        assertions: gatewayEvidence,
+      };
+      await writeFile(
+        resolve(outputDirectory, "g2-03-06-policy-gateway.json"),
+        `${JSON.stringify(gatewayArtifact, null, 2)}\n`,
+      );
       process.stdout.write(`CI_G2_03_05 ${JSON.stringify(artifact)}\n`);
+      process.stdout.write(`CI_G2_03_06 ${JSON.stringify(gatewayArtifact)}\n`);
     } finally {
       managedS3?.destroy();
       rawS3?.destroy();
@@ -469,6 +528,487 @@ void test(
     }
   },
 );
+
+interface ProductionPolicyGatewayExerciseInput {
+  readonly adminConfig: pg.PoolConfig;
+  readonly apiConfig: pg.PoolConfig;
+  readonly admin: pg.Pool;
+  readonly api: pg.Pool;
+  readonly compilerDatabase: pg.Pool;
+  readonly metadataStore: PostgresMetadataControlPlane;
+  readonly metadata: MetadataApplicationService;
+  readonly artifacts: S3PolicyArtifactStore;
+  readonly managedS3: S3ManagedObjectStore;
+  readonly owner: VerifiedFoundationIdentity;
+  readonly ownerPrincipalId: string;
+  readonly projectId: string;
+  readonly targetResourceId: string;
+  readonly otherResourceId: string;
+  readonly releaseId: string;
+  readonly policyRevisionId: string;
+  readonly artifactDigest: ArtifactDigest;
+  readonly compilerVersion: string;
+}
+
+async function exerciseProductionPolicyGateway(
+  input: ProductionPolicyGatewayExerciseInput,
+): Promise<Readonly<Record<string, true>>> {
+  const readerIdentity = identity("policy-runtime-reader");
+  const readerPrincipal = await input.metadataStore.resolveVerifiedIdentity(readerIdentity);
+  const servicePrincipalId = randomUUID();
+  await input.admin.query(
+    `INSERT INTO authz.principals
+       (principal_id, oidc_issuer, oidc_subject, display_name, identity_type)
+     VALUES ($1, 'https://identity.policy.test', 'policy-runtime-service',
+             'Policy Runtime Service', 'service')`,
+    [servicePrincipalId],
+  );
+  await replaceProjectRole(input, readerPrincipal.principalId, "viewer");
+  await replaceProjectRole(input, servicePrincipalId, "viewer");
+  const profileEpoch = await currentAuthorizationEpoch(input);
+  await input.api.query(
+    `SELECT * FROM authz.register_service_identity_profile(
+       $1, $2, 'policy-runtime-client', ARRAY['object.read']::text[], $3
+     )`,
+    [input.projectId, servicePrincipalId, profileEpoch.toString()],
+  );
+
+  const human = gatewayIdentity({
+    actor: { principalId: readerPrincipal.principalId, identityType: "human" },
+  });
+  const service = gatewayIdentity({
+    actor: { principalId: servicePrincipalId, identityType: "service" },
+    capabilities: ["object.read"],
+  });
+  const delegated = gatewayIdentity({
+    actor: { principalId: servicePrincipalId, identityType: "service" },
+    delegationChain: [{ principalId: readerPrincipal.principalId, identityType: "human" }],
+    capabilities: ["object.read"],
+  });
+  const ownerContext = gatewayIdentity({
+    actor: { principalId: input.ownerPrincipalId, identityType: "human" },
+  });
+  const repository = new PostgresPolicyGatewayRepository(input.api);
+  const humanRequest = policyGatewayRequest(input, human, "corr_g20306_human_request_0001");
+  const serviceRequest = policyGatewayRequest(input, service, "corr_g20306_service_request_0001");
+  const delegatedRequest = policyGatewayRequest(
+    input,
+    delegated,
+    "corr_g20306_delegated_request_01",
+  );
+
+  const snapshot = await repository.readPolicyGatewaySnapshot({
+    projectId: input.projectId,
+    authorizationPrincipalIds: human.authorizationPrincipalIds,
+    resourceId: input.targetResourceId,
+    permission: "object.read",
+    releaseId: input.releaseId,
+    policyRevisionId: input.policyRevisionId,
+    compilerVersion: input.compilerVersion,
+  });
+  assert.equal(snapshot.projectId, input.projectId);
+  assert.equal(snapshot.resourceId, input.targetResourceId);
+  assert.equal(snapshot.releaseId, input.releaseId);
+  assert.equal(snapshot.policyRevisionId, input.policyRevisionId);
+  assert.equal(snapshot.artifactDigest, input.artifactDigest);
+  assert.deepEqual(
+    snapshot.principals.map(({ principalId, projectRole }) => ({ principalId, projectRole })),
+    [{ principalId: readerPrincipal.principalId, projectRole: "viewer" }],
+  );
+
+  await assert.rejects(
+    repository.readPolicyGatewaySnapshot({
+      projectId: input.projectId,
+      authorizationPrincipalIds: human.authorizationPrincipalIds,
+      resourceId: input.otherResourceId,
+      permission: "object.read",
+      releaseId: input.releaseId,
+      policyRevisionId: input.policyRevisionId,
+      compilerVersion: input.compilerVersion,
+    }),
+  );
+  await assert.rejects(
+    repository.readPolicyGatewaySnapshot({
+      projectId: input.projectId,
+      authorizationPrincipalIds: human.authorizationPrincipalIds,
+      resourceId: input.targetResourceId,
+      permission: "object.read",
+      releaseId: randomUUID(),
+      policyRevisionId: input.policyRevisionId,
+      compilerVersion: input.compilerVersion,
+    }),
+  );
+  await assert.rejects(
+    repository.readPolicyGatewaySnapshot({
+      projectId: input.projectId,
+      authorizationPrincipalIds: human.authorizationPrincipalIds,
+      resourceId: input.targetResourceId,
+      permission: "object.read",
+      releaseId: input.releaseId,
+      policyRevisionId: randomUUID(),
+      compilerVersion: input.compilerVersion,
+    }),
+  );
+
+  const resolverParameters = [
+    input.projectId,
+    human.authorizationPrincipalIds,
+    input.targetResourceId,
+    "object.read",
+    input.releaseId,
+    input.policyRevisionId,
+    input.compilerVersion,
+  ];
+  await assert.rejects(
+    input.compilerDatabase.query(policyGatewayResolverSql(), resolverParameters),
+    postgresError("42501"),
+  );
+  await withClient(input.adminConfig, async (client) => {
+    await client.query("BEGIN");
+    try {
+      await client.query("SET LOCAL ROLE read_only_ops");
+      await assert.rejects(
+        client.query(policyGatewayResolverSql(), resolverParameters),
+        postgresError("42501"),
+      );
+    } finally {
+      await client.query("ROLLBACK");
+    }
+  });
+  await assert.rejects(
+    input.api.query(policyGatewayResolverSql(), [
+      input.projectId,
+      [readerPrincipal.principalId, readerPrincipal.principalId],
+      input.targetResourceId,
+      "object.read",
+      input.releaseId,
+      input.policyRevisionId,
+      input.compilerVersion,
+    ]),
+    postgresError("22023", "G20306_POLICY_GATEWAY_INPUT_INVALID"),
+  );
+
+  const listenerApplicationA = `ontos-g20306-listener-a-${randomUUID().slice(0, 8)}`;
+  const listenerApplicationB = `ontos-g20306-listener-b-${randomUUID().slice(0, 8)}`;
+  const listenerPoolA = new pg.Pool({
+    ...input.apiConfig,
+    application_name: listenerApplicationA,
+    max: 1,
+  });
+  const listenerPoolB = new pg.Pool({
+    ...input.apiConfig,
+    application_name: listenerApplicationB,
+    max: 1,
+  });
+  const listenerA = new PostgresPolicyEpochListener({ pool: listenerPoolA, reconnectDelayMs: 20 });
+  const listenerB = new PostgresPolicyEpochListener({ pool: listenerPoolB, reconnectDelayMs: 20 });
+  const clockA = new GatewayManualClock();
+  const clockB = new GatewayManualClock();
+  const gatewayA = new ProductionPolicyGateway({
+    processId: "g20306-api-process-a",
+    repository,
+    artifacts: input.artifacts,
+    monotonicClock: clockA,
+    digestCanonicalText: sha256PolicyText,
+    notifications: listenerA,
+  });
+  const gatewayB = new ProductionPolicyGateway({
+    processId: "g20306-api-process-b",
+    repository,
+    artifacts: input.artifacts,
+    monotonicClock: clockB,
+    digestCanonicalText: sha256PolicyText,
+    notifications: listenerB,
+  });
+
+  try {
+    await Promise.all([listenerA.start(), listenerB.start()]);
+    assert.equal(listenerA.connected, true);
+    assert.equal(listenerB.connected, true);
+    for (const request of [humanRequest, serviceRequest, delegatedRequest]) {
+      const [decisionA, decisionB] = await Promise.all([
+        gatewayA.authorize(request),
+        gatewayB.authorize(request),
+      ]);
+      assert.equal(decisionA.decision, "ALLOW");
+      assert.equal(decisionB.decision, "ALLOW");
+      assert.equal(decisionA.context?.policyContextHash, decisionB.context?.policyContextHash);
+      assert.equal(decisionA.context?.artifactDigest, input.artifactDigest);
+    }
+
+    await listenerB.stop();
+    assert.equal(listenerB.connected, false);
+    const serviceProfileExpectedEpoch = await currentAuthorizationEpoch(input);
+    await input.api.query(`SELECT * FROM authz.revoke_service_identity_profile($1, $2, $3)`, [
+      input.projectId,
+      servicePrincipalId,
+      serviceProfileExpectedEpoch.toString(),
+    ]);
+    const serviceRevocationEpoch = await currentAuthorizationEpoch(input);
+    assert.equal(serviceRevocationEpoch, serviceProfileExpectedEpoch + 1n);
+    await waitForCondition(
+      () => gatewayA.epochFloor(input.projectId) >= serviceRevocationEpoch,
+      "Process A did not observe Service revocation.",
+    );
+    for (const request of [serviceRequest, delegatedRequest]) {
+      const denied = await gatewayA.authorize(withCorrelation(request, "a_revoked"));
+      assert.equal(denied.decision, "DENY");
+    }
+
+    clockB.set(4_999);
+    for (const request of [serviceRequest, delegatedRequest]) {
+      const cached = await gatewayB.authorize(withCorrelation(request, "b_before_ttl"));
+      assert.equal(cached.decision, "ALLOW");
+      assert.equal(cached.source, "CACHE");
+    }
+    clockB.set(5_000);
+    for (const request of [serviceRequest, delegatedRequest]) {
+      const denied = await gatewayB.authorize(withCorrelation(request, "b_at_ttl"));
+      assert.equal(denied.decision, "DENY");
+      assert.equal(denied.source, "FAIL_CLOSED");
+    }
+
+    await listenerB.start();
+    assert.equal(listenerB.connected, true);
+    const [rewarmedA, rewarmedB] = await Promise.all([
+      gatewayA.authorize(withCorrelation(humanRequest, "human_rewarm_a")),
+      gatewayB.authorize(withCorrelation(humanRequest, "human_rewarm_b")),
+    ]);
+    assert.equal(rewarmedA.decision, "ALLOW");
+    assert.equal(rewarmedB.decision, "ALLOW");
+
+    const floorBeforeReconnect = gatewayB.epochFloor(input.projectId);
+    const listenerBackendBeforeReconnect = await listenerBackendPid(
+      input.admin,
+      listenerApplicationB,
+    );
+    const terminated = await input.admin.query<{ readonly terminated: boolean }>(
+      "SELECT pg_terminate_backend($1)::boolean AS terminated",
+      [listenerBackendBeforeReconnect],
+    );
+    assert.equal(terminated.rows[0]?.terminated, true);
+    await waitForListenerBackendReplacement(
+      input.admin,
+      listenerApplicationB,
+      listenerBackendBeforeReconnect,
+    );
+    await waitForCondition(() => listenerB.connected, "Process B listener did not reconnect.");
+    assert.equal(gatewayB.epochFloor(input.projectId), floorBeforeReconnect);
+
+    const revokedHuman = await replaceProjectRole(input, readerPrincipal.principalId, null);
+    await waitForCondition(
+      () =>
+        gatewayA.epochFloor(input.projectId) >= revokedHuman.authorizationEpoch &&
+        gatewayB.epochFloor(input.projectId) >= revokedHuman.authorizationEpoch,
+      "Both processes did not observe Human revocation.",
+    );
+    const [humanDeniedA, humanDeniedB] = await Promise.all([
+      gatewayA.authorize(withCorrelation(humanRequest, "human_revoked_a")),
+      gatewayB.authorize(withCorrelation(humanRequest, "human_revoked_b")),
+    ]);
+    assert.equal(humanDeniedA.decision, "DENY");
+    assert.equal(humanDeniedB.decision, "DENY");
+    assert.equal(humanDeniedA.source, "FRESH");
+    assert.equal(humanDeniedB.source, "FRESH");
+  } finally {
+    gatewayA.dispose();
+    gatewayB.dispose();
+    await Promise.all([listenerA.close(), listenerB.close()]);
+    await Promise.all([listenerPoolA.end(), listenerPoolB.end()]);
+  }
+
+  const ownerRequest = policyGatewayRequest(
+    input,
+    ownerContext,
+    "corr_g20306_owner_exact_artifact_01",
+  );
+  const exactGateway = new ProductionPolicyGateway({
+    processId: "g20306-exact-artifact",
+    repository,
+    artifacts: input.artifacts,
+    monotonicClock: new GatewayManualClock(),
+    digestCanonicalText: sha256PolicyText,
+  });
+  assert.equal((await exactGateway.authorize(ownerRequest)).decision, "ALLOW");
+  exactGateway.dispose();
+
+  const artifactKey = `policy/ir/${input.artifactDigest.slice("sha256:".length)}.json`;
+  const artifactVersions = await input.managedS3.listVersions(artifactKey);
+  assert.ok(artifactVersions.some(({ deleteMarker }) => !deleteMarker));
+  for (const version of artifactVersions) {
+    if (!version.deleteMarker) await input.managedS3.deleteVersion(artifactKey, version.versionId);
+  }
+  const missingArtifactGateway = new ProductionPolicyGateway({
+    processId: "g20306-missing-artifact",
+    repository,
+    artifacts: input.artifacts,
+    monotonicClock: new GatewayManualClock(),
+    digestCanonicalText: sha256PolicyText,
+  });
+  const missingArtifact = await missingArtifactGateway.authorize(
+    withCorrelation(ownerRequest, "artifact_deleted"),
+  );
+  assert.equal(missingArtifact.decision, "DENY");
+  assert.equal(missingArtifact.source, "FAIL_CLOSED");
+  assert.equal(missingArtifact.errorCode, "POLICY_ARTIFACT_NOT_FOUND");
+  missingArtifactGateway.dispose();
+
+  return Object.freeze({
+    migration27RollsBack: true,
+    sameSnapshotResolver: true,
+    exactProjectReleasePolicyTargetBinding: true,
+    duplicatePrincipalRejected: true,
+    apiResolverAllowed: true,
+    workerResolverDenied: true,
+    opsResolverDenied: true,
+    exactArtifactLoaded: true,
+    humanServiceDelegatedConsistent: true,
+    normalNotificationNextRequestDenied: true,
+    lostNotificationBeforeBoundaryCached: true,
+    lostNotificationAtBoundaryDenied: true,
+    listenerReconnectedWithoutReset: true,
+    serviceProfileRevocationDenied: true,
+    humanBindingRevocationDenied: true,
+    deletedArtifactFailedClosed: true,
+  });
+}
+
+function policyGatewayResolverSql(): string {
+  return `SELECT * FROM authz.resolve_policy_gateway_snapshot(
+    $1::uuid, $2::uuid[], $3::uuid, $4::text,
+    $5::uuid, $6::uuid, $7::text
+  )`;
+}
+
+async function replaceProjectRole(
+  input: Pick<ProductionPolicyGatewayExerciseInput, "metadata" | "owner" | "projectId">,
+  principalId: string,
+  role: "viewer" | null,
+) {
+  return input.metadata.replaceRoleBinding(input.owner, {
+    projectId: input.projectId,
+    targetPrincipalId: principalId,
+    role,
+    expectedEpoch: await currentAuthorizationEpoch(input),
+  });
+}
+
+async function currentAuthorizationEpoch(
+  input: Pick<ProductionPolicyGatewayExerciseInput, "metadata" | "owner" | "projectId">,
+): Promise<bigint> {
+  return (await input.metadata.getProject(input.owner, { projectId: input.projectId }))
+    .authorizationEpoch;
+}
+
+function gatewayIdentity(input: {
+  readonly actor: { readonly principalId: string; readonly identityType: IdentityType };
+  readonly delegationChain?: readonly {
+    readonly principalId: string;
+    readonly identityType: IdentityType;
+  }[];
+  readonly capabilities?: readonly string[];
+}): RuntimeIdentityContext {
+  const attributes = Object.freeze([Object.freeze({ name: "region", value: "EU" })]);
+  const identity = parseIdentityDelegationSummary({
+    schemaVersion: 1,
+    actor: input.actor,
+    delegationChain: input.delegationChain ?? [],
+    claimsFingerprint: sha256PolicyText(canonicalizeContractForDigest(attributes)),
+    authenticatedAt: "2026-08-20T08:00:00.000000Z",
+    authorizationMode: "intersection",
+  });
+  return Object.freeze({
+    identity,
+    attributes,
+    capabilities: Object.freeze([...(input.capabilities ?? [])]),
+    authorizationPrincipalIds: Object.freeze([
+      identity.actor.principalId,
+      ...identity.delegationChain.map(({ principalId }) => principalId),
+    ]),
+  });
+}
+
+function policyGatewayRequest(
+  input: Pick<
+    ProductionPolicyGatewayExerciseInput,
+    "projectId" | "targetResourceId" | "releaseId" | "policyRevisionId" | "compilerVersion"
+  >,
+  runtimeIdentity: RuntimeIdentityContext,
+  correlationId: string,
+): PolicyGatewayRequest {
+  return Object.freeze({
+    projectId: input.projectId,
+    identity: runtimeIdentity,
+    resourceId: input.targetResourceId,
+    permission: "object.read",
+    releaseId: input.releaseId,
+    policyRevisionId: input.policyRevisionId,
+    compilerVersion: input.compilerVersion,
+    correlationId,
+  });
+}
+
+function withCorrelation(request: PolicyGatewayRequest, suffix: string): PolicyGatewayRequest {
+  return Object.freeze({ ...request, correlationId: `corr_g20306_${suffix}_request_0001` });
+}
+
+class GatewayManualClock implements PolicyGatewayMonotonicClock {
+  #now = 0;
+
+  nowMilliseconds(): number {
+    return this.#now;
+  }
+
+  set(value: number): void {
+    this.#now = value;
+  }
+}
+
+async function waitForCondition(predicate: () => boolean, message: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 10));
+  }
+  throw new Error(message);
+}
+
+async function listenerBackendPid(pool: pg.Pool, applicationName: string): Promise<number> {
+  const result = await pool.query<{ readonly pid: number }>(
+    `SELECT pid
+     FROM pg_catalog.pg_stat_activity
+     WHERE datname = current_database()
+       AND application_name = $1
+     ORDER BY pid`,
+    [applicationName],
+  );
+  assert.equal(result.rows.length, 1);
+  const pid = result.rows[0]?.pid;
+  if (pid === undefined || !Number.isSafeInteger(pid) || pid <= 0) {
+    throw new Error("Policy Epoch listener backend PID is invalid.");
+  }
+  return pid;
+}
+
+async function waitForListenerBackendReplacement(
+  pool: pg.Pool,
+  applicationName: string,
+  previousPid: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const result = await pool.query<{ readonly pid: number }>(
+      `SELECT pid
+       FROM pg_catalog.pg_stat_activity
+       WHERE datname = current_database()
+         AND application_name = $1
+         AND pid <> $2
+       ORDER BY pid`,
+      [applicationName, previousPid],
+    );
+    if (result.rows.some(({ pid }) => Number.isSafeInteger(pid) && pid > 0)) return;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 10));
+  }
+  throw new Error("Policy Epoch listener backend was not replaced.");
+}
 
 async function activateRegionClaimMapping(
   pool: pg.Pool,
@@ -784,6 +1324,41 @@ async function assertMigration26RollsBack(adminConfig: pg.ClientConfig): Promise
   } finally {
     await rm(prefix25, { recursive: true, force: true });
     await rm(fault26, { recursive: true, force: true });
+  }
+}
+
+async function assertMigration27RollsBack(adminConfig: pg.ClientConfig): Promise<void> {
+  const databaseName = `${database}_fault_27`;
+  await withClient(adminConfig, (client) => client.query(`CREATE DATABASE ${databaseName}`));
+  const prefix26 = await migrationPrefixDirectory(26);
+  const fault27 = await faultingMigrationDirectory(27);
+  try {
+    await withClient({ ...adminConfig, database: databaseName }, async (client) => {
+      await runDatabaseMigrations(client, { directory: prefix26 });
+      await assert.rejects(
+        runDatabaseMigrations(client, { directory: fault27 }),
+        (error: unknown) =>
+          isDatabaseMigrationError(error) && error.code === "DB_MIGRATION_EXECUTION_FAILED",
+      );
+      const state = await client.query<{
+        readonly ledger_count: number;
+        readonly gateway_resolver_exists: boolean;
+      }>(
+        `SELECT
+           (SELECT count(*)::integer
+            FROM ontos_migration.schema_migrations) AS ledger_count,
+           pg_catalog.to_regprocedure(
+             'authz.resolve_policy_gateway_snapshot(uuid,uuid[],uuid,text,uuid,uuid,text)'
+           ) IS NOT NULL AS gateway_resolver_exists`,
+      );
+      assert.deepEqual(state.rows[0], {
+        ledger_count: 26,
+        gateway_resolver_exists: false,
+      });
+    });
+  } finally {
+    await rm(prefix26, { recursive: true, force: true });
+    await rm(fault27, { recursive: true, force: true });
   }
 }
 

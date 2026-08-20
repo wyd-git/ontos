@@ -58,8 +58,8 @@ void test("fast, preflight and full profiles preserve distinct qualification bou
   ]);
   const full = gateNamesForProfile("full");
   const preflight = gateNamesForProfile("preflight");
-  assert.equal(full.length, 42);
-  assert.equal(preflight.length, 39);
+  assert.equal(full.length, 43);
+  assert.equal(preflight.length, 40);
   assert.deepEqual(
     full.filter((gate) => !preflight.includes(gate)),
     [
@@ -74,6 +74,7 @@ void test("fast, preflight and full profiles preserve distinct qualification bou
   assert.ok(preflight.includes("g2-03-04-identity-evidence"));
   assert.ok(preflight.includes("policy-compiler-postgres"));
   assert.ok(preflight.includes("g2-03-05-policy-evidence"));
+  assert.ok(preflight.includes("g2-03-06-policy-evidence"));
   assert.ok(preflight.includes("metadata-clean-room"));
   assert.deepEqual(preflight.slice(-3), [
     "production-boundary-up",
@@ -91,6 +92,7 @@ void test("fast, preflight and full profiles preserve distinct qualification bou
   assert.ok(full.includes("g2-03-04-identity-evidence"));
   assert.ok(full.includes("policy-compiler-postgres"));
   assert.ok(full.includes("g2-03-05-policy-evidence"));
+  assert.ok(full.includes("g2-03-06-policy-evidence"));
   assert.deepEqual(full.slice(-3), [
     "production-boundary-up",
     "production-boundary-smoke",
