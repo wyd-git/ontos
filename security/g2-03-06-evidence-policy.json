@@ -44,7 +44,8 @@
       "tools/ci/g2-03-06-evidence.ts",
       "tools/ci/run.test.ts",
       "tools/ci/run.ts",
-      "tools/database/materialization-postgres.integration.test.ts"
+      "tools/database/materialization-postgres.integration.test.ts",
+      "tools/database/postgres.integration.test.ts"
     ],
     "allowedPrefixes": [
       "packages/policy-application/",
