@@ -1,0 +1,16 @@
+{
+  "name": "@ontos/query-domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "domain"
+  },
+  "dependencies": {
+    "@ontos/contracts": "0.0.0",
+    "@ontos/value-codec": "0.0.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

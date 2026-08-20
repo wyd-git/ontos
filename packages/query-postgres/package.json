@@ -1,0 +1,17 @@
+{
+  "name": "@ontos/query-postgres",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "ontos": {
+    "layer": "adapter"
+  },
+  "dependencies": {
+    "@ontos/query-application": "0.0.0",
+    "@ontos/query-domain": "0.0.0",
+    "pg": "8.23.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
