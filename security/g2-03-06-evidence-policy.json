@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "gate": "G2-03-05",
-  "baselineCommit": "2b983e4b483364a0ffd94326e8e79607d1f1d663",
+  "gate": "G2-03-06",
+  "baselineCommit": "33595001af871f4242f664b34416a96cd91eb5b2",
   "requiredRecords": [
     {
-      "path": "docs/architecture/adr/023-policy-resource-compiler-release-gate.md",
-      "marker": "- 状态：Accepted for G2-03-05"
+      "path": "docs/architecture/adr/024-production-policy-gateway-revocation.md",
+      "marker": "- 状态：Accepted for G2-03-06"
     },
     {
-      "path": "docs/reviews/g2-03-05-intended-vs-implemented.md",
+      "path": "docs/reviews/g2-03-06-intended-vs-implemented.md",
       "marker": "- 结论：**PASS**"
     },
     {
-      "path": "docs/evidence/g2-03-05-policy-compiler.md",
+      "path": "docs/evidence/g2-03-06-policy-gateway.md",
       "marker": "- 结论：**PASS**"
     }
   ],
@@ -20,19 +20,15 @@
     "allowedExactPaths": [
       "README.md",
       "docs/README.md",
-      "docs/architecture/adr/023-policy-resource-compiler-release-gate.md",
       "docs/architecture/adr/024-production-policy-gateway-revocation.md",
       "docs/architecture/ci-foundation-gate.md",
       "docs/architecture/core-database-design.md",
       "docs/delivery/g2-03-query-policy-task-pack.md",
       "docs/delivery/g2-owner-capacity-matrix.md",
-      "docs/evidence/g2-03-05-policy-compiler.md",
       "docs/evidence/g2-03-06-policy-gateway.md",
       "docs/operations/ci-change-risk-routing.md",
       "docs/product/ontology-kernel-implementation-blueprint.md",
-      "docs/reviews/g2-03-05-intended-vs-implemented.md",
       "docs/reviews/g2-03-06-intended-vs-implemented.md",
-      "migrations/db-00/0026_policy_resource_compiler_release_gate.sql",
       "migrations/db-00/0027_policy_gateway_runtime.sql",
       "package-lock.json",
       "package.json",
@@ -44,27 +40,18 @@
       "security/g2-03-04-evidence-policy.json",
       "security/g2-03-05-evidence-policy.json",
       "security/g2-03-06-evidence-policy.json",
-      "tools/ci/g2-03-05-evidence.test.ts",
-      "tools/ci/g2-03-05-evidence.ts",
       "tools/ci/g2-03-06-evidence.test.ts",
       "tools/ci/g2-03-06-evidence.ts",
       "tools/ci/run.test.ts",
       "tools/ci/run.ts",
-      "tools/runtime-identity/integration/postgres-oidc.test.ts"
+      "tools/database/materialization-postgres.integration.test.ts",
+      "tools/database/postgres.integration.test.ts",
+      "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts"
     ],
     "allowedPrefixes": [
-      "packages/contracts/",
-      "packages/metadata-application/",
-      "packages/metadata-domain/",
-      "packages/metadata-postgres/",
-      "packages/object-store-s3/",
       "packages/policy-application/",
       "packages/policy-domain/",
       "packages/policy-postgres/",
-      "tools/contracts/",
-      "tools/database/",
-      "tools/materialization-clean-room/",
-      "tools/metadata-control-plane/",
       "tools/policy-compiler/",
       "tools/policy-gateway/"
     ],
@@ -83,58 +70,55 @@
   },
   "requiredSourceMarkers": [
     {
-      "path": "packages/contracts/src/policy.ts",
+      "path": "packages/policy-domain/src/gateway.ts",
       "markers": [
-        "PolicyResourceDefinition",
-        "extractPolicyResourceDependencies",
-        "POLICY_PREDICATE_MAXIMUM_COUNT"
+        "POLICY_GATEWAY_PERMISSION_VALUES",
+        "policyGatewayPermissionsForRoles",
+        "Resource roles may only narrow"
       ]
     },
     {
-      "path": "packages/policy-domain/src/index.ts",
+      "path": "packages/policy-application/src/gateway.ts",
       "markers": [
-        "POLICY_COMPILER_VERSION",
-        "compilePolicy",
-        "evaluatePolicyRules",
-        "missing-policy-operand"
+        "MAX_POLICY_GATEWAY_CACHE_TTL_MS = 5_000",
+        "class ProductionPolicyGateway",
+        "decideIntersectedPermission",
+        "POLICY_MONOTONIC_CLOCK_UNSAFE",
+        "target.resourceId === request.resourceId"
       ]
     },
     {
-      "path": "packages/policy-application/src/index.ts",
-      "markers": [
-        "PolicyCompilationApplicationService",
-        "putArtifact",
-        "recordCompilation",
-        "Policy output persistence failed closed"
-      ]
-    },
-    {
-      "path": "packages/policy-postgres/src/index.ts",
+      "path": "packages/policy-postgres/src/gateway.ts",
       "markers": [
         "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
-        "resolve_policy_actor_attribute_schema",
-        "record_policy_compilation"
+        "authz.resolve_policy_gateway_snapshot",
+        "class PostgresPolicyEpochListener",
+        "LISTEN ontos_authorization_epoch_v1"
       ]
     },
     {
-      "path": "packages/object-store-s3/src/index.ts",
-      "markers": ["S3PolicyArtifactStore", "policy/${kind}", "assertPolicyBytesDigest"]
+      "path": "migrations/db-00/0027_policy_gateway_runtime.sql",
+      "markers": [
+        "CREATE FUNCTION authz.resolve_policy_gateway_snapshot",
+        "target_dependency.source_path",
+        "FROM PUBLIC, api_runtime, worker_runtime, read_only_ops",
+        "TO api_runtime"
+      ]
     },
     {
-      "path": "migrations/db-00/0026_policy_resource_compiler_release_gate.sql",
+      "path": "tools/policy-gateway/application.test.ts",
       "markers": [
-        "g20305_policy_expected_dependencies",
-        "g20305_enforce_release_policy_gate",
-        "api_runtime can consume but cannot forge",
-        "TO worker_runtime"
+        "every configured hard TTL expires inclusively without sliding",
+        "two processes invalidate on the next request",
+        "Telemetry has an exact safe field set"
       ]
     },
     {
       "path": "tools/policy-compiler/integration/postgres-s3-release.test.ts",
       "markers": [
-        "REAL_POSTGRES_16_VERSIONED_S3_RELEASE_GATE",
-        "apiCompilationWriteDenied",
-        "migration26RollsBack"
+        "REAL_POSTGRES_16_VERSIONED_S3_TWO_PROCESS_POLICY_GATEWAY",
+        "lostNotificationAtBoundaryDenied",
+        "deletedArtifactFailedClosed"
       ]
     }
   ],
@@ -169,6 +153,7 @@
     "g2-03-04-identity-evidence",
     "policy-compiler-postgres",
     "g2-03-05-policy-evidence",
+    "g2-03-06-policy-evidence",
     "projection-ddl-production-postgres",
     "projection-capacity-postgres-smoke",
     "materialization-worker-postgres",
@@ -185,28 +170,28 @@
   "owner": "wyd-git",
   "residualRisks": [
     {
-      "id": "RISK-G2-03-05-01",
-      "risk": "The production Policy Gateway has not yet loaded the exact Artifact or composed it with Runtime Identity and Authorization Epoch.",
-      "owner": "Policy / Runtime (accountable: wyd-git)",
-      "nextGate": "G2-03-06"
-    },
-    {
-      "id": "RISK-G2-03-05-02",
-      "risk": "Policy IR has not yet been lowered into parameterized PostgreSQL Query SQL or measured on the 10k/100k query slice.",
+      "id": "RISK-G2-03-06-01",
+      "risk": "Policy IR is trusted and bounded but has not yet been lowered into parameterized PostgreSQL Query SQL before pagination and count.",
       "owner": "Query / PostgreSQL (accountable: wyd-git)",
-      "nextGate": "G2-03-07 through G2-03-09"
+      "nextGate": "G2-03-07 through G2-03-10"
     },
     {
-      "id": "RISK-G2-03-05-03",
-      "risk": "No public Runtime HTTP route or Web consumer invokes Policy yet.",
-      "owner": "API / Web (accountable: wyd-git)",
-      "nextGate": "G2-03-12 through G2-03-13"
+      "id": "RISK-G2-03-06-02",
+      "risk": "No public Runtime HTTP, SDK, Function or Action entry exists yet, so cross-entry bypass closure remains unclaimed.",
+      "owner": "API / Runtime / Security (accountable: wyd-git)",
+      "nextGate": "G2-03-11 through G2-03-12"
     },
     {
-      "id": "RISK-G2-03-05-04",
-      "risk": "Policy compiler scheduling, retry metrics and production S3 credentials remain deployment composition work.",
-      "owner": "Policy / Operations (accountable: wyd-git)",
-      "nextGate": "G2-03-06 and Deployment Gate"
+      "id": "RISK-G2-03-06-03",
+      "risk": "Long-running wall-clock revocation, listener alerting and production S3/PostgreSQL credential operations remain deployment and final endurance work.",
+      "owner": "Platform / Security (accountable: wyd-git)",
+      "nextGate": "G2-03-14 and Deployment Gate"
+    },
+    {
+      "id": "RISK-G2-03-06-04",
+      "risk": "The real read-only Web consumer has not yet been implemented.",
+      "owner": "Web / Product (accountable: wyd-git)",
+      "nextGate": "G2-03-13"
     }
   ]
 }

@@ -7,6 +7,8 @@ import {
   type PolicyTextDigester,
 } from "@ontos/policy-domain";
 
+export * from "./gateway.ts";
+
 export type PolicyApplicationErrorCode = "INVALID_INPUT" | "STORAGE_FAILURE";
 
 export class PolicyApplicationError extends Error {

@@ -24,6 +24,8 @@ import {
   type ResourceFamily,
 } from "@ontos/contracts";
 
+export * from "./gateway.ts";
+
 export const POLICY_COMPILER_VERSION = "policy-compiler-g2-03-05-v1" as const;
 export const POLICY_ARTIFACT_MAXIMUM_BYTES = 16 * 1024 * 1024;
 

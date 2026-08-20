@@ -11,6 +11,7 @@ import { writeG20302EvidenceManifest } from "./g2-03-02-evidence.ts";
 import { writeG20303EvidenceManifest } from "./g2-03-03-evidence.ts";
 import { writeG20304EvidenceManifest } from "./g2-03-04-evidence.ts";
 import { writeG20305EvidenceManifest } from "./g2-03-05-evidence.ts";
+import { writeG20306EvidenceManifest } from "./g2-03-06-evidence.ts";
 import { writeMaterializationEvidenceManifest } from "./materialization-evidence.ts";
 import { writeMetadataEvidenceManifest } from "./metadata-evidence.ts";
 import {
@@ -151,6 +152,11 @@ const fullGates: readonly GateDefinition[] = [
     name: "g2-03-05-policy-evidence",
     command: "npm",
     arguments: ["run", "check:g2-03-05-evidence"],
+  },
+  {
+    name: "g2-03-06-policy-evidence",
+    command: "npm",
+    arguments: ["run", "check:g2-03-06-evidence"],
   },
   {
     name: "projection-ddl-production-postgres",
@@ -499,6 +505,13 @@ async function runFoundationGate(repositoryRoot: string, localPreflight: boolean
       await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-05", commit, error);
       evidenceFailure ??= "g2-03-05-evidence-manifest";
       failure ??= new Error("G2-03-05 evidence manifest could not be completed.");
+    }
+    try {
+      await writeG20306EvidenceManifest(outputDirectory, report);
+    } catch (error) {
+      await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-06", commit, error);
+      evidenceFailure ??= "g2-03-06-evidence-manifest";
+      failure ??= new Error("G2-03-06 evidence manifest could not be completed.");
     }
   }
   const finalReport = {
@@ -883,7 +896,15 @@ async function fingerprintPaths(repositoryRoot: string, paths: readonly string[]
 async function writeUnavailableEvidenceManifest(
   outputDirectory: string,
   gate:
-    "G2-00" | "G2-01" | "G2-02" | "G2-03-01" | "G2-03-02" | "G2-03-03" | "G2-03-04" | "G2-03-05",
+    | "G2-00"
+    | "G2-01"
+    | "G2-02"
+    | "G2-03-01"
+    | "G2-03-02"
+    | "G2-03-03"
+    | "G2-03-04"
+    | "G2-03-05"
+    | "G2-03-06",
   commit: string,
   error: unknown,
 ): Promise<void> {

@@ -196,9 +196,16 @@
 - 真实 PostgreSQL 16 + 版本化 S3 证明缺失/伪造/错绑编译、API 写编译事实、直连数据库旁路和 Migration 中途失败都不能伪造 READY。
 - 结构性停止条件未触发；当前只放行 **G2-03-06** 生产 Policy Gateway 与 5 秒撤权，未 PASS 前不开始 Query SQL、Query Endpoint 或产品页。
 
+### G2-03-06 后检查点（2026-08-20）
+
+- G2-03-06 已 PASS，当前进度为 **6/15**；正式 Gateway Port、同一 PostgreSQL Snapshot Resolver、精确 S3 Artifact Loader、双进程 Listener 与最长 5,000ms 硬 TTL 已落地。
+- 真实 PostgreSQL 16 + 版本化 S3 对 Human/Service/Delegated 进行了双进程验收；正常通知下撤权后下一请求拒绝，丢通知时在 5,000ms 边界强制重读并拒绝。
+- 合并 G2-03-05/06 的 PostgreSQL/S3 重型环境后，每次完整 CI 减少一次重复环境启动；验收断言未删减。
+- 结构性停止条件未触发；当前只放行 **G2-03-07** typed Query AST 与参数化 SQL Compiler，未 PASS 前不开始 Query 容量、Runtime Endpoint 或产品页。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01、G2-02 与 G2-03-01～05 已 PASS；当前只允许执行 G2-03-06，未 PASS 前不得直接建 Query SQL、Query Endpoint、产品页或 Action。
+1. G2-00、G2-01、G2-02 与 G2-03-01～06 已 PASS；当前只允许执行 G2-03-07，未 PASS 前不得直接建 Query Endpoint、产品页或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

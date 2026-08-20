@@ -15,6 +15,8 @@ import {
 import type { PolicyCompilerTargetSnapshot } from "@ontos/policy-domain";
 import type pg from "pg";
 
+export * from "./gateway.ts";
+
 interface PolicyPinRow {
   readonly project_id: string;
   readonly release_id: string;
