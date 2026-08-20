@@ -20,6 +20,9 @@
       "packages/policy-application",
       "packages/policy-domain",
       "packages/policy-postgres",
+      "packages/query-application",
+      "packages/query-domain",
+      "packages/query-postgres",
       "packages/runtime-read-client",
       "packages/testkit",
       "packages/value-codec"

@@ -203,9 +203,16 @@
 - 合并 G2-03-05/06 的 PostgreSQL/S3 重型环境后，每次完整 CI 减少一次重复环境启动；验收断言未删减。
 - 结构性停止条件未触发；当前只放行 **G2-03-07** typed Query AST 与参数化 SQL Compiler，未 PASS 前不开始 Query 容量、Runtime Endpoint 或产品页。
 
+### G2-03-07 后检查点（2026-08-20）
+
+- G2-03-07 已 PASS，当前进度为 **7/15**；正式 Schema Registry、公共 Value Codec、规范 Query Hash、复杂度预算、Object/Property/Link Policy Predicate、固定参数化 PostgreSQL Renderer 与有界只读 Executor 已落地。
+- 真实 PostgreSQL 16 在 100k Object/1m Link Current 上验证 Get/List/Policy/Count/one-hop Link 候选均无 Current 顺序扫描；List/Policy/Count 命中 G2-02 Published Index Plan，Timeout 后连接池可复用且无后台长 SQL。
+- Preflight 继续保留 40 道快速完整性检查，新 Evidence 与 Materialization clean-room 一起只在 Ready/main Full Gate 生成，不重复启动第二套 100k/1m 环境。
+- 结构性停止条件未触发；当前只放行 **G2-03-08** Execution Context、Query Lease、Runtime Metadata 与 Activation-aware Object Get，未 PASS 前不开始 Search/Cursor、Runtime HTTP 或产品页。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01、G2-02 与 G2-03-01～06 已 PASS；当前只允许执行 G2-03-07，未 PASS 前不得直接建 Query Endpoint、产品页或 Action。
+1. G2-00、G2-01、G2-02 与 G2-03-01～07 已 PASS；当前只允许执行 G2-03-08，未 PASS 前不得直接建 Search/Cursor、Query HTTP Endpoint、产品页或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。

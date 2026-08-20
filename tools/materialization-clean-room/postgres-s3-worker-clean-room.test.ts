@@ -38,6 +38,7 @@ import { loadMigrationDefinitions } from "../database/definitions.ts";
 import { databaseMigrationDirectory, runDatabaseMigrations } from "../database/migrator.ts";
 import { resolvePostgresTestImage } from "../database/postgres-test-image.ts";
 import { runQueryPolicyPostgresSpike } from "../query-policy-architecture/postgres-spike.ts";
+import { runQueryCompilerPostgresEvidence } from "../query-compiler/postgres-evidence.ts";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -460,6 +461,29 @@ void test(
       cleanRoomCheckpoint("g2_03_01_query_policy", {
         status: queryPolicySpike["status"],
         qualification: queryPolicySpike["qualification"],
+      });
+      const queryCompilerEvidence = await runQueryCompilerPostgresEvidence({
+        repositoryRoot,
+        pool: admin,
+        commit: clean.commit,
+        cleanCheckout: !clean.dirty,
+        projectId: primaryProjectId,
+        releaseId,
+        members: commerce.members,
+        sourceObjectTypeApiName: "Customer",
+        linkTypeApiName: "CustomerPlacedOrder",
+        targetObjectTypeApiName: "Order",
+        sourcePrimaryKeyValue: "customer-000001",
+        sourcePolicyUpperBound: "Customer 000100",
+        targetPolicyUpperBound: "Order 000015",
+        expectedListRows: 25,
+        expectedPolicyCount: 99,
+        expectedLinkRows: 14,
+        fixtureDigest: MATERIALIZATION_FIXTURE_DIGEST,
+      });
+      cleanRoomCheckpoint("g2_03_07_query_compiler", {
+        status: queryCompilerEvidence["status"],
+        qualification: queryCompilerEvidence["qualification"],
       });
 
       const badCsv = new Map<string, Buffer>();

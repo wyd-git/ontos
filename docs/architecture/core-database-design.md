@@ -2,8 +2,8 @@
 
 - 文档状态：Current-state architecture reference
 - 已实现基线：连续前向 Migration `0001`～`0027`
-- 已覆盖 Gate：G2-00 Foundation、G2-01 Metadata、G2-02 Materialization、G2-03-01～06
-- 尚未实现：Query 执行/HTTP/UI、G2-04 Action/Overlay、G2-07 完整 Audit/Operations
+- 已覆盖 Gate：G2-00 Foundation、G2-01 Metadata、G2-02 Materialization、G2-03-01～07
+- 尚未实现：Query Execution Context/Lease 公共用例、HTTP/UI、G2-04 Action/Overlay、G2-07 完整 Audit/Operations
 
 ## 1. 先说结论
 
@@ -20,7 +20,7 @@
 
 但“最终产品全部数据库”还没有完成：
 
-- G2-03-06 已实现生产 Policy Gateway、精确 Artifact 和 5 秒撤权上界；G2-03-07～12 才会实现 Query SQL 与 HTTP；
+- G2-03-07 已实现消费精确 Gateway Context 的 typed Query AST、Policy-in-SQL 与参数化 PostgreSQL Compiler；G2-03-08～12 才会实现真实 Execution Context/Lease、公共 Query 用例与 HTTP；
 - G2-04 才会增加 Action、Overlay、Conflict、ChangeSet、Outbox/Audit；
 - `action` Schema 仍为空；`audit` 目前只有脱敏 Claim Mapping Activation Event，完整业务 Audit/Outbox 仍未实现；
 - 当前 `authz` 已能以受信 Worker 身份保存并校验 Object/Property/Link/Action-target Policy 编译结果，生产 Gateway 也能组合身份/Epoch/精确 Artifact；但 Query/HTTP 入口尚未存在。
@@ -539,9 +539,13 @@ GC 计划绑定 Project 的 Root Revision、Inventory Revision、Provider Regist
 
 `0027` 不增加第二套授权事实，只提供 `api_runtime` 可执行的有界 `resolve_policy_gateway_snapshot`：在同一调用中返回 Project Epoch、有序 Principal/Role/Service Profile、直接目标 Resource Pin 和精确 Passed Compilation/Artifact Digest。`worker_runtime`、`read_only_ops` 和 PUBLIC 不具有执行权。
 
-### 16.6 后续逻辑波次
+### 16.6 G2-03-07 已完成逻辑波次
 
-G2-03-07～12 只有在确有新增持久事实时才使用 `0028+`，不能为了应用包组织重建第二套 Principal、Policy Artifact、Release、Activation、Generation、Epoch 或 GC Root。
+G2-03-07 不新增数据库事实或权限：三个 Query 包读取调用方已绑定的 Project、Release、Activation、Resource Revision 与 Current Generation，以 typed AST、公共 Value Codec、Policy Predicate、固定参数化 SQL 和有界只读 Executor 形成查询内核。100k Object/1m Link clean-room 证明 Get/List/Policy/Count/one-hop Link 候选均通过索引访问 Current；这不是公共 Endpoint 或 G2-03-09 完整查询 SLO。
+
+### 16.7 后续逻辑波次
+
+G2-03-08～12 只有在确有新增持久事实时才使用 `0028+`，不能为了应用包组织重建第二套 Principal、Policy Artifact、Release、Activation、Generation、Epoch 或 GC Root。
 
 G2-04 才拥有：
 
@@ -554,8 +558,8 @@ G2-04 才拥有：
 
 | 缺口                                                    | 是否当前缺陷                                                      | 处理 Gate    |
 | ------------------------------------------------------- | ----------------------------------------------------------------- | ------------ |
-| Policy Gateway 已实现，但 Query SQL 尚未消费 Context    | Gateway Allow 不是最终行/属性/Link Allow；仍阻止公开 Runtime Read | G2-03-07～10 |
-| Query Lease/GC Root 已激活，但 Query 请求尚未消费       | GC 接缝已闭合；真实读取入口仍须 Plan/Commit/Release               | G2-03-07～12 |
+| Query Compiler 已消费 Gateway Context，但没有公共用例   | Policy-in-SQL 内核已闭合；真实请求尚未解析/租用 Execution Context | G2-03-08～12 |
+| Query Lease/GC Root 已激活，但 Query 请求尚未消费       | GC 接缝已闭合；真实读取入口仍须 Plan/Commit/Release               | G2-03-08～12 |
 | Runtime Identity 已实现，但正式 HTTP Route 尚未接入     | 身份组件可用，不代表公开读取入口已可用                            | G2-03-12     |
 | `action` 为空、`audit` 仅有 Mapping 激活事件            | 诚实的延后范围；不是完整业务审计                                  | G2-04/G2-07  |
 | Current 尚无真实 Overlay                                | 由 zero-overlay Inventory fail closed 保护                        | G2-04        |
@@ -624,9 +628,10 @@ G2-04 才拥有：
 | Runtime Identity 已完成               | [`0025`](../../migrations/db-00/0025_runtime_identity_boundary.sql) + 真 OIDC/DPoP/PostgreSQL/双 API 进程证据                                  | 一致；HTTP Route 与生产 IdP 运维未声明 |
 | Policy Compiler/Release Gate 已完成   | [`0026`](../../migrations/db-00/0026_policy_resource_compiler_release_gate.sql) + 真 PostgreSQL 16/版本化 S3 证据                              | 一致                                   |
 | 生产 Policy Gateway 与 5 秒撤权已完成 | [`0027`](../../migrations/db-00/0027_policy_gateway_runtime.sql) + 双进程 PostgreSQL/S3/NOTIFY 证据                                            | 一致；Query SQL/HTTP 未声明            |
+| typed Query Compiler 已完成           | [ADR-025](adr/025-typed-query-ast-parameterized-postgres-compiler.md) + 真实 PostgreSQL 16、100k/1m 索引证据                                   | 一致；Execution Context/HTTP 未声明    |
 | Action/Overlay/完整 Audit 已完成      | `action` 为空；`audit` 仅有脱敏 Mapping 激活事件                                                                                               | **未实现，本文明确不声明**             |
 
-当前没有发现需要回滚 G2-01/G2-02 或 G2-03-03～06 的阻断性设计—实现偏差。后续最大数据库风险不是现有表无法使用，而是 Query 或 G2-04 Overlay 若绕过现有 Principal、Runtime Identity、Policy Gateway、Release、Activation、Generation、Head Set、Epoch、Query Lease 和 GC Root 接缝，会制造第二套真相；对应任务包已把这种情况列为停止条件。
+当前没有发现需要回滚 G2-01/G2-02 或 G2-03-03～07 的阻断性设计—实现偏差。后续最大数据库风险不是现有表无法使用，而是公共 Query 或 G2-04 Overlay 若绕过现有 Principal、Runtime Identity、Policy Gateway、Query Compiler、Release、Activation、Generation、Head Set、Epoch、Query Lease 和 GC Root 接缝，会制造第二套真相；对应任务包已把这种情况列为停止条件。
 
 ## 20. 相关文档
 
@@ -651,4 +656,6 @@ G2-04 才拥有：
 - [G2-03-05 Policy Compiler Evidence](../evidence/g2-03-05-policy-compiler.md)
 - [ADR-024 生产 Policy Gateway 与五秒撤权](adr/024-production-policy-gateway-revocation.md)
 - [G2-03-06 Policy Gateway Evidence](../evidence/g2-03-06-policy-gateway.md)
+- [ADR-025 typed Query AST 与参数化 PostgreSQL Compiler](adr/025-typed-query-ast-parameterized-postgres-compiler.md)
+- [G2-03-07 typed Query Compiler Evidence](../evidence/g2-03-07-typed-query-compiler.md)
 - [G2-03 UI/API 消费者合同](g2-03-ui-api-consumer-contract.md)

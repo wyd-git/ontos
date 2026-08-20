@@ -8,10 +8,10 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
 - G2-00 Foundation：**PASS，13/13 已合并**；
 - G2-01 Metadata：**PASS，G2-01-01～12 已实现并通过 clean-room 总验收**；
-- 正式产品实现：**Metadata/Package 控制面、Materialization 数据运行面、Runtime Identity 信任边界、Policy 编译/发布门禁与生产 Policy Gateway 已具备真实 OIDC/DPoP、最小权限、PostgreSQL、版本化 S3、双进程撤权、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；完整 Gate 共 43 道**；Runtime Read Endpoint 与真实 Web 消费者尚未实现；
+- 正式产品实现：**Metadata/Package 控制面、Materialization 数据运行面、Runtime Identity 信任边界、Policy 编译/发布门禁、生产 Policy Gateway 与 typed Query Compiler 已具备真实 OIDC/DPoP、最小权限、PostgreSQL、版本化 S3、双进程撤权、参数化 Policy-in-SQL、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；完整 Gate 共 44 道**；Runtime Read Endpoint 与真实 Web 消费者尚未实现；
 - G2-02 Materialization：**PASS，G2-02-01～14 全部完成；独立 Ubuntu 24 / 8C16G clean-room 已跑通冷/热 100k Object + 1m Link、20 次 Cutover、容量、安全、GC 与整体重启恢复**；
-- G2-03 Query + Policy：**G2-03-01～06 PASS，当前进度 6/15；Migration 已到 0027，真实 Runtime Identity、受限 Policy AST/IR、精确 Artifact、生产 Gateway、双进程 NOTIFY 与最长 5 秒撤权已落地**；
-- 下一唯一允许的工作项：**G2-03-07，实现 typed Query AST 与参数化 SQL Compiler；仍不建 Runtime HTTP 或产品页**。
+- G2-03 Query + Policy：**G2-03-01～07 PASS，当前进度 7/15；Migration 已到 0027，真实 Runtime Identity、受限 Policy AST/IR、精确 Artifact、生产 Gateway、最长 5 秒撤权、typed Query AST 与参数化 PostgreSQL Compiler 已落地**；
+- 下一唯一允许的工作项：**G2-03-08，实现真实 Execution Context、Query Lease、Runtime Metadata 与 Activation-aware Object Get；仍不建正式 Runtime HTTP 或产品页**。
 
 ## 权威文档
 
@@ -43,6 +43,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 | [ADR-022 与 G2-03-04 Evidence](docs/architecture/adr/022-runtime-identity-claim-mapping-delegation.md) | Runtime OIDC/DPoP、Claim Mapping 白名单、Service Capability、持久 Replay、双 API 进程与 Permission Intersection |
 | [ADR-023 与 G2-03-05 Evidence](docs/architecture/adr/023-policy-resource-compiler-release-gate.md) | Policy Resource 严格合同、精确依赖、受限编译器、版本化 Artifact 与 Release fail-closed Gate |
 | [ADR-024 与 G2-03-06 Evidence](docs/architecture/adr/024-production-policy-gateway-revocation.md) | 生产 Gateway、同快照授权、精确 Artifact、双进程 NOTIFY 与 5 秒撤权上界 |
+| [ADR-025 与 G2-03-07 Evidence](docs/architecture/adr/025-typed-query-ast-parameterized-postgres-compiler.md) | typed Query AST、公共 Value Codec、Policy-in-SQL、固定参数化 Renderer、资源边界与真实 PostgreSQL 索引证据 |
 | [G2-03 UI/API 早期消费者合同](docs/architecture/g2-03-ui-api-consumer-contract.md) | G2-03 只读 Web、G2-04 Action 和 G2-05 完整 UI/SDK 的责任分界与防返工 Gate |
 | [G2-03 可行性复审](docs/reviews/g2-03-task-pack-feasibility.md) | 代码现状核验、端到端落地走查、55–90 理想工程日对账和 Conditional Go |
 | [G2-03 任务包红队](docs/reviews/g2-03-task-pack-red-team.md) | Identity、Policy SQL、Query Lease/GC、OpenAPI/Web 和工期的 Kill Assumption 与修订结论 |
