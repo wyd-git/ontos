@@ -3,7 +3,7 @@
 - 版本：v1
 - 日期：2026-08-17
 - 状态：Frozen；可行性复审与红队修订已写回权威文档
-- 执行进度：6/15；G2-03-01～06 已 PASS，当前只放行 G2-03-07，未 PASS 前不得开始 G2-03-08 或正式 Runtime Endpoint
+- 执行进度：7/15；G2-03-01～07 已 PASS，当前只放行 G2-03-08，未 PASS 前不得开始 G2-03-09 或正式 Runtime Endpoint
 - 上游 Gate：G2-00、G2-01、G2-02 已 PASS
 - 目标 Gate：正式 Runtime Read Kernel + 统一 Policy Gateway + 真实只读 Web 消费者
 - 配套边界：[G2-03 UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)
@@ -376,6 +376,7 @@ G2-02 已经形成不可重写的 21 个 Migration、Principal/Role/Epoch 和 Ge
 - 规模：L
 - 建议 Owner：Query / PostgreSQL / Security
 - 依赖：G2-03-02、G2-03-03、G2-03-06
+- 状态：**PASS**；见 [ADR-025](../architecture/adr/025-typed-query-ast-parameterized-postgres-compiler.md)、[Evidence](../evidence/g2-03-07-typed-query-compiler.md)与[意图对照](../reviews/g2-03-07-intended-vs-implemented.md)
 
 **Why**
 

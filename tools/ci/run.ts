@@ -12,6 +12,7 @@ import { writeG20303EvidenceManifest } from "./g2-03-03-evidence.ts";
 import { writeG20304EvidenceManifest } from "./g2-03-04-evidence.ts";
 import { writeG20305EvidenceManifest } from "./g2-03-05-evidence.ts";
 import { writeG20306EvidenceManifest } from "./g2-03-06-evidence.ts";
+import { writeG20307EvidenceManifest } from "./g2-03-07-evidence.ts";
 import { writeMaterializationEvidenceManifest } from "./materialization-evidence.ts";
 import { writeMetadataEvidenceManifest } from "./metadata-evidence.ts";
 import {
@@ -189,6 +190,11 @@ const fullGates: readonly GateDefinition[] = [
     arguments: ["run", "test:materialization-clean-room"],
   },
   {
+    name: "g2-03-07-query-evidence",
+    command: "npm",
+    arguments: ["run", "check:g2-03-07-evidence"],
+  },
+  {
     name: "materialization-scope-evidence",
     command: "npm",
     arguments: ["run", "check:materialization-evidence"],
@@ -229,6 +235,7 @@ const fastGateNames = new Set([
 
 const preflightExcludedGateNames = new Set([
   "materialization-clean-room",
+  "g2-03-07-query-evidence",
   "materialization-scope-evidence",
   "g2-03-01-architecture-evidence",
 ]);
@@ -512,6 +519,13 @@ async function runFoundationGate(repositoryRoot: string, localPreflight: boolean
       await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-06", commit, error);
       evidenceFailure ??= "g2-03-06-evidence-manifest";
       failure ??= new Error("G2-03-06 evidence manifest could not be completed.");
+    }
+    try {
+      await writeG20307EvidenceManifest(outputDirectory, report);
+    } catch (error) {
+      await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-07", commit, error);
+      evidenceFailure ??= "g2-03-07-evidence-manifest";
+      failure ??= new Error("G2-03-07 evidence manifest could not be completed.");
     }
   }
   const finalReport = {
@@ -904,7 +918,8 @@ async function writeUnavailableEvidenceManifest(
     | "G2-03-03"
     | "G2-03-04"
     | "G2-03-05"
-    | "G2-03-06",
+    | "G2-03-06"
+    | "G2-03-07",
   commit: string,
   error: unknown,
 ): Promise<void> {
@@ -923,7 +938,11 @@ async function writeUnavailableEvidenceManifest(
                 ? "g2-03-03"
                 : gate === "G2-03-04"
                   ? "g2-03-04"
-                  : "g2-03-05";
+                  : gate === "G2-03-05"
+                    ? "g2-03-05"
+                    : gate === "G2-03-06"
+                      ? "g2-03-06"
+                      : "g2-03-07";
   await writeFile(
     join(outputDirectory, `${name}-evidence-manifest.json`),
     `${JSON.stringify(

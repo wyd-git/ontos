@@ -31,6 +31,7 @@
     "check:g2-03-04-evidence": "node tools/ci/g2-03-04-evidence.ts",
     "check:g2-03-05-evidence": "node tools/ci/g2-03-05-evidence.ts",
     "check:g2-03-06-evidence": "node tools/ci/g2-03-06-evidence.ts",
+    "check:g2-03-07-evidence": "node tools/ci/g2-03-07-evidence.ts",
     "generate:runtime-read": "node tools/contracts/runtime-read-generation.ts --write",
     "check:runtime-read-generation": "node tools/contracts/runtime-read-generation.ts",
     "test:runtime-read-contracts": "node --test tools/contracts/runtime-read*.test.ts",

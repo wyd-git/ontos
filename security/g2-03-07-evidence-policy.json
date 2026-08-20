@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "gate": "G2-03-06",
-  "baselineCommit": "33595001af871f4242f664b34416a96cd91eb5b2",
+  "gate": "G2-03-07",
+  "baselineCommit": "41aa6f32780bbefd6398fe5833bcd9f51571e6d6",
   "requiredRecords": [
     {
-      "path": "docs/architecture/adr/024-production-policy-gateway-revocation.md",
-      "marker": "- 状态：Accepted for G2-03-06"
+      "path": "docs/architecture/adr/025-typed-query-ast-parameterized-postgres-compiler.md",
+      "marker": "- 状态：Accepted for G2-03-07"
     },
     {
-      "path": "docs/reviews/g2-03-06-intended-vs-implemented.md",
+      "path": "docs/reviews/g2-03-07-intended-vs-implemented.md",
       "marker": "- 结论：**PASS**"
     },
     {
-      "path": "docs/evidence/g2-03-06-policy-gateway.md",
+      "path": "docs/evidence/g2-03-07-typed-query-compiler.md",
       "marker": "- 结论：**PASS**"
     }
   ],
@@ -20,19 +20,15 @@
     "allowedExactPaths": [
       "README.md",
       "docs/README.md",
-      "docs/architecture/adr/024-production-policy-gateway-revocation.md",
       "docs/architecture/adr/025-typed-query-ast-parameterized-postgres-compiler.md",
       "docs/architecture/ci-foundation-gate.md",
       "docs/architecture/core-database-design.md",
       "docs/delivery/g2-03-query-policy-task-pack.md",
       "docs/delivery/g2-owner-capacity-matrix.md",
-      "docs/evidence/g2-03-06-policy-gateway.md",
       "docs/evidence/g2-03-07-typed-query-compiler.md",
       "docs/operations/ci-change-risk-routing.md",
       "docs/product/ontology-kernel-implementation-blueprint.md",
-      "docs/reviews/g2-03-06-intended-vs-implemented.md",
       "docs/reviews/g2-03-07-intended-vs-implemented.md",
-      "migrations/db-00/0027_policy_gateway_runtime.sql",
       "package-lock.json",
       "package.json",
       "security/g2-00-evidence-policy.json",
@@ -44,29 +40,21 @@
       "security/g2-03-05-evidence-policy.json",
       "security/g2-03-06-evidence-policy.json",
       "security/g2-03-07-evidence-policy.json",
-      "tools/ci/g2-03-06-evidence.test.ts",
-      "tools/ci/g2-03-06-evidence.ts",
       "tools/ci/g2-03-07-evidence.test.ts",
       "tools/ci/g2-03-07-evidence.ts",
       "tools/ci/run.test.ts",
       "tools/ci/run.ts",
-      "tools/database/materialization-postgres.integration.test.ts",
-      "tools/database/postgres.integration.test.ts",
       "tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts"
     ],
     "allowedPrefixes": [
-      "packages/policy-application/",
-      "packages/policy-domain/",
-      "packages/policy-postgres/",
       "packages/query-application/",
       "packages/query-domain/",
       "packages/query-postgres/",
-      "tools/policy-compiler/",
-      "tools/policy-gateway/",
       "tools/query-compiler/"
     ],
     "forbiddenPrefixes": [
-      "apps/web/",
+      "apps/",
+      "migrations/",
       "packages/action/",
       "packages/overlay/",
       "packages/policy/",
@@ -80,55 +68,54 @@
   },
   "requiredSourceMarkers": [
     {
-      "path": "packages/policy-domain/src/gateway.ts",
+      "path": "packages/query-domain/src/compiler.ts",
       "markers": [
-        "POLICY_GATEWAY_PERMISSION_VALUES",
-        "policyGatewayPermissionsForRoles",
-        "Resource roles may only narrow"
+        "compileObjectGet",
+        "compileObjectSearch",
+        "compileObjectCount",
+        "compileLinkCandidate",
+        "QUERY_COMPLEXITY_MAXIMUM_UNITS",
+        "canonicalizeClientParameter"
       ]
     },
     {
-      "path": "packages/policy-application/src/gateway.ts",
+      "path": "packages/query-domain/src/schema-registry.ts",
+      "markers": ["class QuerySchemaRegistry", "generationId", "requireObjectByRevision"]
+    },
+    {
+      "path": "packages/query-domain/src/policy-plan.ts",
       "markers": [
-        "MAX_POLICY_GATEWAY_CACHE_TTL_MS = 5_000",
-        "class ProductionPolicyGateway",
-        "decideIntersectedPermission",
-        "POLICY_MONOTONIC_CLOCK_UNSAFE",
-        "target.resourceId === request.resourceId"
+        "compileObjectPolicyPlan",
+        "propertyValueAllowedPredicate",
+        "Policy Link binding differs from the Registry"
       ]
     },
     {
-      "path": "packages/policy-postgres/src/gateway.ts",
+      "path": "packages/query-postgres/src/renderer.ts",
+      "markers": [
+        "assertAuthenticQueryLogicalPlan",
+        "rowPolicyPredicate",
+        "QUERY_SQL_MAXIMUM_PARAMETERS",
+        "runtime.object_current",
+        "runtime.link_current"
+      ]
+    },
+    {
+      "path": "packages/query-postgres/src/executor.ts",
       "markers": [
         "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
-        "authz.resolve_policy_gateway_snapshot",
-        "class PostgresPolicyEpochListener",
-        "LISTEN ontos_authorization_epoch_v1"
+        "SET LOCAL plan_cache_mode = force_custom_plan",
+        "statement_timeout",
+        "client.release(destroy)"
       ]
     },
     {
-      "path": "migrations/db-00/0027_policy_gateway_runtime.sql",
+      "path": "tools/query-compiler/postgres-evidence.ts",
       "markers": [
-        "CREATE FUNCTION authz.resolve_policy_gateway_snapshot",
-        "target_dependency.source_path",
-        "FROM PUBLIC, api_runtime, worker_runtime, read_only_ops",
-        "TO api_runtime"
-      ]
-    },
-    {
-      "path": "tools/policy-gateway/application.test.ts",
-      "markers": [
-        "every configured hard TTL expires inclusively without sliding",
-        "two processes invalidate on the next request",
-        "Telemetry has an exact safe field set"
-      ]
-    },
-    {
-      "path": "tools/policy-compiler/integration/postgres-s3-release.test.ts",
-      "markers": [
-        "REAL_POSTGRES_16_VERSIONED_S3_TWO_PROCESS_POLICY_GATEWAY",
-        "lostNotificationAtBoundaryDenied",
-        "deletedArtifactFailedClosed"
+        "REAL_POSTGRES_16_TYPED_QUERY_COMPILER",
+        "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)",
+        "unboundedCurrentTableSequentialScans",
+        "timeoutCancelledServerStatement"
       ]
     }
   ],
@@ -170,6 +157,7 @@
     "admin-api-oidc-postgres",
     "materialization-production",
     "materialization-clean-room",
+    "g2-03-07-query-evidence",
     "materialization-scope-evidence",
     "g2-03-01-architecture-evidence",
     "metadata-clean-room",
@@ -180,28 +168,28 @@
   "owner": "wyd-git",
   "residualRisks": [
     {
-      "id": "RISK-G2-03-06-01",
-      "risk": "Policy IR is trusted and bounded but has not yet been lowered into parameterized PostgreSQL Query SQL before pagination and count.",
+      "id": "RISK-G2-03-07-01",
+      "risk": "The compiler consumes an already-bound Registry and Policy context; production Release/Activation resolution, Query Lease and public Object Get remain unimplemented.",
+      "owner": "Query / Metadata / Runtime (accountable: wyd-git)",
+      "nextGate": "G2-03-08"
+    },
+    {
+      "id": "RISK-G2-03-07-02",
+      "risk": "Signed Cursor, complete Search/Count semantics and the qualified 10k/100k query slice remain unimplemented.",
       "owner": "Query / PostgreSQL (accountable: wyd-git)",
-      "nextGate": "G2-03-07 through G2-03-10"
+      "nextGate": "G2-03-09 through G2-03-10"
     },
     {
-      "id": "RISK-G2-03-06-02",
-      "risk": "No public Runtime HTTP, SDK, Function or Action entry exists yet, so cross-entry bypass closure remains unclaimed.",
-      "owner": "API / Runtime / Security (accountable: wyd-git)",
-      "nextGate": "G2-03-11 through G2-03-12"
+      "id": "RISK-G2-03-07-03",
+      "risk": "No public Runtime HTTP, generated-client use case or Web consumer is exposed by this compiler gate.",
+      "owner": "API / Web / Runtime (accountable: wyd-git)",
+      "nextGate": "G2-03-11 through G2-03-13"
     },
     {
-      "id": "RISK-G2-03-06-03",
-      "risk": "Long-running wall-clock revocation, listener alerting and production S3/PostgreSQL credential operations remain deployment and final endurance work.",
-      "owner": "Platform / Security (accountable: wyd-git)",
-      "nextGate": "G2-03-14 and Deployment Gate"
-    },
-    {
-      "id": "RISK-G2-03-06-04",
-      "risk": "The real read-only Web consumer has not yet been implemented.",
-      "owner": "Web / Product (accountable: wyd-git)",
-      "nextGate": "G2-03-13"
+      "id": "RISK-G2-03-07-04",
+      "risk": "The fixed 100k Object/1m Link corpus proves indexed SQL shapes, not the later Search/Cursor SLO or long-running endurance target.",
+      "owner": "Query / Platform / Quality (accountable: wyd-git)",
+      "nextGate": "G2-03-09 and G2-03-14"
     }
   ]
 }

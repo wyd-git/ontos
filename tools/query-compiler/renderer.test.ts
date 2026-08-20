@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { parseOntosId, type PolicyRule } from "@ontos/contracts";
 import {
   compileLinkCandidate,
   compileObjectCount,
@@ -112,6 +113,50 @@ void test("one-hop candidate binds source/link/target generations and all three 
   ]) {
     assert.ok(statement.values.includes(generation));
   }
+});
+
+void test("Policy link_exists uses exact Registry revisions and generations", () => {
+  const registry = queryRegistry();
+  const customer = registry.requireObjectByApiName("Customer");
+  const order = registry.requireObjectByApiName("Order");
+  const link = registry.requireLinkByApiName("CustomerOrder");
+  const rule: PolicyRule = Object.freeze({
+    ruleId: "ALLOW_CUSTOMER_WITH_ORDER",
+    target: Object.freeze({
+      kind: "object",
+      resourceId: parseOntosId(customer.resourceId),
+      resourceRevisionId: parseOntosId(customer.revisionId),
+    }),
+    effect: "allow",
+    predicate: Object.freeze({
+      kind: "link_exists",
+      linkTypeApiName: link.apiName,
+      linkTypeResourceId: parseOntosId(link.resourceId),
+      linkTypeRevisionId: parseOntosId(link.revisionId),
+      targetObjectTypeApiName: order.apiName,
+      targetObjectTypeResourceId: parseOntosId(order.resourceId),
+      targetObjectTypeRevisionId: parseOntosId(order.revisionId),
+      predicate: Object.freeze({ kind: "constant", value: true }),
+    }),
+  });
+  const plan = compileObjectSearch({
+    context: { ...context, registry },
+    objectTypeApiName: "Customer",
+    request: searchRequest({ where: undefined }),
+    policy: objectPolicy("Customer", { extraRules: [rule] }),
+  });
+  const statement = renderPostgresQuery(plan);
+  for (const binding of [
+    link.resourceId,
+    link.revisionId,
+    link.generationId,
+    order.resourceId,
+    order.revisionId,
+    order.generationId,
+  ]) {
+    assert.ok(statement.values.includes(binding));
+  }
+  assert.match(statement.text, /EXISTS \(\s*SELECT 1\s*FROM runtime\.link_current/u);
 });
 
 void test("renderer and executor boundary reject forged plans/statements", () => {

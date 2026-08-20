@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { parseOntosId, type PolicyRule } from "@ontos/contracts";
 import { QueryDomainError, compileObjectGet, compileObjectSearch } from "@ontos/query-domain";
 
 import { objectPolicy, queryRegistry, searchRequest, sha256 } from "./fixtures.ts";
@@ -113,5 +114,46 @@ void test("masked Properties are readable but cannot filter, sort or search", ()
         }),
       }),
     (error) => error instanceof QueryDomainError && error.code === "PROPERTY_NOT_QUERYABLE",
+  );
+});
+
+void test("weighted complexity rejects a trusted Policy corpus before SQL rendering", () => {
+  const registry = queryRegistry();
+  const customer = registry.requireObjectByApiName("Customer");
+  const order = registry.requireObjectByApiName("Order");
+  const link = registry.requireLinkByApiName("CustomerOrder");
+  const expensiveRules: readonly PolicyRule[] = Object.freeze(
+    Array.from({ length: 100 }, (_, index) =>
+      Object.freeze({
+        ruleId: `ALLOW_LINK_EXISTS_${String(index)}`,
+        target: Object.freeze({
+          kind: "object" as const,
+          resourceId: parseOntosId(customer.resourceId),
+          resourceRevisionId: parseOntosId(customer.revisionId),
+        }),
+        effect: "allow" as const,
+        predicate: Object.freeze({
+          kind: "link_exists" as const,
+          linkTypeApiName: link.apiName,
+          linkTypeResourceId: parseOntosId(link.resourceId),
+          linkTypeRevisionId: parseOntosId(link.revisionId),
+          targetObjectTypeApiName: order.apiName,
+          targetObjectTypeResourceId: parseOntosId(order.resourceId),
+          targetObjectTypeRevisionId: parseOntosId(order.revisionId),
+          predicate: Object.freeze({ kind: "constant" as const, value: true }),
+        }),
+      }),
+    ),
+  );
+
+  assert.throws(
+    () =>
+      compileObjectSearch({
+        context: { registry, requestTime, digestCanonicalText: sha256 },
+        objectTypeApiName: "Customer",
+        request: searchRequest({ where: undefined }),
+        policy: objectPolicy("Customer", { extraRules: expensiveRules }),
+      }),
+    (error) => error instanceof QueryDomainError && error.code === "QUERY_COMPLEXITY_EXCEEDED",
   );
 });
