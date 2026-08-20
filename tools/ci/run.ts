@@ -288,7 +288,7 @@ async function runFoundationGate(repositoryRoot: string, localPreflight: boolean
         changedFiles: [],
         fullGateFiles: [],
         reason:
-          "An explicit local preflight validates the non-qualifying 37-gate profile; it cannot replace GitHub Foundation Gate qualification.",
+          "An explicit local preflight validates the non-qualifying 40-gate profile; it cannot replace GitHub Foundation Gate qualification.",
       }
     : await classifyChangeRisk(repositoryRoot);
   const gates = gateDefinitionsForProfile(changeRisk.profile);
