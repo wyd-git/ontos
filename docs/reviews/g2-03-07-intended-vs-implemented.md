@@ -35,6 +35,7 @@
 - 原单元集覆盖 one-hop 产品候选的三代绑定，但未单独证明 Policy `link_exists` 的精确 Link/Target Revision 与 Generation；已增加 Renderer 绑定测试；
 - Evidence 现在不仅相信布尔 `PASS`，还检查 5 个场景唯一出现、每个计划有索引、Current 顺序扫描为 0、指定场景命中 Published Index、Timeout 后无后台 SQL；
 - 历史 G2-00/G2-02/G2-03-01～06 Scope 已前向接纳三个新生产包和本 Gate 证据文件，避免旧 Gate 在 Full CI 中把合法前向实现误判为越界。
+- 首次 Ready PR 暴露出 clean checkout 在 `npm ci` 前静态加载 Query Evidence、因工作区包尚未链接而启动失败；Runner 已改为在 `lockfile-install` 后动态加载，并增加 Bootstrap Boundary 回归测试。该失败发生在产品 Gate 执行前，不是 Query 实现失败。
 
 没有发现需要修改 0001～0027、绕过 Policy Gateway、在 Route 拼 SQL或提前建设 UI 的阻断性偏差。
 

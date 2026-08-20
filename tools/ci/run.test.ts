@@ -11,6 +11,7 @@ import {
 } from "./run.ts";
 
 const workflow = await readFile(resolve(".github/workflows/foundation-ci.yml"), "utf8");
+const runnerSource = await readFile(resolve("tools/ci/run.ts"), "utf8");
 
 void test("CI report output redacts credential assignments and high-confidence tokens", () => {
   const token = ["ghp", "_", "A".repeat(40)].join("");
@@ -45,6 +46,16 @@ void test("GitHub CI keeps one required gate and provides a trusted comparison r
   assert.equal(workflow.includes("npm run verify:preflight"), false);
   assert.match(workflow, /^\s*schedule:\s*$/mu);
   assert.match(workflow, /^\s*workflow_dispatch:\s*$/mu);
+});
+
+void test("the clean-checkout entrypoint defers workspace-dependent evidence until bootstrap", () => {
+  assert.equal(runnerSource.includes("import { writeG20307EvidenceManifest }"), false);
+  assert.equal(
+    runnerSource.includes(
+      'const { writeG20307EvidenceManifest } = await import("./g2-03-07-evidence.ts")',
+    ),
+    true,
+  );
 });
 
 void test("fast, preflight and full profiles preserve distinct qualification boundaries", () => {

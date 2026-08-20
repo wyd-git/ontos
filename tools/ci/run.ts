@@ -12,7 +12,6 @@ import { writeG20303EvidenceManifest } from "./g2-03-03-evidence.ts";
 import { writeG20304EvidenceManifest } from "./g2-03-04-evidence.ts";
 import { writeG20305EvidenceManifest } from "./g2-03-05-evidence.ts";
 import { writeG20306EvidenceManifest } from "./g2-03-06-evidence.ts";
-import { writeG20307EvidenceManifest } from "./g2-03-07-evidence.ts";
 import { writeMaterializationEvidenceManifest } from "./materialization-evidence.ts";
 import { writeMetadataEvidenceManifest } from "./metadata-evidence.ts";
 import {
@@ -521,6 +520,9 @@ async function runFoundationGate(repositoryRoot: string, localPreflight: boolean
       failure ??= new Error("G2-03-06 evidence manifest could not be completed.");
     }
     try {
+      // This module consumes a workspace package, so load it only after the
+      // lockfile-install gate has bootstrapped a clean checkout.
+      const { writeG20307EvidenceManifest } = await import("./g2-03-07-evidence.ts");
       await writeG20307EvidenceManifest(outputDirectory, report);
     } catch (error) {
       await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-07", commit, error);
