@@ -45,6 +45,8 @@ ADR-007 已冻结 Published Release 至少 90 天的显式服务窗口，但旧 
 - `meta.retire_release_serving_head`：只允许已 Superseded、超过支持期限、无 Channel 引用且控制序列匹配的 Release 显式退役；
 - 显式 Release 在 Serving Head 存在时继续使用自己的 Activation；Serving Head 已退役时返回 `RELEASE_RETIRED`，绝不回退到 `stable`。
 
+历史 Release 的前向升级先建立 `NOT VALID` 约束，再回填支持期限、清空既有延迟 Trigger 事件并 Validate；因此空库和已有 Published/Superseded 数据的库使用同一个 `0028`，不需要重写历史 Migration 或停用完整性 Trigger。
+
 支持期限是最早可退役时间，不是自动切断时间。自动按墙钟移除服务会把运维事故伪装成生命周期语义，因此退役必须是显式、受控、CAS 保护的控制面操作。
 
 ## 4. P0 Policy Artifact 组合规则

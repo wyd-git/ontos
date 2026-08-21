@@ -61,7 +61,7 @@ Release / stable
 - 增加 2 个租约门控 `security_barrier` View；
 - 撤销旧两步 Lease Plan/Commit 对 API 的直接执行权，裸 Current 继续无 Grant。
 
-全新库升级、既有历史前向升级、重复执行 no-op、Migration Hash 与 Rollback 均由数据库 Integration 覆盖；`0001`～`0027` 未修改。
+全新库升级、带历史 Published Release 的 A0 前向升级、重复执行 no-op、Migration Hash 与逐 Migration Rollback 均由数据库 Integration 覆盖；旧两步 Lease API 明确返回 `42501`，同一测试改走原子 Context Commit；`0001`～`0027` 未修改。
 
 ## 5. 可重复 Gate
 

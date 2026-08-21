@@ -40,6 +40,8 @@
 - 最初的孤儿测试只在同进程故意不 Release；现改为独立 Owner Commit 后真实 `SIGKILL`，直接证明进程死亡不丢 GC 保护且到期可回收。
 - 合并前复审发现 Metadata Link 只检查 Artifact rule、没有独立确认 Link Resource 的 Gateway 决策；现对两端可见的 Link 单独调用同一生产 Gateway，把 Object 与 Link 的全部决策绑定进 Lease Policy Context Hash，并增加 allow/deny 正反向量；
 - 合并前复审还发现“激活 Lease 的 CTE 与读取门控 View”若只是普通 Cross Join，理论上可能被 PostgreSQL 选择不同 Join 顺序；现通过带 `OFFSET 0` 的相关 `LATERAL` 屏障建立执行依赖，并由真实 PostgreSQL 正向量验证。
+- 完整非空库升级发现 Release 回填产生的延迟 Trigger 事件会阻止紧随其后的 `ALTER TABLE`；现先以 `NOT VALID` 建立约束，回填后显式清空事件再 Validate，并由 A0 历史 Release、逐 Migration 故障回滚和连续 `0001`～`0028` 复验固定；
+- `0028` 撤销 API 的旧两步 Plan/Commit 后，历史 G2-02 集成仍直接调用旧函数；现明确断言 API 得到 `42501`，Runtime 路径改用原子 Context Commit，同时保留 Owner 事务对 Planned Lease 不产生 GC Root 的历史不变量证明。
 
 ## 4. 有意的 P0 简化与保留差距
 

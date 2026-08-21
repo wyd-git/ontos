@@ -6,10 +6,9 @@ SET LOCAL ROLE migration_owner;
 ALTER TABLE meta.releases
   ADD COLUMN support_until timestamptz;
 
-UPDATE meta.releases
-SET support_until = published_at + interval '90 days'
-WHERE state IN ('published', 'superseded');
-
+-- Install the invariant before the backfill so concurrent/new writes cannot
+-- introduce another invalid row.  NOT VALID intentionally defers checking
+-- the historical rows until the deterministic backfill below.
 ALTER TABLE meta.releases
   ADD CONSTRAINT releases_support_window_ck CHECK (
     (state IN ('published', 'superseded')
@@ -17,7 +16,19 @@ ALTER TABLE meta.releases
       AND support_until IS NOT NULL
       AND support_until >= published_at + interval '90 days')
     OR (state NOT IN ('published', 'superseded') AND support_until IS NULL)
-  );
+  ) NOT VALID;
+
+UPDATE meta.releases
+SET support_until = published_at + interval '90 days'
+WHERE state IN ('published', 'superseded');
+
+-- Existing Release updates can queue deferred integrity-trigger work.  Flush
+-- it before ALTER TABLE validation; otherwise a non-empty upgrade fails with
+-- PostgreSQL 55006 even though the backfilled rows satisfy the new invariant.
+SET CONSTRAINTS ALL IMMEDIATE;
+
+ALTER TABLE meta.releases
+  VALIDATE CONSTRAINT releases_support_window_ck;
 
 CREATE FUNCTION ontos_migration.g20308_enforce_release_support_window() RETURNS trigger
 LANGUAGE plpgsql
