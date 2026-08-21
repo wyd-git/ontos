@@ -37,6 +37,7 @@ export interface QuerySchemaRegistryInput {
 
 export interface QueryPropertySchema {
   readonly apiName: string;
+  readonly displayName: string;
   readonly valueType: PropertyDefinition["valueType"];
   readonly nullable: boolean;
   readonly caseSensitive: boolean;
@@ -55,7 +56,9 @@ export interface QueryObjectTypeSchema {
   readonly revisionId: string;
   readonly generationId: string;
   readonly apiName: string;
+  readonly displayName: string;
   readonly primaryKeyPropertyApiName: string;
+  readonly titlePropertyApiName: string;
   readonly defaultSearchPropertyApiNames: readonly string[];
   readonly defaultSort: ObjectTypeDefinition["defaultSort"];
   readonly properties: readonly QueryPropertySchema[];
@@ -67,6 +70,7 @@ export interface QueryLinkTypeSchema {
   readonly revisionId: string;
   readonly generationId: string;
   readonly apiName: string;
+  readonly displayName: string;
   readonly sourceObjectTypeRevisionId: string;
   readonly targetObjectTypeRevisionId: string;
 }
@@ -193,7 +197,9 @@ function parseObjectSnapshot(snapshot: QueryObjectTypeSnapshot): QueryObjectType
     revisionId,
     generationId,
     apiName: definition.apiName,
+    displayName: definition.displayName,
     primaryKeyPropertyApiName: definition.primaryKeyPropertyApiName,
+    titlePropertyApiName: definition.titlePropertyApiName,
     defaultSearchPropertyApiNames: Object.freeze([...definition.defaultSearchPropertyApiNames]),
     defaultSort: Object.freeze([...definition.defaultSort]),
     properties: Object.freeze(definition.properties.map(propertySchema)),
@@ -223,6 +229,7 @@ function parseLinkSnapshot(snapshot: QueryLinkTypeSnapshot): QueryLinkTypeSchema
     revisionId,
     generationId,
     apiName: definition.apiName,
+    displayName: definition.displayName,
     sourceObjectTypeRevisionId: definition.source.objectTypeRevisionId,
     targetObjectTypeRevisionId: definition.target.objectTypeRevisionId,
   });
@@ -231,6 +238,7 @@ function parseLinkSnapshot(snapshot: QueryLinkTypeSnapshot): QueryLinkTypeSchema
 function propertySchema(property: PropertyDefinition): QueryPropertySchema {
   return Object.freeze({
     apiName: property.apiName,
+    displayName: property.displayName,
     valueType: property.valueType,
     nullable: property.nullable,
     caseSensitive: property.caseSensitive ?? true,

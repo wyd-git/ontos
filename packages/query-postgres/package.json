@@ -7,6 +7,7 @@
     "layer": "adapter"
   },
   "dependencies": {
+    "@ontos/contracts": "0.0.0",
     "@ontos/query-application": "0.0.0",
     "@ontos/query-domain": "0.0.0",
     "pg": "8.23.0"

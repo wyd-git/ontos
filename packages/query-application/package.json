@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@ontos/contracts": "0.0.0",
+    "@ontos/identity-application": "0.0.0",
     "@ontos/policy-application": "0.0.0",
     "@ontos/query-domain": "0.0.0"
   },

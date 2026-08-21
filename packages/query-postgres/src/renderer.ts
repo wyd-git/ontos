@@ -19,11 +19,13 @@ import {
 
 export type QueryStatementName =
   | "ontos_object_get_v1"
+  | "ontos_runtime_object_get_v1"
   | "ontos_object_search_v1"
   | "ontos_object_count_v1"
   | "ontos_link_candidate_v1";
 
 export type QueryCompositionStage =
+  | "lease_context"
   | "current_generation"
   | "row_policy"
   | "property_policy"
@@ -44,12 +46,60 @@ export interface ParameterizedQueryStatement {
   readonly maximumResultBytes: number;
 }
 
+export interface RuntimeQueryReadAccess {
+  readonly projectId: string;
+  readonly queryLeaseId: string;
+  readonly releaseId: string;
+  readonly activationId: string;
+  readonly identityContextHash: string;
+  readonly policyContextHash: string;
+  readonly queryHash: string;
+}
+
 const authenticStatements = new WeakSet<object>();
 
 export function renderPostgresQuery(plan: QueryLogicalPlan): ParameterizedQueryStatement {
   assertAuthenticQueryLogicalPlan(plan);
   const parameters = new Parameters();
   const rendered = renderPlan(plan, parameters);
+  return finalizeStatement(plan, rendered, parameters);
+}
+
+export function renderRuntimeObjectGet(
+  plan: ObjectGetLogicalPlan,
+  access: RuntimeQueryReadAccess,
+): ParameterizedQueryStatement {
+  assertAuthenticQueryLogicalPlan(plan);
+  assertRuntimeReadAccess(plan, access);
+  const parameters = new Parameters();
+  const activation = `runtime.activate_query_read_context(
+    ${parameters.add(access.projectId, "uuid", "project_id")},
+    ${parameters.add(access.queryLeaseId, "uuid", "query_lease_id")},
+    ${parameters.add(access.releaseId, "uuid", "release_id")},
+    ${parameters.add(access.activationId, "uuid", "activation_id")},
+    ${parameters.add(access.identityContextHash, "text", "identity_context_hash")},
+    ${parameters.add(access.policyContextHash, "text", "policy_context_hash")},
+    ${parameters.add(access.queryHash, "text", "query_hash")}
+  )`;
+  const rendered = renderObjectGet(plan, parameters, {
+    name: "ontos_runtime_object_get_v1",
+    objectRelation: "runtime.query_object_current",
+    linkRelation: "runtime.query_link_current",
+    projectionIncludesObjectVersion: true,
+    prefix: `WITH read_context AS MATERIALIZED (
+  SELECT ${activation} AS active
+)`,
+    activationBeforeRead: true,
+    compositionPrefix: Object.freeze<QueryCompositionStage[]>(["lease_context"]),
+  });
+  return finalizeStatement(plan, rendered, parameters);
+}
+
+function finalizeStatement(
+  plan: QueryLogicalPlan,
+  rendered: RenderedPlan,
+  parameters: Parameters,
+): ParameterizedQueryStatement {
   const byteLength = new TextEncoder().encode(rendered.text).byteLength;
   if (
     parameters.values.length > QUERY_SQL_MAXIMUM_PARAMETERS ||
@@ -68,6 +118,29 @@ export function renderPostgresQuery(plan: QueryLogicalPlan): ParameterizedQueryS
   });
   authenticStatements.add(statement);
   return statement;
+}
+
+const runtimeUuidExpression =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const runtimeDigestExpression = /^sha256:[0-9a-f]{64}$/u;
+
+function assertRuntimeReadAccess(plan: ObjectGetLogicalPlan, access: RuntimeQueryReadAccess): void {
+  if (
+    plan.operation !== "object_get" ||
+    access.projectId !== plan.binding.projectId ||
+    access.releaseId !== plan.binding.releaseId ||
+    access.activationId !== plan.binding.activationId ||
+    access.queryHash !== plan.queryHash ||
+    !runtimeUuidExpression.test(access.projectId) ||
+    !runtimeUuidExpression.test(access.queryLeaseId) ||
+    !runtimeUuidExpression.test(access.releaseId) ||
+    !runtimeUuidExpression.test(access.activationId) ||
+    !runtimeDigestExpression.test(access.identityContextHash) ||
+    !runtimeDigestExpression.test(access.policyContextHash) ||
+    !runtimeDigestExpression.test(access.queryHash)
+  ) {
+    throw new PostgresQueryRenderError("QUERY_STATEMENT_UNTRUSTED");
+  }
 }
 
 export function assertAuthenticParameterizedQueryStatement(
@@ -96,6 +169,26 @@ interface RenderedPlan {
   readonly text: string;
   readonly composition: readonly QueryCompositionStage[];
 }
+
+interface ObjectGetRenderOptions {
+  readonly name: Extract<QueryStatementName, "ontos_object_get_v1" | "ontos_runtime_object_get_v1">;
+  readonly objectRelation: string;
+  readonly linkRelation: string;
+  readonly projectionIncludesObjectVersion: boolean;
+  readonly prefix: string;
+  readonly activationBeforeRead: boolean;
+  readonly compositionPrefix: readonly QueryCompositionStage[];
+}
+
+const baseObjectGetOptions: ObjectGetRenderOptions = Object.freeze({
+  name: "ontos_object_get_v1",
+  objectRelation: "runtime.object_current",
+  linkRelation: "runtime.link_current",
+  projectionIncludesObjectVersion: false,
+  prefix: "",
+  activationBeforeRead: false,
+  compositionPrefix: Object.freeze([]),
+});
 
 class Parameters {
   readonly values: unknown[] = [];
@@ -139,8 +232,12 @@ function renderPlan(plan: QueryLogicalPlan, parameters: Parameters): RenderedPla
   }
 }
 
-function renderObjectGet(plan: ObjectGetLogicalPlan, parameters: Parameters): RenderedPlan {
-  const aliases = aliasState();
+function renderObjectGet(
+  plan: ObjectGetLogicalPlan,
+  parameters: Parameters,
+  options: ObjectGetRenderOptions = baseObjectGetOptions,
+): RenderedPlan {
+  const aliases = aliasState(options.objectRelation, options.linkRelation);
   const current = "object_current";
   const where = [
     ...objectBindingPredicates(current, plan, plan.object, parameters),
@@ -152,13 +249,24 @@ function renderObjectGet(plan: ObjectGetLogicalPlan, parameters: Parameters): Re
     rowPolicyPredicate(current, plan.policy, plan, parameters, aliases),
   ];
   const limit = parameters.add(2, "integer", "row_limit");
+  const prefix = options.prefix.length === 0 ? "" : `${options.prefix}\n`;
+  const from = options.activationBeforeRead
+    ? `read_context
+CROSS JOIN LATERAL (
+  SELECT *
+  FROM ${options.objectRelation}
+  WHERE read_context.active
+  OFFSET 0
+) AS ${current}`
+    : `${options.objectRelation} AS ${current}`;
   return Object.freeze({
-    name: "ontos_object_get_v1",
-    text: `SELECT ${objectProjection(current, plan.selectedProperties, plan.policy, plan, parameters, aliases)}
-FROM runtime.object_current AS ${current}
+    name: options.name,
+    text: `${prefix}SELECT ${objectProjection(current, plan.selectedProperties, plan.policy, plan, parameters, aliases, options.projectionIncludesObjectVersion)}
+FROM ${from}
 WHERE ${where.join("\n  AND ")}
 LIMIT ${limit}`,
     composition: Object.freeze<QueryCompositionStage[]>([
+      ...options.compositionPrefix,
       "current_generation",
       "row_policy",
       "property_policy",
@@ -380,8 +488,8 @@ function renderPredicate(
   const nested = renderPredicate(predicate.predicate, targetAlias, plan, parameters, aliases);
   return `EXISTS (
     SELECT 1
-    FROM runtime.link_current AS ${linkAlias}
-    JOIN runtime.object_current AS ${targetAlias}
+    FROM ${aliases.linkRelation} AS ${linkAlias}
+    JOIN ${aliases.objectRelation} AS ${targetAlias}
       ON ${targetAlias}.project_id = ${linkAlias}.project_id
      AND ${targetAlias}.object_rid = ${linkAlias}.target_object_rid
     WHERE ${linkAlias}.project_id = ${parameters.add(plan.binding.projectId, "uuid", "project_id")}
@@ -520,6 +628,7 @@ function objectProjection(
   plan: QueryLogicalPlan,
   parameters: Parameters,
   aliases: AliasState,
+  includeObjectVersion = false,
 ): string {
   const properties = selected.map((property) => {
     const access = requiredAccess(policy, property);
@@ -527,8 +636,11 @@ function objectProjection(
     return `jsonb_build_object(${name}, ${propertyProjection(alias, property, access, plan, parameters, aliases)})`;
   });
   const propertyObject = properties.length === 0 ? "'{}'::jsonb" : properties.join(" || ");
+  const objectVersion = includeObjectVersion
+    ? `\n       ${alias}.object_version AS "objectVersion",`
+    : "";
   return `${alias}.object_rid::text AS "objectRid",
-       ${alias}.canonical_primary_key AS "canonicalPrimaryKey",
+       ${alias}.canonical_primary_key AS "canonicalPrimaryKey",${objectVersion}
        (${propertyObject}) AS "properties"`;
 }
 
@@ -685,8 +797,13 @@ function quoteTrustedLiteral(value: string): string {
 
 interface AliasState {
   next: number;
+  readonly objectRelation: string;
+  readonly linkRelation: string;
 }
 
-function aliasState(): AliasState {
-  return { next: 1 };
+function aliasState(
+  objectRelation = "runtime.object_current",
+  linkRelation = "runtime.link_current",
+): AliasState {
+  return { next: 1, objectRelation, linkRelation };
 }

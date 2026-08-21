@@ -6,9 +6,9 @@
 
 1. [Ontology Kernel PRD](product/ontology-kernel-prd.md)：产品能力、范围、语义和最终验收。
 2. [G2 生产实现蓝图](product/ontology-kernel-implementation-blueprint.md)：从 PRD 到工程的实现约束。
-3. [核心数据库设计](architecture/core-database-design.md)：以 `0001`～`0027` 真实 Migration 为准，汇总 Metadata、AuthZ/Runtime Identity、Policy Release/Gateway、Snapshot/Generation、Shared Projection、Cutover、Job/Index/GC、Query Lease、权限和后续未实现边界。
+3. [核心数据库设计](architecture/core-database-design.md)：以 `0001`～`0028` 真实 Migration 为准，汇总 Metadata、AuthZ/Runtime Identity、Policy Release/Gateway、Snapshot/Generation、Shared Projection、Cutover、Job/Index/GC、Query Lease、权限和后续未实现边界。
 4. [G2 蓝图红队审查](reviews/g2-blueprint-red-team.md)：承重假设、验证、Kill Criteria 和 Conditional Go 结论。
-5. [G2-03 Query + Policy 任务包](delivery/g2-03-query-policy-task-pack.md)：**进行中（7/15）**，覆盖 Runtime Identity/Delegation、Policy Compiler/Gateway、Get/Search/Count/Link/Cursor、Runtime Read OpenAPI Candidate 与真实只读 Web 消费者；G2-03-01～07 已 PASS，当前只放行 G2-03-08。
+5. [G2-03 Query + Policy 任务包](delivery/g2-03-query-policy-task-pack.md)：**进行中（8/15）**，覆盖 Runtime Identity/Delegation、Policy Compiler/Gateway、Get/Search/Count/Link/Cursor、Runtime Read OpenAPI Candidate 与真实只读 Web 消费者；G2-03-01～08 已 PASS，当前只放行 G2-03-09。
    - [UI/API 早期消费者合同](architecture/g2-03-ui-api-consumer-contract.md)：冻结 G2-03 只读、G2-04 Action、G2-05 完整 UI/SDK 的责任分界、页面状态和请求预算。
    - [可行性复审](reviews/g2-03-task-pack-feasibility.md)与[任务包红队](reviews/g2-03-task-pack-red-team.md)：核验当前代码缺口、端到端落地路径、容量与 Kill Criteria，结论为 **Go for G2-03-01 only**。
    - [ADR-020](architecture/adr/020-query-policy-identity-consumer-boundary.md)、[G2-03-01 Evidence](evidence/g2-03-01-query-policy-architecture.md)、[威胁模型](security/g2-03-01-identity-delegation-threat-model.md)与[红队](reviews/g2-03-01-query-policy-architecture-red-team.md)：冻结并验证 Identity/Delegation、Policy SQL、Query Lease/GC、OpenAPI Generated Client 与 Web 栈。
@@ -18,6 +18,7 @@
    - [ADR-023](architecture/adr/023-policy-resource-compiler-release-gate.md)、[G2-03-05 Evidence](evidence/g2-03-05-policy-compiler.md)与[意图对照](reviews/g2-03-05-intended-vs-implemented.md)：落实 Policy Resource 严格解析、精确依赖、受限 AST/IR、确定性 S3 Artifact 与 Release fail-closed Gate。
    - [ADR-024](architecture/adr/024-production-policy-gateway-revocation.md)、[G2-03-06 Evidence](evidence/g2-03-06-policy-gateway.md)与[意图对照](reviews/g2-03-06-intended-vs-implemented.md)：落实同快照授权、精确 Artifact、生产 Gateway、双进程 NOTIFY 和 5 秒撤权上界。
    - [ADR-025](architecture/adr/025-typed-query-ast-parameterized-postgres-compiler.md)、[G2-03-07 Evidence](evidence/g2-03-07-typed-query-compiler.md)与[意图对照](reviews/g2-03-07-intended-vs-implemented.md)：落实 typed Query AST、Schema Registry、公共 Value Codec、Policy-in-SQL、参数化 PostgreSQL Renderer、资源边界与 100k/1m 索引证据。
+   - [ADR-026](architecture/adr/026-runtime-query-context-metadata-object-get.md)、[G2-03-08 Evidence](evidence/g2-03-08-runtime-metadata-object-get.md)与[意图对照](reviews/g2-03-08-intended-vs-implemented.md)：落实精确 Execution Context、原子 Query Lease、租约门控 Current、策略感知 Metadata、Activation-aware Get、Kill/GC 与显式 Release Retire。
 6. [G2-02 Materialization 任务包](delivery/g2-02-materialization-task-pack.md)：**PASS（14/14）**，覆盖受管 CSV、Mapping、Job/Lease、Generation、Base/Current、Staging/Cutover、Index/Capacity、GC 与 clean-room 总验收；其历史下一步声明已由冻结的 G2-03 任务包承接。
    - [ADR-014 Materialization 事务/DDL/Overlay](architecture/adr/014-materialization-transaction-ddl-overlay-boundary.md)、[专项红队](reviews/adr-014-materialization-architecture-red-team.md)与 [G2-02-01 Evidence](evidence/g2-02-01-materialization-architecture.md)：逻辑 DB-02 边界、全局锁/CAS、隔离 DDL Executor、Kill/Replay 与 zero-overlay Seam。
    - [ADR-015 永久 Identity/Attempt Base](architecture/adr/015-permanent-object-identity-attempt-owned-base.md)、[专项红队](reviews/g2-02-06-object-identity-base-red-team.md)与 [G2-02-06 Evidence](evidence/g2-02-06-object-identity-base.md)：永久 RID、类型化 Link、隔离 Staging、原子 Base 提升与 10k/100k 薄切片。

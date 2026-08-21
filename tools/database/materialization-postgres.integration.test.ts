@@ -7643,11 +7643,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 27);
+  assert.equal(left.applied.length + right.applied.length, 28);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 27)).length, 27);
+    assert.equal((await migrationLedger(client, 28)).length, 28);
   });
 }
 
@@ -7687,6 +7687,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
           "Authoritative live per-Generation row inventory for fail-closed GC planning; dynamic index bytes are inventoried separately.",
       },
     ],
+    [28, { relation: "runtime.query_object_current" }],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;

@@ -12,6 +12,7 @@ import {
   PostgresQueryRenderError,
   assertAuthenticParameterizedQueryStatement,
   renderPostgresQuery,
+  renderRuntimeObjectGet,
 } from "@ontos/query-postgres";
 
 import { linkPolicy, objectPolicy, queryRegistry, searchRequest, sha256 } from "./fixtures.ts";
@@ -166,6 +167,49 @@ void test("renderer and executor boundary reject forged plans/statements", () =>
   );
   assert.throws(
     () => assertAuthenticParameterizedQueryStatement({ text: "SELECT 1" }),
+    (error) =>
+      error instanceof PostgresQueryRenderError && error.code === "QUERY_STATEMENT_UNTRUSTED",
+  );
+});
+
+void test("Runtime Get activates a bound Lease and never names raw Current relations", () => {
+  const plan = compileObjectGet({
+    context,
+    objectTypeApiName: "Customer",
+    request: { primaryKey: "customer-1", select: ["id", "secret"] },
+    policy: objectPolicy("Customer", { secretAccess: "deny" }),
+  });
+  const statement = renderRuntimeObjectGet(plan, {
+    projectId: plan.binding.projectId,
+    queryLeaseId: "01000000-0000-4000-8000-000000000010",
+    releaseId: plan.binding.releaseId,
+    activationId: plan.binding.activationId,
+    identityContextHash: sha256("runtime-identity"),
+    policyContextHash: plan.policy.policyContextHash,
+    queryHash: plan.queryHash,
+  });
+  assert.equal(statement.name, "ontos_runtime_object_get_v1");
+  assert.equal(statement.composition[0], "lease_context");
+  assert.match(statement.text, /runtime\.activate_query_read_context/u);
+  assert.match(statement.text, /runtime\.query_object_current/u);
+  assert.match(statement.text, /CROSS JOIN LATERAL/u);
+  assert.match(statement.text, /WHERE read_context\.active\s+OFFSET 0/u);
+  assert.match(statement.text, /AS "objectVersion"/u);
+  assert.doesNotMatch(statement.text, /runtime\.object_current/u);
+  assert.doesNotMatch(statement.text, /runtime\.link_current/u);
+  assert.ok(statement.values.includes(plan.queryHash));
+
+  assert.throws(
+    () =>
+      renderRuntimeObjectGet(plan, {
+        projectId: plan.binding.projectId,
+        queryLeaseId: "01000000-0000-4000-8000-000000000010",
+        releaseId: plan.binding.releaseId,
+        activationId: plan.binding.activationId,
+        identityContextHash: sha256("runtime-identity"),
+        policyContextHash: plan.policy.policyContextHash,
+        queryHash: sha256("wrong-query"),
+      }),
     (error) =>
       error instanceof PostgresQueryRenderError && error.code === "QUERY_STATEMENT_UNTRUSTED",
   );

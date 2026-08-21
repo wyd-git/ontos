@@ -175,6 +175,7 @@ void test(
             "0025_runtime_identity_boundary.sql",
             "0026_policy_resource_compiler_release_gate.sql",
             "0027_policy_gateway_runtime.sql",
+            "0028_runtime_query_context.sql",
           ],
         );
 
@@ -249,7 +250,7 @@ async function assertSecondDatabaseAndConcurrentRunner(
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
     withClient(secondDatabaseConfig, runMigrationsWithDatabaseCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 27);
+  assert.equal(left.applied.length + right.applied.length, 28);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
 }
 
@@ -670,9 +671,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
   const twentyFifthMigration = resolve(directory, "0025_runtime_identity_boundary.sql");
   const twentySixthMigration = resolve(directory, "0026_policy_resource_compiler_release_gate.sql");
   const twentySeventhMigration = resolve(directory, "0027_policy_gateway_runtime.sql");
-  const failedMigration = resolve(directory, "0028_failed_attempt.sql");
-  const defectMigration = resolve(directory, "0028_forward_repair_probe.sql");
-  const repairMigration = resolve(directory, "0029_forward_repair.sql");
+  const twentyEighthMigration = resolve(directory, "0028_runtime_query_context.sql");
+  const failedMigration = resolve(directory, "0029_failed_attempt.sql");
+  const defectMigration = resolve(directory, "0029_forward_repair_probe.sql");
+  const repairMigration = resolve(directory, "0030_forward_repair.sql");
 
   try {
     await copyFile(resolve(databaseMigrationDirectory, "0001_foundation.sql"), firstMigration);
@@ -780,6 +782,10 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       resolve(databaseMigrationDirectory, "0027_policy_gateway_runtime.sql"),
       twentySeventhMigration,
     );
+    await copyFile(
+      resolve(databaseMigrationDirectory, "0028_runtime_query_context.sql"),
+      twentyEighthMigration,
+    );
     await writeFile(
       failedMigration,
       `CREATE TABLE ops.db01_forward_repair_probe (
@@ -793,7 +799,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_EXECUTION_FAILED",
     );
-    await assertProbeAndLedgerState(client, false, 27);
+    await assertProbeAndLedgerState(client, false, 28);
 
     await rm(failedMigration);
     await writeFile(
@@ -807,7 +813,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const defectRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       defectRun.applied.map(({ version }) => version),
-      [28],
+      [29],
     );
 
     await writeFile(
@@ -821,7 +827,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
     const repairRun = await runDatabaseMigrations(client, { directory });
     assert.deepEqual(
       repairRun.applied.map(({ version }) => version),
-      [29],
+      [30],
     );
 
     const definitions = await loadMigrationDefinitions(directory);
@@ -857,7 +863,7 @@ async function exerciseForwardRepair(client: pg.Client): Promise<void> {
       runDatabaseMigrations(client, { directory }),
       "DB_MIGRATION_HISTORY_DIVERGED",
     );
-    await assertProbeAndLedgerState(client, true, 29);
+    await assertProbeAndLedgerState(client, true, 30);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

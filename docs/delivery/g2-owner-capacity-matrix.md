@@ -210,9 +210,16 @@
 - Preflight 继续保留 40 道快速完整性检查，新 Evidence 与 Materialization clean-room 一起只在 Ready/main Full Gate 生成，不重复启动第二套 100k/1m 环境。
 - 结构性停止条件未触发；当前只放行 **G2-03-08** Execution Context、Query Lease、Runtime Metadata 与 Activation-aware Object Get，未 PASS 前不开始 Search/Cursor、Runtime HTTP 或产品页。
 
+### G2-03-08 后检查点（2026-08-21）
+
+- G2-03-08 已 PASS，当前进度为 **8/15**；单快照 Execution Context、原子 Query Lease、租约门控 Current、策略感知 Runtime Metadata、Activation-aware Get 与显式 Release Retire 已落地。
+- 真实 PostgreSQL 16 证明显式 Release/`stable`、Canonical PK、五态 Property、Serving/Epoch 漂移、最小权限与支持窗不可变；独立 Lease Owner 被 `SIGKILL` 后，Generation Root 到期前保留、到期后由 Worker 回收。
+- 新 PostgreSQL 薄切片约 3 秒并进入 Preflight；只有后置 Evidence Manifest 在 Ready/main Full Gate 关闭本项，不重复运行 100k/1m clean-room。
+- 结构性停止条件未触发；当前只放行 **G2-03-09** Search、Count 与签名 Cursor，未 PASS 前不开始 Link 产品用例、Runtime HTTP 或产品页。
+
 ## 3. 顺序与停止规则
 
-1. G2-00、G2-01、G2-02 与 G2-03-01～07 已 PASS；当前只允许执行 G2-03-08，未 PASS 前不得直接建 Search/Cursor、Query HTTP Endpoint、产品页或 Action。
+1. G2-00、G2-01、G2-02 与 G2-03-01～08 已 PASS；当前只允许执行 G2-03-09，未 PASS 前不得直接建 Link、Query HTTP Endpoint、产品页或 Action。
 2. 每次只允许一个业务 Gate 处于实现中；评审和证据整理可以跟随当前 Gate，但不能伪装成第二条开发线。
 3. Security、Recovery 或容量 Kill Criterion 触发时停止下游 Gate，先修正模型或缩小承诺。
 4. 未指定领域第二审查人的功能不能进入 Internal Alpha；可以保留已通过的技术证据，但不能宣称生产可用。
