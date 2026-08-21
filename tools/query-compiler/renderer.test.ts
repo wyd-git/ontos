@@ -58,14 +58,56 @@ void test("Get/List/Count render Current binding, policy and client predicate be
     if (plan.operation !== "object_get") assert.ok(statement.values.includes(injection));
     assert.match(statement.text, /runtime\.object_current/u);
     assert.match(statement.text, /generation_id = \$\d+::uuid/u);
-    assert.match(statement.text, /IS TRUE AND NOT/u);
-    const policyPosition = statement.text.indexOf("IS TRUE AND NOT");
+    assert.match(statement.text, /IS NOT TRUE/u);
+    const policyPosition = statement.text.indexOf("IS NOT TRUE");
     const orderPosition = statement.text.indexOf("ORDER BY");
     const limitPosition = statement.text.indexOf("LIMIT");
     if (orderPosition >= 0) assert.ok(policyPosition < orderPosition);
     if (limitPosition >= 0) assert.ok(policyPosition < limitPosition);
     assert.equal(statement.values.length, statement.parameterTypes.length);
   }
+});
+
+void test("WHERE predicates preserve three-valued policy semantics without hiding index conditions", () => {
+  const basePolicy = objectPolicy("Customer");
+  const policy = Object.freeze({
+    ...basePolicy,
+    policyRules: Object.freeze(
+      basePolicy.policyRules.map((rule) =>
+        rule.target.kind === "object"
+          ? Object.freeze({
+              ...rule,
+              predicate: Object.freeze({
+                kind: "compare" as const,
+                left: Object.freeze({
+                  source: "object_property" as const,
+                  apiName: "displayName",
+                }),
+                op: "lt" as const,
+                right: Object.freeze({ source: "constant" as const, value: "Customer 100" }),
+              }),
+            })
+          : rule,
+      ),
+    ),
+  });
+  const statement = renderPostgresQuery(
+    compileObjectSearch({
+      context,
+      objectTypeApiName: "Customer",
+      request: searchRequest({
+        where: { property: "displayName", op: "prefix", value: "Customer 0" },
+        orderBy: [{ property: "displayName", direction: "asc" }],
+      }),
+      policy,
+    }),
+  );
+
+  assert.match(statement.text, /COLLATE "C" < \$\d+::text/u);
+  assert.match(statement.text, /COLLATE "C" LIKE replace/u);
+  assert.doesNotMatch(statement.text, /COLLATE "C" < \$\d+::text\) IS TRUE/u);
+  assert.doesNotMatch(statement.text, /ESCAPE '\\\\'\)\) IS TRUE/u);
+  assert.match(statement.text, /\(FALSE\) IS NOT TRUE/u);
 });
 
 void test("Property projection places raw value only in the allow CASE and parameterizes masks", () => {

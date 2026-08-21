@@ -283,9 +283,7 @@ function renderObjectSearch(plan: ObjectSearchLogicalPlan, parameters: Parameter
     rowPolicyPredicate(current, plan.policy, plan, parameters, aliases),
   ];
   if (plan.clientPredicate !== null) {
-    where.push(
-      `(${renderPredicate(plan.clientPredicate, current, plan, parameters, aliases)}) IS TRUE`,
-    );
+    where.push(`(${renderPredicate(plan.clientPredicate, current, plan, parameters, aliases)})`);
   }
   if (plan.search !== null) {
     where.push(searchPredicate(plan.search, current, plan.policy, plan, parameters, aliases));
@@ -318,9 +316,7 @@ function renderObjectCount(plan: ObjectCountLogicalPlan, parameters: Parameters)
     rowPolicyPredicate(current, plan.policy, plan, parameters, aliases),
   ];
   if (plan.clientPredicate !== null) {
-    where.push(
-      `(${renderPredicate(plan.clientPredicate, current, plan, parameters, aliases)}) IS TRUE`,
-    );
+    where.push(`(${renderPredicate(plan.clientPredicate, current, plan, parameters, aliases)})`);
   }
   if (plan.search !== null) {
     where.push(searchPredicate(plan.search, current, plan.policy, plan, parameters, aliases));
@@ -386,9 +382,7 @@ function renderLinkCandidate(plan: LinkCandidateLogicalPlan, parameters: Paramet
     rowPolicyPredicate(target, plan.targetPolicy, plan, parameters, aliases),
   ];
   if (plan.clientPredicate !== null) {
-    where.push(
-      `(${renderPredicate(plan.clientPredicate, target, plan, parameters, aliases)}) IS TRUE`,
-    );
+    where.push(`(${renderPredicate(plan.clientPredicate, target, plan, parameters, aliases)})`);
   }
   if (plan.search !== null) {
     where.push(searchPredicate(plan.search, target, plan.targetPolicy, plan, parameters, aliases));
@@ -451,7 +445,11 @@ function rowPolicyPredicate(
 ): string {
   const allow = renderPredicate(policy.rowAllow, alias, plan, parameters, aliases);
   const deny = renderPredicate(policy.rowDeny, alias, plan, parameters, aliases);
-  return `((${allow}) IS TRUE AND NOT ((${deny}) IS TRUE))`;
+  // A WHERE clause already accepts only TRUE.  Keeping the positive predicate
+  // bare preserves SQL three-valued semantics while allowing PostgreSQL to
+  // turn comparisons into Published Index conditions.  Deny remains explicit:
+  // only TRUE denies, while FALSE and UNKNOWN do not widen the allow side.
+  return `((${allow}) AND ((${deny}) IS NOT TRUE))`;
 }
 
 function renderPredicate(
@@ -507,7 +505,7 @@ function renderPredicate(
       AND ${targetAlias}.object_type_resource_id = ${parameters.add(predicate.target.resourceId, "uuid", "object_type_resource_id")}
       AND ${targetAlias}.object_type_revision_id = ${parameters.add(predicate.target.revisionId, "uuid", "object_type_revision_id")}
       AND ${targetAlias}.lifecycle_state = 'active'
-      AND (${nested}) IS TRUE
+      AND (${nested})
   )`;
 }
 
@@ -690,7 +688,7 @@ function searchPredicate(
     const access = requiredAccess(policy, property);
     const allowed = propertyAllowedPredicate(access, alias, plan, parameters, aliases);
     const operator = property.caseSensitive ? "LIKE" : "ILIKE";
-    return `((${allowed}) IS TRUE AND ${typedPropertyExpression(alias, property)} ${operator} '%' || ${escaped} || '%' ESCAPE '\\')`;
+    return `((${allowed}) AND ${typedPropertyExpression(alias, property)} ${operator} '%' || ${escaped} || '%' ESCAPE '\\')`;
   });
   return `(${branches.join(" OR ")})`;
 }
@@ -707,8 +705,8 @@ function propertyAllowedPredicate(
   const masks = access.masks.map((mask) =>
     renderPredicate(mask.predicate, alias, plan, parameters, aliases),
   );
-  return `((${allow}) IS TRUE AND NOT ((${deny}) IS TRUE)${masks
-    .map((mask) => ` AND NOT ((${mask}) IS TRUE)`)
+  return `((${allow}) AND ((${deny}) IS NOT TRUE)${masks
+    .map((mask) => ` AND ((${mask}) IS NOT TRUE)`)
     .join("")})`;
 }
 

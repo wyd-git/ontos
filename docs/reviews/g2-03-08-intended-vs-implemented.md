@@ -42,7 +42,7 @@
 - 合并前复审还发现“激活 Lease 的 CTE 与读取门控 View”若只是普通 Cross Join，理论上可能被 PostgreSQL 选择不同 Join 顺序；现通过带 `OFFSET 0` 的相关 `LATERAL` 屏障建立执行依赖，并由真实 PostgreSQL 正向量验证。
 - 完整非空库升级发现 Release 回填产生的延迟 Trigger 事件会阻止紧随其后的 `ALTER TABLE`；现先以 `NOT VALID` 建立约束，回填后显式清空事件再 Validate，并由 A0 历史 Release、逐 Migration 故障回滚和连续 `0001`～`0028` 复验固定；
 - `0028` 撤销 API 的旧两步 Plan/Commit 后，历史 G2-02 集成仍直接调用旧函数；现明确断言 API 得到 `42501`，Runtime 路径改用原子 Context Commit，同时保留 Owner 事务对 Planned Lease 不产生 GC Root 的历史不变量证明。
-- 完整 clean-room 暴露批量写入结束与 PostgreSQL 自动统计刷新存在竞态，使 Policy Filter 偶发选择基础索引而非 Published Plan；Evidence 现在只读快照前显式 `ANALYZE` 真实 Current 分布，不强制索引也不放宽原验收断言。
+- 完整 clean-room 暴露 Policy Filter 偶发选择基础索引而非 Published Plan。显式 `ANALYZE` 排除统计竞态后，10 万行最小真实复现定位到 Renderer 在 `WHERE` 正向 Predicate 外包装 `IS TRUE`，使 PostgreSQL 无法产生表达式索引条件。现改为语义等价的裸正向 Predicate + `deny/mask IS NOT TRUE`：仍只有 Allow=True 可通过，同时可使用 Published Index；Evidence 仍显式刷新真实 Current 统计，不强制索引也不放宽断言。
 
 ## 4. 有意的 P0 简化与保留差距
 
