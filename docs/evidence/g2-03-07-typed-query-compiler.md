@@ -44,7 +44,7 @@ Query Hash 包含 Compiler Version、操作、Project/Release/Revision/Generatio
 
 ## 3. 真实 PostgreSQL 16 证据
 
-`tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts` 在同一干净 Checkout 中先建立 G2-02 的 100,000 Object / 1,000,000 Link Current 数据和 Published Index Plan，再运行 `tools/query-compiler/postgres-evidence.ts`。机器制品为 `generated/ci-report/g2-03-07-query-compiler.json`，并与当次 Commit、Fixture Digest 和 `cleanCheckout=true` 绑定。
+`tools/materialization-clean-room/postgres-s3-worker-clean-room.test.ts` 在同一干净 Checkout 中先建立 G2-02 的 100,000 Object / 1,000,000 Link Current 数据和 Published Index Plan，再运行 `tools/query-compiler/postgres-evidence.ts`。在开启只读快照前，Evidence 对 Object/Link Current 执行显式 `ANALYZE`，避免刚完成批量写入时自动统计尚未刷新导致规划随机波动；不关闭顺序扫描、不强制索引、不修改 Planner Cost。机器制品为 `generated/ci-report/g2-03-07-query-compiler.json`，并与当次 Commit、Fixture Digest 和 `cleanCheckout=true` 绑定。
 
 固定 Corpus 的结果：
 

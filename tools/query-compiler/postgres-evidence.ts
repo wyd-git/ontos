@@ -103,6 +103,11 @@ export async function runQueryCompilerPostgresEvidence(
   const client = await input.pool.connect();
   let transactionOpen = false;
   try {
+    // The clean-room bulk load can finish before autovacuum has refreshed the
+    // expression statistics used by Published Index Plans.  Make the plan
+    // proof deterministic without changing planner switches or forcing an
+    // index: PostgreSQL still chooses the plan from the real data distribution.
+    await refreshPlannerStatistics(client);
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
     transactionOpen = true;
     await client.query("SET LOCAL statement_timeout = '30s'");
@@ -285,6 +290,10 @@ export async function runQueryCompilerPostgresEvidence(
         generationCount: new Set([...generations.values()]).size,
         requestTime,
       }),
+      plannerStatistics: Object.freeze({
+        refreshedBeforeReadSnapshot: true,
+        relations: Object.freeze(["runtime.object_current", "runtime.link_current"]),
+      }),
       statements: Object.freeze(evidence),
       executionBoundaries: timeoutRecovery,
       assertions: Object.freeze({
@@ -353,7 +362,10 @@ async function executeAndExplain(
   assert.ok(indexes.length > 0, `${scenario}: index required`);
   const publishedPlanIndexes = indexes.filter((index) => publishedIndexes.has(index));
   if (requiresPublishedIndex) {
-    assert.ok(publishedPlanIndexes.length > 0, `${scenario}: Published Index Plan required`);
+    assert.ok(
+      publishedPlanIndexes.length > 0,
+      `${scenario}: Published Index Plan required; used=${JSON.stringify(indexes)} ready=${JSON.stringify([...publishedIndexes].sort())}`,
+    );
   }
   return Object.freeze({
     scenario,
@@ -368,6 +380,11 @@ async function executeAndExplain(
     executionTimeMilliseconds: finiteNumber(document["Execution Time"]),
     explainAnalyzeBuffers: document,
   });
+}
+
+async function refreshPlannerStatistics(client: pg.PoolClient): Promise<void> {
+  await client.query("ANALYZE runtime.object_current");
+  await client.query("ANALYZE runtime.link_current");
 }
 
 async function verifyTimeoutAndPoolRecovery(
