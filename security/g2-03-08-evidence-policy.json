@@ -41,6 +41,7 @@
       "security/g2-03-06-evidence-policy.json",
       "security/g2-03-07-evidence-policy.json",
       "security/g2-03-08-evidence-policy.json",
+      "tools/ci/g2-03-07-evidence.test.ts",
       "tools/ci/g2-03-08-evidence.test.ts",
       "tools/ci/g2-03-08-evidence.ts",
       "tools/ci/run.test.ts",
