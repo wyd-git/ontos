@@ -43,6 +43,7 @@
 - 完整非空库升级发现 Release 回填产生的延迟 Trigger 事件会阻止紧随其后的 `ALTER TABLE`；现先以 `NOT VALID` 建立约束，回填后显式清空事件再 Validate，并由 A0 历史 Release、逐 Migration 故障回滚和连续 `0001`～`0028` 复验固定；
 - `0028` 撤销 API 的旧两步 Plan/Commit 后，历史 G2-02 集成仍直接调用旧函数；现明确断言 API 得到 `42501`，Runtime 路径改用原子 Context Commit，同时保留 Owner 事务对 Planned Lease 不产生 GC Root 的历史不变量证明。
 - 完整 clean-room 暴露 Policy Filter 偶发选择基础索引而非 Published Plan。显式 `ANALYZE` 排除统计竞态后，10 万行最小真实复现定位到 Renderer 在 `WHERE` 正向 Predicate 外包装 `IS TRUE`，使 PostgreSQL 无法产生表达式索引条件。现改为语义等价的裸正向 Predicate + `deny/mask IS NOT TRUE`：仍只有 Allow=True 可通过，同时可使用 Published Index；Evidence 仍显式刷新真实 Current 统计，不强制索引也不放宽断言。
+- clean-room 本体 PASS 后，历史 G2-03-07 Scope 遗漏两个非空升级数据库测试路径，G2-03-08 Scope 遗漏被本阶段补强的 G2-03-07 Evidence 文档；现已补齐两个白名单并把真实前向路径放入 Scope 单元回归，避免延迟到重型 Gate 后才暴露。
 
 ## 4. 有意的 P0 简化与保留差距
 

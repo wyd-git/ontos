@@ -25,6 +25,7 @@
       "docs/architecture/core-database-design.md",
       "docs/delivery/g2-03-query-policy-task-pack.md",
       "docs/delivery/g2-owner-capacity-matrix.md",
+      "docs/evidence/g2-03-07-typed-query-compiler.md",
       "docs/evidence/g2-03-08-runtime-metadata-object-get.md",
       "docs/product/ontology-kernel-implementation-blueprint.md",
       "docs/reviews/g2-03-08-intended-vs-implemented.md",

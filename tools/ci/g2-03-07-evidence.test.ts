@@ -44,6 +44,8 @@ function validSnapshot(): G20307EvidenceSnapshot {
       "docs/architecture/adr/025-typed-query-ast-parameterized-postgres-compiler.md",
       "packages/query-domain/src/compiler.ts",
       "packages/query-postgres/src/renderer.ts",
+      "tools/database/materialization-postgres.integration.test.ts",
+      "tools/database/postgres.integration.test.ts",
       "tools/query-compiler/postgres-evidence.ts",
     ],
     documents: Object.fromEntries(

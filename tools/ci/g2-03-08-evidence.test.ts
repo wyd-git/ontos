@@ -41,6 +41,7 @@ function validSnapshot(): G20308EvidenceSnapshot {
     ],
     changedFiles: [
       "docs/architecture/adr/026-runtime-query-context-metadata-object-get.md",
+      "docs/evidence/g2-03-07-typed-query-compiler.md",
       "migrations/db-00/0028_runtime_query_context.sql",
       "packages/query-application/src/runtime.ts",
       "packages/query-postgres/src/runtime-object.ts",
