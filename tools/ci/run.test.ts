@@ -56,6 +56,13 @@ void test("the clean-checkout entrypoint defers workspace-dependent evidence unt
     ),
     true,
   );
+  assert.equal(runnerSource.includes("import { writeG20308EvidenceManifest }"), false);
+  assert.equal(
+    runnerSource.includes(
+      'const { writeG20308EvidenceManifest } = await import("./g2-03-08-evidence.ts")',
+    ),
+    true,
+  );
 });
 
 void test("fast, preflight and full profiles preserve distinct qualification boundaries", () => {
@@ -69,13 +76,14 @@ void test("fast, preflight and full profiles preserve distinct qualification bou
   ]);
   const full = gateNamesForProfile("full");
   const preflight = gateNamesForProfile("preflight");
-  assert.equal(full.length, 44);
-  assert.equal(preflight.length, 40);
+  assert.equal(full.length, 46);
+  assert.equal(preflight.length, 41);
   assert.deepEqual(
     full.filter((gate) => !preflight.includes(gate)),
     [
       "materialization-clean-room",
       "g2-03-07-query-evidence",
+      "g2-03-08-runtime-evidence",
       "materialization-scope-evidence",
       "g2-03-01-architecture-evidence",
     ],
@@ -87,6 +95,7 @@ void test("fast, preflight and full profiles preserve distinct qualification bou
   assert.ok(preflight.includes("policy-compiler-postgres"));
   assert.ok(preflight.includes("g2-03-05-policy-evidence"));
   assert.ok(preflight.includes("g2-03-06-policy-evidence"));
+  assert.ok(preflight.includes("runtime-query-postgres"));
   assert.ok(preflight.includes("metadata-clean-room"));
   assert.deepEqual(preflight.slice(-3), [
     "production-boundary-up",
@@ -106,6 +115,7 @@ void test("fast, preflight and full profiles preserve distinct qualification bou
   assert.ok(full.includes("g2-03-05-policy-evidence"));
   assert.ok(full.includes("g2-03-06-policy-evidence"));
   assert.ok(full.includes("g2-03-07-query-evidence"));
+  assert.ok(full.includes("g2-03-08-runtime-evidence"));
   assert.deepEqual(full.slice(-3), [
     "production-boundary-up",
     "production-boundary-smoke",

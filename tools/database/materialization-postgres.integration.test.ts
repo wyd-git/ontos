@@ -430,7 +430,7 @@ void test(
         const upgrade = await runDatabaseMigrations(admin);
         assert.deepEqual(
           upgrade.applied.map(({ version }) => version),
-          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27],
+          [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28],
         );
         assert.equal((await runDatabaseMigrations(admin)).noOp, true);
         assert.deepEqual(await migrationLedger(admin, 6), prefixLedger);
@@ -6566,6 +6566,32 @@ async function exerciseQueryPolicyLeaseBoundary(
       [ids.project],
     );
     const authorizationEpoch = BigInt(required(epochResult.rows[0]).epoch);
+    const candidate = await api.query<{
+      readonly resolution_status: string;
+      readonly activation_id: string;
+      readonly generation_count: number;
+      readonly generation_set_digest: string;
+      readonly policy_compilation_id: string;
+    }>(
+      `SELECT resolution_status, activation_id::text, generation_count,
+              generation_set_digest, policy_compilation_id::text
+       FROM runtime.resolve_query_context_candidate($1, 'release', $2)`,
+      [ids.project, ids.release2],
+    );
+    const resolvedCandidate = required(candidate.rows[0]);
+    assert.deepEqual(resolvedCandidate, {
+      resolution_status: "resolved",
+      activation_id: activatedRelease2Id,
+      generation_count: projectionCapacityMode ? 2 : 1,
+      generation_set_digest: resolvedCandidate.generation_set_digest,
+      policy_compilation_id: ids.policyCompilation,
+    });
+    assert.match(resolvedCandidate.generation_set_digest, /^sha256:[0-9a-f]{64}$/u);
+    const generationSetDigest = resolvedCandidate.generation_set_digest;
+
+    // G2-03-08 removes the two-step API surface.  Historical Lease semantics
+    // remain testable by the owner, while Runtime callers must use the atomic
+    // candidate revalidation + commit operation.
     await assertPgCode(
       api.query(
         `SELECT * FROM runtime.plan_query_lease(
@@ -6582,23 +6608,83 @@ async function exerciseQueryPolicyLeaseBoundary(
           sha256Digest("g2-03-stale-query"),
         ],
       ),
+      "42501",
+    );
+
+    await assertPgCode(
+      api.query(
+        `SELECT * FROM runtime.commit_query_execution_context(
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'g20303-stale-epoch', 30
+         )`,
+        [
+          ids.project,
+          ids.staleQueryLease,
+          ids.release2,
+          activatedRelease2Id,
+          generationSetDigest,
+          ids.policyCompilation,
+          identityContextHash,
+          (authorizationEpoch + 1n).toString(),
+          policyContextHash,
+          sha256Digest("g2-03-stale-query"),
+        ],
+      ),
       "40001",
     );
 
-    const planned = await api.query<{
+    await withClient(adminConfig, async (admin) => {
+      await admin.query("BEGIN");
+      try {
+        const plannedLeaseId = randomUUID();
+        const planned = await admin.query<{
+          readonly activation_id: string;
+          readonly generation_count: number;
+          readonly state: string;
+          readonly control_sequence: string;
+        }>(
+          `SELECT activation_id::text, generation_count, state, control_sequence::text
+           FROM runtime.plan_query_lease(
+             $1, $2, $3, $4, $5, $6, $7, $8, 'g20303-owner-planned-probe', 30
+           )`,
+          [
+            ids.project,
+            plannedLeaseId,
+            ids.release2,
+            ids.policyCompilation,
+            identityContextHash,
+            authorizationEpoch.toString(),
+            policyContextHash,
+            sha256Digest("g2-03-owner-planned-probe"),
+          ],
+        );
+        assert.equal(planned.rows[0]?.activation_id, activatedRelease2Id);
+        assert.equal(planned.rows[0]?.generation_count, projectionCapacityMode ? 2 : 1);
+        assert.equal(planned.rows[0]?.state, "planned");
+        assert.equal(planned.rows[0]?.control_sequence, "0");
+        assert.equal(await queryLeaseRootCount(admin, plannedLeaseId), 0);
+      } finally {
+        await admin.query("ROLLBACK");
+      }
+    });
+
+    const committed = await api.query<{
       readonly activation_id: string;
       readonly generation_count: number;
       readonly state: string;
       readonly control_sequence: string;
+      readonly expires_at: Date;
     }>(
-      `SELECT activation_id::text, generation_count, state, control_sequence::text
-       FROM runtime.plan_query_lease(
-         $1, $2, $3, $4, $5, $6, $7, $8, 'g20303-real-serving-query', 30
+      `SELECT activation_id::text, generation_count, state,
+              control_sequence::text, expires_at
+       FROM runtime.commit_query_execution_context(
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'g20303-real-serving-query', 30
        )`,
       [
         ids.project,
         ids.queryLease,
         ids.release2,
+        activatedRelease2Id,
+        generationSetDigest,
         ids.policyCompilation,
         identityContextHash,
         authorizationEpoch.toString(),
@@ -6606,23 +6692,8 @@ async function exerciseQueryPolicyLeaseBoundary(
         sha256Digest("g2-03-real-serving-query"),
       ],
     );
-    assert.equal(planned.rows[0]?.activation_id, activatedRelease2Id);
-    assert.equal(planned.rows[0]?.generation_count, projectionCapacityMode ? 2 : 1);
-    assert.equal(planned.rows[0]?.state, "planned");
-    assert.equal(planned.rows[0]?.control_sequence, "0");
-    await withClient(adminConfig, async (admin) => {
-      assert.equal(await queryLeaseRootCount(admin, ids.queryLease), 0);
-    });
-
-    const committed = await api.query<{
-      readonly state: string;
-      readonly control_sequence: string;
-      readonly expires_at: Date;
-    }>(
-      `SELECT state, control_sequence::text, expires_at
-       FROM runtime.commit_query_lease($1, $2, 0)`,
-      [ids.project, ids.queryLease],
-    );
+    assert.equal(committed.rows[0]?.activation_id, activatedRelease2Id);
+    assert.equal(committed.rows[0]?.generation_count, projectionCapacityMode ? 2 : 1);
     assert.equal(committed.rows[0]?.state, "committed");
     assert.equal(committed.rows[0]?.control_sequence, "1");
 
@@ -6720,13 +6791,15 @@ async function exerciseQueryPolicyLeaseBoundary(
     );
 
     const expiring = await api.query<{ readonly state: string }>(
-      `SELECT state FROM runtime.plan_query_lease(
-         $1, $2, $3, $4, $5, $6, $7, $8, 'g20303-expiring-query', 1
+      `SELECT state FROM runtime.commit_query_execution_context(
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'g20303-expiring-query', 1
        )`,
       [
         ids.project,
         ids.expiredQueryLease,
         ids.release2,
+        activatedRelease2Id,
+        generationSetDigest,
         ids.policyCompilation,
         identityContextHash,
         authorizationEpoch.toString(),
@@ -6734,11 +6807,7 @@ async function exerciseQueryPolicyLeaseBoundary(
         sha256Digest("g2-03-expiring-query"),
       ],
     );
-    assert.equal(expiring.rows[0]?.state, "planned");
-    await api.query("SELECT * FROM runtime.commit_query_lease($1, $2, 0)", [
-      ids.project,
-      ids.expiredQueryLease,
-    ]);
+    assert.equal(expiring.rows[0]?.state, "committed");
   });
 
   await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 1_100));
@@ -7643,11 +7712,11 @@ async function assertFreshConcurrentMigration(adminConfig: pg.ClientConfig): Pro
     withClient(freshConfig, runMigrationsWithCause),
     withClient(freshConfig, runMigrationsWithCause),
   ]);
-  assert.equal(left.applied.length + right.applied.length, 27);
+  assert.equal(left.applied.length + right.applied.length, 28);
   assert.equal(Number(left.noOp) + Number(right.noOp), 1);
   await withClient(freshConfig, async (client) => {
     assert.equal((await runDatabaseMigrations(client)).noOp, true);
-    assert.equal((await migrationLedger(client, 27)).length, 27);
+    assert.equal((await migrationLedger(client, 28)).length, 28);
   });
 }
 
@@ -7687,6 +7756,7 @@ async function assertEveryDb02MigrationRollsBack(adminConfig: pg.ClientConfig): 
           "Authoritative live per-Generation row inventory for fail-closed GC planning; dynamic index bytes are inventoried separately.",
       },
     ],
+    [28, { relation: "runtime.query_object_current" }],
   ]);
   for (const [version, probe] of probes) {
     const databaseName = `ontos_db02_fault_${String(version)}`;
@@ -7961,7 +8031,7 @@ async function migrationPrefixDirectory(through: number): Promise<string> {
 }
 
 async function faultingMigrationDirectory(version: number): Promise<string> {
-  const directory = await migrationPrefixDirectory(21);
+  const directory = await migrationPrefixDirectory(version);
   const prefix = String(version).padStart(4, "0");
   const file = (await readdir(directory)).find((candidate) => candidate.startsWith(`${prefix}_`));
   if (file === undefined) throw new Error(`Missing migration ${prefix}`);

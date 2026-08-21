@@ -54,7 +54,8 @@
       "migrations/db-00/0024_query_policy_authorization_boundary.sql",
       "migrations/db-00/0025_runtime_identity_boundary.sql",
       "migrations/db-00/0026_policy_resource_compiler_release_gate.sql",
-      "migrations/db-00/0027_policy_gateway_runtime.sql"
+      "migrations/db-00/0027_policy_gateway_runtime.sql",
+      "migrations/db-00/0028_runtime_query_context.sql"
     ],
     "allowedCreatedTables": [
       "authz.authorization_epochs",

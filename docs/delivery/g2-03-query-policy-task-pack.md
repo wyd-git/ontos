@@ -3,7 +3,7 @@
 - 版本：v1
 - 日期：2026-08-17
 - 状态：Frozen；可行性复审与红队修订已写回权威文档
-- 执行进度：7/15；G2-03-01～07 已 PASS，当前只放行 G2-03-08，未 PASS 前不得开始 G2-03-09 或正式 Runtime Endpoint
+- 执行进度：8/15；G2-03-01～08 已 PASS，当前只放行 G2-03-09，未 PASS 前不得开始 G2-03-10 或正式 Runtime Endpoint
 - 上游 Gate：G2-00、G2-01、G2-02 已 PASS
 - 目标 Gate：正式 Runtime Read Kernel + 统一 Policy Gateway + 真实只读 Web 消费者
 - 配套边界：[G2-03 UI/API 早期消费者合同](../architecture/g2-03-ui-api-consumer-contract.md)

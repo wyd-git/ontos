@@ -12,6 +12,7 @@ import {
   PostgresQueryRenderError,
   assertAuthenticParameterizedQueryStatement,
   renderPostgresQuery,
+  renderRuntimeObjectGet,
 } from "@ontos/query-postgres";
 
 import { linkPolicy, objectPolicy, queryRegistry, searchRequest, sha256 } from "./fixtures.ts";
@@ -57,14 +58,56 @@ void test("Get/List/Count render Current binding, policy and client predicate be
     if (plan.operation !== "object_get") assert.ok(statement.values.includes(injection));
     assert.match(statement.text, /runtime\.object_current/u);
     assert.match(statement.text, /generation_id = \$\d+::uuid/u);
-    assert.match(statement.text, /IS TRUE AND NOT/u);
-    const policyPosition = statement.text.indexOf("IS TRUE AND NOT");
+    assert.match(statement.text, /IS NOT TRUE/u);
+    const policyPosition = statement.text.indexOf("IS NOT TRUE");
     const orderPosition = statement.text.indexOf("ORDER BY");
     const limitPosition = statement.text.indexOf("LIMIT");
     if (orderPosition >= 0) assert.ok(policyPosition < orderPosition);
     if (limitPosition >= 0) assert.ok(policyPosition < limitPosition);
     assert.equal(statement.values.length, statement.parameterTypes.length);
   }
+});
+
+void test("WHERE predicates preserve three-valued policy semantics without hiding index conditions", () => {
+  const basePolicy = objectPolicy("Customer");
+  const policy = Object.freeze({
+    ...basePolicy,
+    policyRules: Object.freeze(
+      basePolicy.policyRules.map((rule) =>
+        rule.target.kind === "object"
+          ? Object.freeze({
+              ...rule,
+              predicate: Object.freeze({
+                kind: "compare" as const,
+                left: Object.freeze({
+                  source: "object_property" as const,
+                  apiName: "displayName",
+                }),
+                op: "lt" as const,
+                right: Object.freeze({ source: "constant" as const, value: "Customer 100" }),
+              }),
+            })
+          : rule,
+      ),
+    ),
+  });
+  const statement = renderPostgresQuery(
+    compileObjectSearch({
+      context,
+      objectTypeApiName: "Customer",
+      request: searchRequest({
+        where: { property: "displayName", op: "prefix", value: "Customer 0" },
+        orderBy: [{ property: "displayName", direction: "asc" }],
+      }),
+      policy,
+    }),
+  );
+
+  assert.match(statement.text, /COLLATE "C" < \$\d+::text/u);
+  assert.match(statement.text, /COLLATE "C" LIKE replace/u);
+  assert.doesNotMatch(statement.text, /COLLATE "C" < \$\d+::text\) IS TRUE/u);
+  assert.doesNotMatch(statement.text, /ESCAPE '\\\\'\)\) IS TRUE/u);
+  assert.match(statement.text, /\(FALSE\) IS NOT TRUE/u);
 });
 
 void test("Property projection places raw value only in the allow CASE and parameterizes masks", () => {
@@ -166,6 +209,49 @@ void test("renderer and executor boundary reject forged plans/statements", () =>
   );
   assert.throws(
     () => assertAuthenticParameterizedQueryStatement({ text: "SELECT 1" }),
+    (error) =>
+      error instanceof PostgresQueryRenderError && error.code === "QUERY_STATEMENT_UNTRUSTED",
+  );
+});
+
+void test("Runtime Get activates a bound Lease and never names raw Current relations", () => {
+  const plan = compileObjectGet({
+    context,
+    objectTypeApiName: "Customer",
+    request: { primaryKey: "customer-1", select: ["id", "secret"] },
+    policy: objectPolicy("Customer", { secretAccess: "deny" }),
+  });
+  const statement = renderRuntimeObjectGet(plan, {
+    projectId: plan.binding.projectId,
+    queryLeaseId: "01000000-0000-4000-8000-000000000010",
+    releaseId: plan.binding.releaseId,
+    activationId: plan.binding.activationId,
+    identityContextHash: sha256("runtime-identity"),
+    policyContextHash: plan.policy.policyContextHash,
+    queryHash: plan.queryHash,
+  });
+  assert.equal(statement.name, "ontos_runtime_object_get_v1");
+  assert.equal(statement.composition[0], "lease_context");
+  assert.match(statement.text, /runtime\.activate_query_read_context/u);
+  assert.match(statement.text, /runtime\.query_object_current/u);
+  assert.match(statement.text, /CROSS JOIN LATERAL/u);
+  assert.match(statement.text, /WHERE read_context\.active\s+OFFSET 0/u);
+  assert.match(statement.text, /AS "objectVersion"/u);
+  assert.doesNotMatch(statement.text, /runtime\.object_current/u);
+  assert.doesNotMatch(statement.text, /runtime\.link_current/u);
+  assert.ok(statement.values.includes(plan.queryHash));
+
+  assert.throws(
+    () =>
+      renderRuntimeObjectGet(plan, {
+        projectId: plan.binding.projectId,
+        queryLeaseId: "01000000-0000-4000-8000-000000000010",
+        releaseId: plan.binding.releaseId,
+        activationId: plan.binding.activationId,
+        identityContextHash: sha256("runtime-identity"),
+        policyContextHash: plan.policy.policyContextHash,
+        queryHash: sha256("wrong-query"),
+      }),
     (error) =>
       error instanceof PostgresQueryRenderError && error.code === "QUERY_STATEMENT_UNTRUSTED",
   );

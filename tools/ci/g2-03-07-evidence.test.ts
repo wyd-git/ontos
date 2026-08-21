@@ -44,6 +44,8 @@ function validSnapshot(): G20307EvidenceSnapshot {
       "docs/architecture/adr/025-typed-query-ast-parameterized-postgres-compiler.md",
       "packages/query-domain/src/compiler.ts",
       "packages/query-postgres/src/renderer.ts",
+      "tools/database/materialization-postgres.integration.test.ts",
+      "tools/database/postgres.integration.test.ts",
       "tools/query-compiler/postgres-evidence.ts",
     ],
     documents: Object.fromEntries(
@@ -130,7 +132,7 @@ void test("accepts complete G2-03-07 typed Query Compiler evidence", () => {
   assert.deepEqual(evaluateG20307EvidenceSnapshot(validSnapshot(), policy), []);
 });
 
-void test("rejects HTTP, migrations, Action and UI outside the compiler scope", () => {
+void test("rejects HTTP, unregistered migrations, Action and UI outside the compiler scope", () => {
   const snapshot = validSnapshot();
   const violations = evaluateG20307EvidenceSnapshot(
     {
@@ -144,7 +146,7 @@ void test("rejects HTTP, migrations, Action and UI outside the compiler scope", 
     },
     policy,
   );
-  assert.equal(violations.filter((value) => value.includes("forbids changed path")).length, 4);
+  assert.equal(violations.filter((value) => value.includes("changed path")).length, 4);
 });
 
 void test("rejects a historical scope that cannot admit the compiler boundary", () => {

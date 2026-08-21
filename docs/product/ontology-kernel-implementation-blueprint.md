@@ -22,7 +22,7 @@
 4. 本蓝图中的“完整产品”特指 PRD 的 **P0 Kernel Alpha**，不是复制 Palantir 全产品，也不包含 P1/P2。
 5. G1 Spike 只复用算法、SQL 结论、Fixtures 和测试向量；不把 Spike 的进程组织、凭据和脚本直接当生产代码。
 
-蓝图红队最初只对 G2-00 Foundation 给出 **Conditional Go**。截至 2026-08-20，G2-00 Foundation、G2-01 Metadata、G2-02 Materialization 与 G2-03-01～07 均已通过对应 Gate。当前只允许按 [G2-03 Query + Policy 任务包](../delivery/g2-03-query-policy-task-pack.md)执行 G2-03-08 Execution Context、Query Lease、Runtime Metadata 与 Activation-aware Object Get；不得跳到正式 Runtime Endpoint、Action/Overlay 或完整产品 UI。
+蓝图红队最初只对 G2-00 Foundation 给出 **Conditional Go**。截至 2026-08-21，G2-00 Foundation、G2-01 Metadata、G2-02 Materialization 与 G2-03-01～08 均已通过对应 Gate。当前只允许按 [G2-03 Query + Policy 任务包](../delivery/g2-03-query-policy-task-pack.md)执行 G2-03-09 Search、Count 与签名 Cursor；不得跳到 Link 产品用例、正式 Runtime Endpoint、Action/Overlay 或完整产品 UI。
 
 ### 0.1 对“先闭环还是先做全核心”的最终回答
 

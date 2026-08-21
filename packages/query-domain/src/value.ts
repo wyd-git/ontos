@@ -249,6 +249,7 @@ function normalizeTrustedLegacyNumber(property: QueryPropertySchema, input: unkn
 function syntheticTimestampProperty(): QueryPropertySchema {
   return Object.freeze({
     apiName: "request_time",
+    displayName: "Request time",
     valueType: "timestamp",
     nullable: false,
     caseSensitive: true,

@@ -184,6 +184,11 @@ const fullGates: readonly GateDefinition[] = [
     arguments: ["run", "test:materialization:production"],
   },
   {
+    name: "runtime-query-postgres",
+    command: "npm",
+    arguments: ["run", "test:runtime-query:postgres"],
+  },
+  {
     name: "materialization-clean-room",
     command: "npm",
     arguments: ["run", "test:materialization-clean-room"],
@@ -192,6 +197,11 @@ const fullGates: readonly GateDefinition[] = [
     name: "g2-03-07-query-evidence",
     command: "npm",
     arguments: ["run", "check:g2-03-07-evidence"],
+  },
+  {
+    name: "g2-03-08-runtime-evidence",
+    command: "npm",
+    arguments: ["run", "check:g2-03-08-evidence"],
   },
   {
     name: "materialization-scope-evidence",
@@ -235,6 +245,7 @@ const fastGateNames = new Set([
 const preflightExcludedGateNames = new Set([
   "materialization-clean-room",
   "g2-03-07-query-evidence",
+  "g2-03-08-runtime-evidence",
   "materialization-scope-evidence",
   "g2-03-01-architecture-evidence",
 ]);
@@ -287,7 +298,7 @@ async function runFoundationGate(repositoryRoot: string, localPreflight: boolean
         changedFiles: [],
         fullGateFiles: [],
         reason:
-          "An explicit local preflight validates the non-qualifying 40-gate profile; it cannot replace GitHub Foundation Gate qualification.",
+          "An explicit local preflight validates the non-qualifying 41-gate profile; it cannot replace GitHub Foundation Gate qualification.",
       }
     : await classifyChangeRisk(repositoryRoot);
   const gates = gateDefinitionsForProfile(changeRisk.profile);
@@ -528,6 +539,14 @@ async function runFoundationGate(repositoryRoot: string, localPreflight: boolean
       await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-07", commit, error);
       evidenceFailure ??= "g2-03-07-evidence-manifest";
       failure ??= new Error("G2-03-07 evidence manifest could not be completed.");
+    }
+    try {
+      const { writeG20308EvidenceManifest } = await import("./g2-03-08-evidence.ts");
+      await writeG20308EvidenceManifest(outputDirectory, report);
+    } catch (error) {
+      await writeUnavailableEvidenceManifest(outputDirectory, "G2-03-08", commit, error);
+      evidenceFailure ??= "g2-03-08-evidence-manifest";
+      failure ??= new Error("G2-03-08 evidence manifest could not be completed.");
     }
   }
   const finalReport = {
@@ -921,7 +940,8 @@ async function writeUnavailableEvidenceManifest(
     | "G2-03-04"
     | "G2-03-05"
     | "G2-03-06"
-    | "G2-03-07",
+    | "G2-03-07"
+    | "G2-03-08",
   commit: string,
   error: unknown,
 ): Promise<void> {
@@ -944,7 +964,9 @@ async function writeUnavailableEvidenceManifest(
                     ? "g2-03-05"
                     : gate === "G2-03-06"
                       ? "g2-03-06"
-                      : "g2-03-07";
+                      : gate === "G2-03-07"
+                        ? "g2-03-07"
+                        : "g2-03-08";
   await writeFile(
     join(outputDirectory, `${name}-evidence-manifest.json`),
     `${JSON.stringify(

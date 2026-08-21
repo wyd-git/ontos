@@ -8,10 +8,10 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 - G2 生产实现蓝图：**红队审查完成，Conditional Go**；
 - G2-00 Foundation：**PASS，13/13 已合并**；
 - G2-01 Metadata：**PASS，G2-01-01～12 已实现并通过 clean-room 总验收**；
-- 正式产品实现：**Metadata/Package 控制面、Materialization 数据运行面、Runtime Identity 信任边界、Policy 编译/发布门禁、生产 Policy Gateway 与 typed Query Compiler 已具备真实 OIDC/DPoP、最小权限、PostgreSQL、版本化 S3、双进程撤权、参数化 Policy-in-SQL、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；完整 Gate 共 44 道**；Runtime Read Endpoint 与真实 Web 消费者尚未实现；
+- 正式产品实现：**Metadata/Package 控制面、Materialization 数据运行面、Runtime Identity 信任边界、Policy 编译/发布门禁、生产 Policy Gateway、typed Query Compiler、精确 Execution Context、Runtime Metadata 与 Activation-aware Get 已具备真实 OIDC/DPoP、最小权限、PostgreSQL、版本化 S3、双进程撤权、参数化 Policy-in-SQL、生产 Worker、隔离 DDL、容量/GC、原子切换和重启恢复；完整 Gate 共 46 道**；Runtime Read HTTP 与真实 Web 消费者尚未实现；
 - G2-02 Materialization：**PASS，G2-02-01～14 全部完成；独立 Ubuntu 24 / 8C16G clean-room 已跑通冷/热 100k Object + 1m Link、20 次 Cutover、容量、安全、GC 与整体重启恢复**；
-- G2-03 Query + Policy：**G2-03-01～07 PASS，当前进度 7/15；Migration 已到 0027，真实 Runtime Identity、受限 Policy AST/IR、精确 Artifact、生产 Gateway、最长 5 秒撤权、typed Query AST 与参数化 PostgreSQL Compiler 已落地**；
-- 下一唯一允许的工作项：**G2-03-08，实现真实 Execution Context、Query Lease、Runtime Metadata 与 Activation-aware Object Get；仍不建正式 Runtime HTTP 或产品页**。
+- G2-03 Query + Policy：**G2-03-01～08 PASS，当前进度 8/15；Migration 已到 0028，真实 Runtime Identity、受限 Policy AST/IR、精确 Artifact、生产 Gateway、最长 5 秒撤权、typed Query、原子 Query Lease、策略感知 Metadata 与 Activation-aware Get 已落地**；
+- 下一唯一允许的工作项：**G2-03-09，在同一执行上下文上实现 Search、Count 与签名 Cursor；仍不建正式 Runtime HTTP 或产品页**。
 
 ## 权威文档
 
@@ -19,7 +19,7 @@ Ontos 是 **Ontology Kernel** 的正式主仓库。目标是在不复制 Palanti
 |---|---|
 | [产品需求文档](docs/product/ontology-kernel-prd.md) | P0/P1/P2 范围、产品语义和 AC-01～AC-10 |
 | [生产实现蓝图](docs/product/ontology-kernel-implementation-blueprint.md) | 工程结构、模块、数据、事务、状态机和 Gate |
-| [核心数据库设计](docs/architecture/core-database-design.md) | 当前 27 个 Migration 的 Metadata、AuthZ/Runtime Identity、Policy Release/Gateway、Shared Projection、Cutover、Job/Index/GC、Query Lease 总图，以及后续 Query/Action 未实现边界 |
+| [核心数据库设计](docs/architecture/core-database-design.md) | 当前 28 个 Migration 的 Metadata、AuthZ/Runtime Identity、Policy Release/Gateway、Shared Projection、Cutover、Job/Index/GC、Query Execution Context 总图，以及后续 Query/Action 未实现边界 |
 | [蓝图红队审查](docs/reviews/g2-blueprint-red-team.md) | 承重假设、最低成本验证、停止条件和放行结论 |
 | [G2-00 任务包](docs/delivery/g2-00-foundation-task-pack.md) | Foundation 的依赖、WWA 工作项和可执行退出条件 |
 | [G2-01 Metadata 任务包](docs/delivery/g2-01-metadata-task-pack.md) | Metadata 控制面的 12 个顺序工作项、边界与验收条件 |

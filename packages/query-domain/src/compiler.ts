@@ -87,7 +87,7 @@ export function compileObjectGet(input: {
     context: input.policy,
     requestTime: common.requestTime,
   });
-  const selectedProperties = compileSelection(object, input.request.select, policy);
+  const selectedProperties = compileGetSelection(object, input.request.select);
   const canonicalPrimaryKey = canonicalizePrimaryKeyInput(object, input.request.primaryKey);
   const hashInput = Object.freeze({
     schemaVersion: 1,
@@ -395,6 +395,20 @@ function compileSelection(
     requirePropertyReadAccess(policy, property);
     return property;
   });
+}
+
+function compileGetSelection(
+  object: QueryObjectTypeSchema,
+  names: readonly string[],
+): readonly QueryPropertySchema[] {
+  if (names.length === 0 || names.length > 256 || new Set(names).size !== names.length) {
+    failQuery("INVALID_QUERY_AST", "Property selection is outside the supported envelope.");
+  }
+  // Object Get is the one public shape that must preserve the distinction
+  // between restricted, masked, missing, null and value.  A restricted field
+  // is safe to select because the SQL projection never emits its raw value;
+  // Search/Filter/Sort keep the stricter readable/queryable checks below.
+  return names.map((name) => requireQueryProperty(object, name));
 }
 
 interface ClientWhereResult {

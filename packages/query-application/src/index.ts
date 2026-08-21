@@ -14,6 +14,8 @@ import {
   type QueryPolicyContext,
 } from "@ontos/query-domain";
 
+export * from "./runtime.ts";
+
 export interface QueryExecutionResult<Row extends Readonly<Record<string, unknown>>> {
   readonly rows: readonly Row[];
   readonly rowCount: number;

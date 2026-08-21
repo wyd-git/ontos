@@ -117,6 +117,22 @@ void test("masked Properties are readable but cannot filter, sort or search", ()
   );
 });
 
+void test("Object Get preserves a denied Property as a restricted projection", () => {
+  const context = { registry: queryRegistry(), requestTime, digestCanonicalText: sha256 };
+  const plan = compileObjectGet({
+    context,
+    objectTypeApiName: "Customer",
+    request: { primaryKey: "customer-1", select: ["id", "secret"] },
+    policy: objectPolicy("Customer", { secretAccess: "deny" }),
+  });
+  assert.deepEqual(
+    plan.selectedProperties.map(({ apiName }) => apiName),
+    ["id", "secret"],
+  );
+  const secret = plan.policy.propertyAccess.find(({ property }) => property.apiName === "secret");
+  assert.equal(secret?.canEverAllow, false);
+});
+
 void test("weighted complexity rejects a trusted Policy corpus before SQL rendering", () => {
   const registry = queryRegistry();
   const customer = registry.requireObjectByApiName("Customer");
